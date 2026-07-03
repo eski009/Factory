@@ -9,9 +9,9 @@ import sys
 if __package__ in (None, ""):
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod
+    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod
 else:
-    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod
+    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod
 
 
 def cmd_init(args):
@@ -139,6 +139,27 @@ def cmd_prune(args):
     return 0
 
 
+def cmd_next(args):
+    meta = dispatch.next_item(args.repo)
+    if args.json:
+        print(json.dumps(meta, indent=2, sort_keys=True))
+    elif meta is None:
+        print("nothing actionable")
+    else:
+        print(f"{meta['id']} {meta['stage']}")
+    return 0
+
+
+def cmd_packet(args):
+    try:
+        path = packet_mod.write_packet(args.repo, args.item)
+    except items.ItemError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(path)
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="factory")
     parser.add_argument("--repo", default=".")
@@ -201,6 +222,14 @@ def main(argv=None):
     p.add_argument("role")
     p.add_argument("--apply", action="store_true")
     p.set_defaults(func=cmd_prune)
+
+    p = sub.add_parser("next", help="get the next actionable work item")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_next)
+
+    p = sub.add_parser("packet", help="write a review packet for an item")
+    p.add_argument("item")
+    p.set_defaults(func=cmd_packet)
 
     try:
         args = parser.parse_args(argv)
