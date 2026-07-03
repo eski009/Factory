@@ -3,7 +3,7 @@ name: factory-design
 description: Use when a factory item is at stage design - generates 2-4 UI mockup options, parks the item for the human's pick
 ---
 
-Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.py" --repo .`. Item paths below (`items/<id>/...`) are shorthand for `.factory/items/<id>/...`.
+Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.py" --repo .`. Item paths like `items/<id>/...` live under `.factory/` — the full path is `.factory/items/<id>/...`.
 
 ## Contract
 

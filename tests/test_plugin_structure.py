@@ -51,6 +51,18 @@ class TestPluginStructure(unittest.TestCase):
         text = (ROOT / "skills/factory-dispatch/SKILL.md").read_text()
         self.assertIn("design/choice.md", text)
 
+    def test_dispatch_stage_map_includes_factory_design(self):
+        text = (ROOT / "skills/factory-dispatch/SKILL.md").read_text()
+        self.assertIn("factory-design", text)
+
+    def test_factory_design_skill_exists_and_covers_options_and_choice(self):
+        skill = ROOT / "skills/factory-design/SKILL.md"
+        self.assertTrue(skill.exists())
+        text = skill.read_text()
+        self.assertRegex(text, FRONTMATTER, str(skill))
+        self.assertIn("options.html", text)
+        self.assertIn("factory choice", text)
+
 
 if __name__ == "__main__":
     unittest.main()

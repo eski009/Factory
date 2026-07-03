@@ -3,7 +3,7 @@ name: factory-spec
 description: Use when a factory item is at stage spec - writes the item's spec from the product brain without human back-and-forth
 ---
 
-Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.py" --repo .`.
+Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.py" --repo .`. Item paths like `items/<id>/...` live under `.factory/` — the full path is `.factory/items/<id>/...`.
 
 ## Contract
 
@@ -32,6 +32,10 @@ There is no human in this loop to argue with, so the dialogue that normally happ
    Use the round-note/evidence rules from `council-judgement`: since there's no real citation for a gap, the item's own spec is the provenance pointer, not proof.
 
 This loop — enumerate, answer-from-brain, reversible-default, record, file-bid — is mandatory for every question that the brain doesn't answer. Skipping the bid leaves the gap invisible to future items.
+
+## Large items: dispatch spec-writer
+
+If the spec would run to roughly more than a screen of `## Behavior` bullets, or `items/<id>/triage.md` flags the item as complex, don't author it inline — dispatch `agents/spec-writer.md` with the item body, `triage.md`, and the brain excerpts from Read first. It runs the same enumerate/answer-from-brain/reversible-default loop and returns the spec text as its final report; this session (the orchestrator, not the subagent) persists that report to `items/<id>/spec.md` — the same orchestrator-persists convention council rounds use. `agents/spec-writer.md` is read-only (Read, Grep, Glob), so it cannot file bids itself: after persisting the spec, file a `factory bid` per brain gap its report names, same as step 5 above.
 
 ## Spec structure
 

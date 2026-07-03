@@ -11,13 +11,20 @@ upgrades, never requirements. See
 
 ## Status
 
-Phases 1-3: engine, council, plugin skills layer — the zero-dependency
-Python engine (work-item state machine with enforced gates, schemas,
-target-repo init, CLI), the memory-firewalled council (bids, judgements,
-reputation, health, pruning), and the full skills/commands/agents layer
-that runs the pipeline end to end. The design gate (Phase 4) is the one
-still-missing stage; the dispatcher pauses `ui`/`mixed` items at `design`
-with a packet until it arrives.
+Phases 1-4: engine, council, plugin skills layer, and the design gate —
+the zero-dependency Python engine (work-item state machine with enforced
+gates, schemas, target-repo init, CLI), the memory-firewalled council
+(bids, judgements, reputation, health, pruning), the full
+skills/commands/agents layer that runs the pipeline end to end, and the
+design gate itself.
+
+**Design gate:** for `ui`/`mixed` items, the `design` stage generates 2-4
+mockup options to a self-contained options page, writes a review packet
+recommending one, and pauses the item at `waiting-human`. A human answers
+with `factory choice <id> <option>` (or in-session); the next
+`/factory:run` auto-resumes the item back through `design`, which detects
+the recorded choice and advances it to `plan`. `backend` items skip this
+stage entirely.
 
 ## Install as plugin
 
