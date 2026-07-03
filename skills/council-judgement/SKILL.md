@@ -17,8 +17,8 @@ factory bid ROLE TOPIC "CLAIM" --evidence PATH --surface brain/<file>.md --sever
 
 - `ROLE` is one of the six council roles: `product`, `ui-taste`, `architecture`, `engineering-quality`, `customer`, `commercial`.
 - `--evidence` may repeat; every value must be a real path or URL already cited in the round notes — never invent evidence to satisfy the CLI.
-- A claim with no real evidence still gets filed, but targets `--surface brain/open-questions.md` rather than a fabricated citation.
-- `factory bid` refuses (exit 2) invalid agents, missing evidence, or schema violations — the ledger is untouched on refusal.
+- A claim with no real evidence still gets filed, but targets `--surface brain/open-questions.md` rather than a fabricated citation. For a claim marked UNSOURCED in the round notes, pass the round-note file that raised it as the evidence pointer (provenance of the claim, not proof of its truth), e.g. `--evidence .factory/items/<id>/reviews/round-1/<role>.md`.
+- `factory bid` exits 2 on business-rule violations (unknown agent, bad severity, schema violations); omitting a required flag like `--evidence` is a usage error (exit 1). The ledger is untouched on refusal.
 
 ## Recording judgements
 

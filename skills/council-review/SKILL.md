@@ -17,7 +17,7 @@ Before Round 1, run `factory reputation --json`. Use scores to order which agent
    - Triage mode: the item body + relevant brain surfaces (roadmap, open-questions, decisions, constraints).
    - Review mode: a diff summary + the item's spec.md.
 
-2. **Round 1 — independent.** Dispatch the six council agents (`agents/council-product.md`, `council-ui-taste.md`, `council-architecture.md`, `council-engineering-quality.md`, `council-customer.md`, `council-commercial.md`) as parallel Task subagent calls in one message — the degraded baseline; see the `capabilities` skill for fan-out upgrades. Each agent receives ONLY `seed-context.md` and its own `docs/factory/council/<role>.md` — never the seed of another role, never another agent's notes. Each agent:
+2. **Round 1 — independent.** Dispatch the six council agents (`agents/council-product.md`, `council-ui-taste.md`, `council-architecture.md`, `council-engineering-quality.md`, `council-customer.md`, `council-commercial.md`) as parallel Task subagent calls in one message — the degraded baseline; see the `capabilities` skill for fan-out upgrades. Each agent receives ONLY `seed-context.md` and its own `docs/factory/council/<role>.md` — never another agent's memory file or round notes. Each agent:
    - Raises at most 3 new claims.
    - Cites evidence (file path, line, or URL) for each claim, or marks it explicitly unsourced.
    - Writes `reviews/round-1/<role>.md`.
