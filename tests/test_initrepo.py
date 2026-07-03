@@ -170,6 +170,37 @@ class ConsistencyTest(unittest.TestCase):
             "ledgers/consistency: judgement jdg-0001 references unknown bid bid-0999",
             errors)
 
+    def test_orphan_reputation_event_flagged(self):
+        self.council.record_judgement(
+            self.repo, "bid-0001", "accept", "good find",
+            surface="brain/decisions.md", anchor="## Module boundaries")
+        forged = {"ts": "2026-07-03T12:00:00Z", "agent": "product",
+                  "topic": "t", "delta": 0.05, "judgement": "jdg-9999"}
+        self.council.append_ledger(self.repo, "reputation", forged)
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any(
+            "references unknown judgement jdg-9999" in e for e in errors))
+
+    def test_judgement_missing_reputation_flagged(self):
+        forged = {"id": "jdg-0001", "ts": "2026-07-03T12:00:00Z", "bid": "bid-0001",
+                  "decision": "reject", "reason": "r",
+                  "surface": "brain/decisions.md", "anchor": "## X"}
+        self.council.append_ledger(self.repo, "judgements", forged)
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any(
+            "has 0 reputation events" in e for e in errors))
+
+    def test_duplicate_reputation_events_flagged(self):
+        jdg, rep = self.council.record_judgement(
+            self.repo, "bid-0001", "accept", "good find",
+            surface="brain/decisions.md", anchor="## Module boundaries")
+        forged = {"ts": "2026-07-03T12:00:00Z", "agent": "architecture",
+                  "topic": "boundaries", "delta": 0.05, "judgement": "jdg-0001"}
+        self.council.append_ledger(self.repo, "reputation", forged)
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any(
+            "has 2 reputation events" in e for e in errors))
+
 
 if __name__ == "__main__":
     unittest.main()
