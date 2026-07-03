@@ -9,9 +9,9 @@ import sys
 if __package__ in (None, ""):
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from scripts.factory.lib import initrepo, items, logs, machine
+    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod
 else:
-    from .lib import initrepo, items, logs, machine
+    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod
 
 
 def cmd_init(args):
@@ -83,6 +83,62 @@ def cmd_log(args):
     return 0
 
 
+def cmd_bid(args):
+    try:
+        bid = council.file_bid(args.repo, agent=args.agent, topic=args.topic,
+                               claim=args.claim, evidence=args.evidence or [],
+                               surface=args.surface, severity=args.severity,
+                               item=args.item or "")
+    except council.CouncilError as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    print(bid["id"])
+    return 0
+
+
+def cmd_judge(args):
+    try:
+        jdg, rep = council.record_judgement(args.repo, args.bid, args.decision,
+                                            args.reason, surface=args.surface,
+                                            anchor=args.anchor)
+    except council.CouncilError as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    print(f"{args.bid} -> {jdg['decision']} "
+          f"(rep {rep['agent']}/{rep['topic']} {rep['delta']:+.2f})")
+    return 0
+
+
+def cmd_reputation(args):
+    table = council.reputation_table(args.repo)
+    if args.json:
+        print(json.dumps(table, indent=2, sort_keys=True))
+    else:
+        for key in sorted(table):
+            print(f"{key:<40} {table[key]:+.2f}")
+    return 0
+
+
+def cmd_health(args):
+    path = health_mod.write_health(args.repo)
+    report = json.loads(path.read_text(encoding="utf-8"))
+    print(f"recommendation: {report['recommendation']}")
+    for reason in report["reasons"]:
+        print(f"- {reason}")
+    return 0
+
+
+def cmd_prune(args):
+    try:
+        result = prune_mod.prune_role(args.repo, args.role, apply=args.apply)
+    except council.CouncilError as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    print(f"kept: {result['kept']} archived: {result['archived']}"
+          + (f" -> {result['archive_path']}" if result["archive_path"] else ""))
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="factory")
     parser.add_argument("--repo", default=".")
@@ -115,6 +171,36 @@ def main(argv=None):
     p.add_argument("event")
     p.add_argument("--data")
     p.set_defaults(func=cmd_log)
+
+    p = sub.add_parser("bid", help="file an escalation bid")
+    p.add_argument("agent")
+    p.add_argument("topic")
+    p.add_argument("claim")
+    p.add_argument("--evidence", action="append", required=True)
+    p.add_argument("--surface", required=True)
+    p.add_argument("--severity", required=True, choices=["low", "medium", "high"])
+    p.add_argument("--item", default="")
+    p.set_defaults(func=cmd_bid)
+
+    p = sub.add_parser("judge", help="record the orchestrator judgement for a bid")
+    p.add_argument("bid")
+    p.add_argument("decision")
+    p.add_argument("--reason", required=True)
+    p.add_argument("--surface")
+    p.add_argument("--anchor")
+    p.set_defaults(func=cmd_judge)
+
+    p = sub.add_parser("reputation", help="derived reputation per agent/topic")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_reputation)
+
+    p = sub.add_parser("health", help="write memory-health.json and print recommendation")
+    p.set_defaults(func=cmd_health)
+
+    p = sub.add_parser("prune", help="propose/apply provenance-preserving prune")
+    p.add_argument("role")
+    p.add_argument("--apply", action="store_true")
+    p.set_defaults(func=cmd_prune)
 
     try:
         args = parser.parse_args(argv)
