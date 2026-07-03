@@ -20,13 +20,13 @@ Before Round 1, run `factory reputation --json`. Use scores to order which agent
 2. **Round 1 — independent.** Dispatch the six council agents (`agents/council-product.md`, `council-ui-taste.md`, `council-architecture.md`, `council-engineering-quality.md`, `council-customer.md`, `council-commercial.md`) as parallel Task subagent calls in one message — the degraded baseline; see the `capabilities` skill for fan-out upgrades. Each agent receives ONLY `seed-context.md` and its own `docs/factory/council/<role>.md` — never another agent's memory file or round notes. Each agent:
    - Raises at most 3 new claims.
    - Cites evidence (file path, line, or URL) for each claim, or marks it explicitly unsourced.
-   - Writes `reviews/round-1/<role>.md`.
+   - Returns its findings as its final report — seats hold Read/Grep/Glob only and never write files. The orchestrator (the invoking session, not a subagent) persists each returned report to `reviews/round-1/<role>.md` before moving on.
 
-3. **Orchestrator synthesis.** The invoking session (not a subagent) reads all six round-1 files, dedupes overlapping claims, groups by topic, flags conflicts between roles, and decides which agents (if any) need Round 2. Writes `reviews/synthesis-1.md`.
+3. **Orchestrator synthesis.** The invoking session (not a subagent) reads all six round-1 files it just wrote, dedupes overlapping claims, groups by topic, flags conflicts between roles, and decides which agents (if any) need Round 2. Writes `reviews/synthesis-1.md`.
 
-4. **Round 2 — delta-only.** Dispatch only the selected agents. Each receives `synthesis-1.md` only — never another agent's raw Round 1 notes — and may answer only: agree, disagree, withdraw, or refine. No restatement of Round 1. Writes `reviews/round-2/<role>.md`.
+4. **Round 2 — delta-only.** Dispatch only the selected agents. Each receives `synthesis-1.md` only — never another agent's raw Round 1 notes — and may answer only: agree, disagree, withdraw, or refine. No restatement of Round 1. Each agent returns its delta-only response as its final report; the orchestrator persists it to `reviews/round-2/<role>.md`.
 
-5. **Hard stop.** Maximum 2 rounds. If a 3rd round seems warranted, do not run it — instead write a line in the synthesis stating the reason a 3rd round was needed but skipped. Write the final combined synthesis to `reviews/synthesis.md`.
+5. **Hard stop.** Maximum 2 rounds. If a 3rd round seems warranted, do not run it — instead write a line in the synthesis stating the reason a 3rd round was needed but skipped. Tag every finding in the synthesis **low**, **medium**, or **high** severity. Write the final combined synthesis, with severities included, to `reviews/synthesis.md`.
 
 ## After synthesis
 

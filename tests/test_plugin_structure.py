@@ -47,6 +47,10 @@ class TestPluginStructure(unittest.TestCase):
         for path in agents:
             self.assertRegex(path.read_text(), FRONTMATTER, path.name)
 
+    def test_dispatch_conditional_pause_mentions_design_choice(self):
+        text = (ROOT / "skills/factory-dispatch/SKILL.md").read_text()
+        self.assertIn("design/choice.md", text)
+
 
 if __name__ == "__main__":
     unittest.main()

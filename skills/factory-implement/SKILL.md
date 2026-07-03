@@ -12,6 +12,10 @@ Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.p
 - **Exit — success:** `factory log ITEM implement.completed --data '{"tasks": N, "tests": "<summary>"}'` then `factory advance ITEM review`. The `review` gate mechanically checks for both: the branch ref `refs/heads/factory/<item-id>` and the `implement.completed` event — this is why the branch name is exact and the log call precedes the advance.
 - **Exit — task failure:** leave the branch intact (never delete work), `factory log ITEM implement.failed --data '{"task": "<name>", "attempts": 2}'`, and report the failure to the dispatcher. Do not call `advance` — the dispatcher owns the blocked transition after repeated failures.
 
+## Rework entry
+
+If this item has prior `review.rejected` events and `plan.md` has no unticked `- [ ]` tasks left, this is a rework pass, not a fresh implement: read the blocking findings in `reviews/synthesis.md`, append one new `- [ ]` task per blocking finding to the end of `plan.md`, and execute those tasks under the same TDD/subagent contract as step 3 below (fresh implementer + reviewer per task, one at a time), ticking each off per step 4. This reuses the existing `factory/<item-id>` branch from the earlier pass — skip step 1's branch creation. Once the new tasks are all ticked, the normal completion step (log `implement.completed`, advance to `review`) applies as usual.
+
 ## Steps
 
 1. **Isolated branch.** Use `superpowers:using-git-worktrees` to get an isolated workspace when its native-tool path is available; otherwise create a plain branch. Either way the branch must be named exactly `factory/<item-id>`, cut from the repo's default branch — `using-git-worktrees`' `git worktree add -b` (or a plain `git branch` + checkout) creates this ref in the shared `.git`, which is what the `review` gate inspects. Don't rename or prefix it differently.

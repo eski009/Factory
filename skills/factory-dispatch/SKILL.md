@@ -11,11 +11,13 @@ You are the dispatcher: work selection, stage execution, stopping rules. Stage s
 
 - **step** — run one stage of one item, then stop.
 - **item** — run one item, stage after stage, until it reaches `done`, `blocked`, or `waiting-human`.
-- **loop** — repeat item-mode across the backlog until `factory next` returns nothing actionable. Between items, check for an answered packet first: if a `design/choice.md` was newly filled while another item was running, resume that item before pulling a fresh one from `next`.
+- **loop** — repeat item-mode across the backlog until `factory next` returns nothing actionable.
 
 ## The loop
 
 Run these steps in order, every stage transition, in every mode:
+
+0. **Resume check.** Before pulling any new work, look for answered pauses: `factory status --json`, filter to `stage == "waiting-human"`. For each, check whether the artifact it's waiting on now exists — today that means items paused from `design` (`meta["paused-from"] == "design"`) whose `.factory/items/<id>/design/choice.md` is now present and non-empty. If so, `factory advance ITEM <paused-from>` (the stage read from that item's own status JSON) and treat that item as the current one for this pass instead of calling `factory next`. Do this in every mode, not just loop.
 
 1. **`factory validate`** — on any error, STOP. Write or refresh packets for the user; never guess at corrupt state.
 2. **`factory next --json`** — if it returns null, run `factory health`, report the recommendation to the user, and stop.
@@ -32,12 +34,12 @@ Run these steps in order, every stage transition, in every mode:
    | verify | factory-verify |
    | ship | factory-ship |
 
-   If the item's stage is `design` and the factory-design skill isn't present yet, don't run design work yourself — pause the item instead: `factory advance ITEM waiting-human --reason "design stage requires Phase 4 design skill"`, then follow the waiting-human rule below.
+   If the item's stage is `design` and the factory-design skill isn't present yet, don't run design work yourself: check `.factory/items/<id>/design/choice.md`. If it's missing or empty, pause the item — `factory advance ITEM waiting-human --reason "design stage requires Phase 4 design skill"` — then follow the waiting-human rule below. If it already exists and is non-empty, someone has recorded a choice already; run `factory advance ITEM plan` instead (the plan gate validates the choice itself).
 4. **Invoke the mapped skill** for the item. Let it do the stage's work and its own `factory advance` on success.
 5. **Re-check mode:**
    - step: stop here.
-   - item: continue with the same item at its new stage — go back to step 1.
-   - loop: continue with the backlog — go back to step 1.
+   - item: continue with the same item at its new stage — go back to step 0.
+   - loop: continue with the backlog — go back to step 0.
 
 ## Stopping rules
 

@@ -11,7 +11,7 @@ Read the seed context file you are given and your role memory at
 
 ## Round 1
 
-Write your findings to the round-1 file path you are given:
+Return your findings as your final report:
 
 - Raise at most 3 new claims.
 - Each claim needs evidence (a file path, a URL, or a brain citation) or must
@@ -21,12 +21,13 @@ Write your findings to the round-1 file path you are given:
 ## Round 2 (only if dispatched again)
 
 Read the synthesis file you are given. Respond delta-only: for each claim,
-say agree, disagree, withdraw, or refine. Do not restate Round 1.
+say agree, disagree, withdraw, or refine. Do not restate Round 1. Return your
+delta-only responses as your final report.
 
 ## Never
 
-Never edit any file outside the path you are given. Never edit
-`docs/factory/brain/` or `docs/factory/council/`.
+Never edit any file — your tools are read-only. Never treat
+`docs/factory/brain/` or `docs/factory/council/` as writable.
 
 ## Role scope
 

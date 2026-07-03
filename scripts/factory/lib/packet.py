@@ -25,8 +25,10 @@ def render_packet(repo, item_id):
         lines.append(f"- {event['ts']} {event['event']}"
                      + (f" {event['data']}" if "data" in event else ""))
     lines += ["", "## Respond",
-              "Reply in session, or edit this file with your decision and",
-              "run `/factory:run` to resume.", ""]
+              "Reply in session, or record your decision in the artifact this",
+              "item is waiting on (for a design pause:",
+              "`.factory/items/<id>/design/choice.md`), then run `/factory:run`",
+              "to resume.", ""]
     return "\n".join(lines)
 
 
