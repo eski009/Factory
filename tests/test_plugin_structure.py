@@ -12,6 +12,12 @@ class TestPluginStructure(unittest.TestCase):
         data = json.loads((ROOT / ".claude-plugin/plugin.json").read_text())
         self.assertEqual(data["name"], "factory")
 
+    def test_marketplace_json_valid(self):
+        data = json.loads((ROOT / ".claude-plugin/marketplace.json").read_text())
+        self.assertEqual(data["name"], "factory-marketplace")
+        self.assertEqual(len(data["plugins"]), 1)
+        self.assertEqual(data["plugins"][0]["name"], "factory")
+
     def test_hooks_json_references_existing_executable(self):
         data = json.loads((ROOT / "hooks/hooks.json").read_text())
         self.assertIn("SessionStart", json.dumps(data))

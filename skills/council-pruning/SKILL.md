@@ -31,14 +31,22 @@ For each role in that list, in order:
    the archived lines to `.factory/pruning/<role>.md` under a timestamped
    heading.
 
+## Never
+
+Never run `factory prune ROLE --apply` without first running `factory prune
+ROLE` (dry-run) and showing the user the kept/archived counts. Never delete
+anything under `.factory/pruning/` — those files are the provenance trail
+proving what was pruned and when, and later work (or a human) may need to
+recover a claim from it.
+
 ## Invariant
 
 The prune only ever removes *exact-duplicate* claim lines (`- ...` lines
 that repeat verbatim) — free-text prose is never touched, and `kept +
 archived` always equals the role file's original line count. Archived lines
-live permanently in `.factory/pruning/<role>.md`: never delete that file or
-edit out its contents. It's the provenance trail proving what was pruned and
-when, and later work (or a human) may need to recover a claim from it.
+live permanently in `.factory/pruning/<role>.md`. It's the provenance trail
+proving what was pruned and when, and later work (or a human) may need to
+recover a claim from it.
 
 ## Report
 
