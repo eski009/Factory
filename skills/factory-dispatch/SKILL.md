@@ -34,7 +34,7 @@ Run these steps in order, every stage transition, in every mode:
    | verify | factory-verify |
    | ship | factory-ship |
 
-   If the mapped skill is unavailable for any reason, don't guess at the stage's work yourself: pause the item — `factory advance ITEM waiting-human --reason "<stage> stage requires the <skill> skill, which is unavailable"` — then follow the waiting-human rule below. When that branch fires, skip step 4 and return to step 0 — the pause substitutes for invoking a stage skill this iteration.
+   If the mapped skill is unavailable for any reason, don't guess at the stage's work yourself. But first check for a short-circuit: if the item's awaited artifact already exists (e.g., for a design item, `.factory/items/<id>/design/choice.md` is present and non-empty), a human has already recorded the decision this stage needed — advance the item to its next stage (`factory advance ITEM <stage>`) instead of re-pausing, so a temporarily-unavailable skill can't ping-pong an item that already has its answer. Only when no such artifact exists, pause the item — `factory advance ITEM waiting-human --reason "<stage> stage requires the <skill> skill, which is unavailable"` — then follow the waiting-human rule below. When that pause branch fires, skip step 4 and return to step 0 — the pause substitutes for invoking a stage skill this iteration.
 4. **Invoke the mapped skill** for the item. Let it do the stage's work and its own `factory advance` on success.
 5. **Re-check mode:**
    - step: stop here.

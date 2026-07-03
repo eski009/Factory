@@ -34,6 +34,8 @@ class TestPacket(unittest.TestCase):
         self.assertIn("plan.md: no", text)
         self.assertIn("stage.advance", text)
         self.assertIn("## Respond", text)
+        self.assertIn("factory choice", text)
+        self.assertNotIn("record your decision in the artifact", text)
 
     def test_write_packet_path_and_determinism(self):
         path = packet.write_packet(self.repo, "0001-thing")

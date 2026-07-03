@@ -70,6 +70,12 @@ class TestRecordChoice(unittest.TestCase):
         with self.assertRaises(items.ItemError):
             design.record_choice(self.repo, "0999-nope", "a")
 
+    def test_bad_option_refused(self):
+        put(self.repo)
+        with self.assertRaises(machine.GateError) as ctx:
+            design.record_choice(self.repo, "0001-thing", "zzz")
+        self.assertIn("option must be one of a-d", str(ctx.exception))
+
 
 if __name__ == "__main__":
     unittest.main()
