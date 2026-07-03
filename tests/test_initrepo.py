@@ -54,6 +54,17 @@ class InitTest(unittest.TestCase):
         errors = initrepo.validate_tree(self.repo)
         self.assertEqual(len(errors), 2)
 
+    def test_validate_flags_bad_log_line(self):
+        initrepo.init(self.repo)
+        meta = {"id": "0001-x", "title": "X", "stage": "idea", "kind": "ui",
+                "created": "2026-07-03T10:00:00Z", "updated": "2026-07-03T10:00:00Z"}
+        items.save_item(self.repo, meta, "")
+        log_path = paths.item_dir(self.repo, "0001-x") / "log.jsonl"
+        log_path.write_text('{"event": "item.created", "ts": "x"}\n{oops\n',
+                             encoding="utf-8")
+        errors = initrepo.validate_tree(self.repo)
+        self.assertEqual(errors, ["0001-x/log.jsonl:2: invalid JSON"])
+
     def test_validate_flags_schema_violation(self):
         initrepo.init(self.repo)
         meta = {"id": "0001-x", "title": "X", "stage": "idea", "kind": "ui",

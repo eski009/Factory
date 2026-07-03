@@ -79,6 +79,39 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("title", err)
 
+    def test_add_multiline_title_rejected(self):
+        self.run_cli("init")
+        code, _, err = self.run_cli("add", "Evil\ntitle: hacked")
+        self.assertEqual(code, 1)
+        self.assertTrue(err.strip())
+        items_dir = Path(self.repo, ".factory/items")
+        self.assertEqual(list(items_dir.iterdir()), [])
+
+    def test_status_survives_corrupt_item(self):
+        self.run_cli("init")
+        self.run_cli("add", "Good one")
+        self.run_cli("add", "Bad one")
+        bad_path = Path(self.repo, ".factory/items/0002-bad-one/item.md")
+        bad_path.write_text("not frontmatter\n", encoding="utf-8")
+        code, out, err = self.run_cli("status")
+        self.assertEqual(code, 2)
+        self.assertIn("0002-bad-one", err)
+        self.assertIn("0001-good-one", out)
+        self.assertNotIn("0002-bad-one", out)
+
+    def test_status_json_survives_corrupt_item(self):
+        self.run_cli("init")
+        self.run_cli("add", "Good one")
+        self.run_cli("add", "Bad one")
+        bad_path = Path(self.repo, ".factory/items/0002-bad-one/item.md")
+        bad_path.write_text("not frontmatter\n", encoding="utf-8")
+        code, out, err = self.run_cli("status", "--json")
+        self.assertEqual(code, 2)
+        self.assertIn("0002-bad-one", err)
+        rows = json.loads(out)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["id"], "0001-good-one")
+
 
 if __name__ == "__main__":
     unittest.main()

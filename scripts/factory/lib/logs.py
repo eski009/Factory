@@ -24,7 +24,7 @@ def _log_path(repo, item_id):
 
 def append_event(repo, item_id, event, data=None):
     entry = {"event": event, "ts": now_stamp()}
-    if data:
+    if data is not None:
         entry["data"] = data
     path = _log_path(repo, item_id)
     path.parent.mkdir(parents=True, exist_ok=True)

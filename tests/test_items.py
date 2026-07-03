@@ -58,6 +58,24 @@ class TestParseRender(unittest.TestCase):
         self.assertTrue(out.endswith("\n"))
         self.assertNotIn("\r", out)
 
+    def test_render_rejects_multiline_value(self):
+        meta, body = items.parse_item(VALID)
+        meta["title"] = "Evil\ntitle: hacked"
+        with self.assertRaises(items.ItemError):
+            items.render_item(meta, body)
+
+    def test_render_rejects_unknown_field(self):
+        meta, body = items.parse_item(VALID)
+        meta["colour"] = "red"
+        with self.assertRaises(items.ItemError):
+            items.render_item(meta, body)
+
+    def test_render_rejects_untrimmed_value(self):
+        meta, body = items.parse_item(VALID)
+        meta["title"] = "Dark mode  "
+        with self.assertRaises(items.ItemError):
+            items.render_item(meta, body)
+
 
 class TestStorage(unittest.TestCase):
     def setUp(self):

@@ -70,13 +70,22 @@ def validate_tree(repo):
     if items_root.exists():
         for sub in sorted(items_root.iterdir()):
             item_md = sub / "item.md"
-            if not item_md.exists():
-                continue
-            try:
-                meta, _ = items.parse_item(item_md.read_text(encoding="utf-8"))
-                errors.extend(validate(meta, schema, sub.name))
-            except items.ItemError as exc:
-                errors.append(f"{sub.name}/item.md: {exc}")
+            if item_md.exists():
+                try:
+                    meta, _ = items.parse_item(item_md.read_text(encoding="utf-8"))
+                    errors.extend(validate(meta, schema, sub.name))
+                except items.ItemError as exc:
+                    errors.append(f"{sub.name}/item.md: {exc}")
+            log_path = sub / "log.jsonl"
+            if log_path.exists():
+                for lineno, line in enumerate(
+                        log_path.read_text(encoding="utf-8").splitlines(), 1):
+                    if not line.strip():
+                        continue
+                    try:
+                        json.loads(line)
+                    except json.JSONDecodeError:
+                        errors.append(f"{sub.name}/log.jsonl:{lineno}: invalid JSON")
     for name in LEDGERS:
         ledger = paths.ledgers_dir(repo) / f"{name}.jsonl"
         if not ledger.exists():

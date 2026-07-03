@@ -32,22 +32,28 @@ def cmd_add(args):
     now = logs.now_stamp()
     meta = {"id": item_id, "title": args.title, "stage": "idea",
             "kind": args.kind, "created": now, "updated": now}
-    items.save_item(args.repo, meta, f"# {args.title}\n")
+    try:
+        items.save_item(args.repo, meta, f"# {args.title}\n")
+    except items.ItemError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     logs.append_event(args.repo, item_id, "item.created")
     print(item_id)
     return 0
 
 
 def cmd_status(args):
-    rows = sorted(items.list_items(args.repo),
-                  key=lambda m: (m.get("priority", 9999), m["id"]))
+    metas, errors = items.list_items_safe(args.repo)
+    rows = sorted(metas, key=lambda m: (m.get("priority", 9999), m["id"]))
     if args.json:
         print(json.dumps(rows, indent=2, sort_keys=True))
     else:
         for m in rows:
             priority = m.get("priority", "-")
             print(f"{m['id']:<40} {m['stage']:<14} p{priority:<4} {m['kind']}")
-    return 0
+    for error in errors:
+        print(error, file=sys.stderr)
+    return 2 if errors else 0
 
 
 def cmd_advance(args):

@@ -1,6 +1,12 @@
 """Pipeline state machine. Skills do the thinking; advance() is the
 deterministic gatekeeper that refuses transitions whose preconditions
 (files and logged evidence events) are unmet. Spec §3.
+
+Evidence events are checked as lifetime counts, not scoped to the
+item's latest entry into its current stage, so stale evidence (e.g.
+an old review.approved after a later rework) satisfies gates.
+Round-scoped evidence is deliberately deferred to Phase 2, which owns
+the review-loop semantics.
 """
 
 import subprocess

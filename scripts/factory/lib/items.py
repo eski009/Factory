@@ -56,6 +56,14 @@ def parse_item(text):
 
 
 def render_item(meta, body):
+    for key, value in meta.items():
+        if key not in FIELD_ORDER:
+            raise ItemError(f"unknown field: {key}")
+        text = str(value)
+        if "\n" in text or "\r" in text:
+            raise ItemError(f"{key} must be a single-line value")
+        if isinstance(value, str) and value != value.strip():
+            raise ItemError(f"{key} must not have leading/trailing whitespace")
     out = ["---"]
     for key in FIELD_ORDER:
         if key in meta:
@@ -74,9 +82,10 @@ def load_item(repo, item_id):
 
 
 def save_item(repo, meta, body=""):
+    text = render_item(meta, body)
     d = paths.item_dir(repo, meta["id"])
     d.mkdir(parents=True, exist_ok=True)
-    (d / "item.md").write_text(render_item(meta, body), encoding="utf-8")
+    (d / "item.md").write_text(text, encoding="utf-8")
 
 
 def list_items(repo):
@@ -89,6 +98,29 @@ def list_items(repo):
             meta, _ = parse_item((sub / "item.md").read_text(encoding="utf-8"))
             out.append(meta)
     return out
+
+
+def list_items_safe(repo):
+    """Like list_items, but tolerates corrupt item.md files.
+
+    Returns (metas, errors) where errors are human-readable strings
+    naming the unreadable item; the offending item is simply omitted
+    from metas rather than raising.
+    """
+    d = paths.items_dir(repo)
+    if not d.exists():
+        return [], []
+    metas, errors = [], []
+    for sub in sorted(d.iterdir()):
+        item_md = sub / "item.md"
+        if not item_md.exists():
+            continue
+        try:
+            meta, _ = parse_item(item_md.read_text(encoding="utf-8"))
+            metas.append(meta)
+        except ItemError as exc:
+            errors.append(f"{sub.name}: {exc}")
+    return metas, errors
 
 
 def slugify(title):

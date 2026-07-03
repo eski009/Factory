@@ -43,6 +43,13 @@ class TestLogs(unittest.TestCase):
     def test_now_stamp_env_override(self):
         self.assertEqual(logs.now_stamp(), "2026-07-03T12:00:00Z")
 
+    def test_empty_data_dict_is_recorded(self):
+        entry = logs.append_event(self.repo, "0001-x", "e", {})
+        self.assertIn("data", entry)
+        self.assertEqual(entry["data"], {})
+        line = (self.repo / ".factory/items/0001-x/log.jsonl").read_text().strip()
+        self.assertEqual(json.loads(line)["data"], {})
+
 
 if __name__ == "__main__":
     unittest.main()
