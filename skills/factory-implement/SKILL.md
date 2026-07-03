@@ -14,7 +14,7 @@ Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.p
 
 ## Rework entry
 
-If this item has prior `review.rejected` events and `plan.md` has no unticked `- [ ]` tasks left, this is a rework pass, not a fresh implement: read the blocking findings in `reviews/synthesis.md`, append one new `- [ ]` task per blocking finding to the end of `plan.md`, and execute those tasks under the same TDD/subagent contract as step 3 below (fresh implementer + reviewer per task, one at a time), ticking each off per step 4. This reuses the existing `factory/<item-id>` branch from the earlier pass — skip step 1's branch creation. Once the new tasks are all ticked, the normal completion step (log `implement.completed`, advance to `review`) applies as usual.
+If this item has prior `review.rejected` events and `plan.md` has no unticked `- [ ]` tasks left, this is a rework pass, not a fresh implement: read the blocking findings in `reviews/synthesis.md` — blocking findings are the ones factory-review tagged severity high and listed as blocking in the synthesis; treat that list as authoritative, don't re-litigate severity — then append one new `- [ ]` task per blocking finding to the end of `plan.md`, and execute those tasks under the same TDD/subagent contract as step 3 below (fresh implementer + reviewer per task, one at a time), ticking each off per step 4. This reuses the existing `factory/<item-id>` branch from the earlier pass — skip step 1's branch creation. Once the new tasks are all ticked, the normal completion step (log `implement.completed`, advance to `review`) applies as usual.
 
 ## Steps
 

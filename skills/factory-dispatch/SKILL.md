@@ -34,7 +34,7 @@ Run these steps in order, every stage transition, in every mode:
    | verify | factory-verify |
    | ship | factory-ship |
 
-   If the item's stage is `design` and the factory-design skill isn't present yet, don't run design work yourself: check `.factory/items/<id>/design/choice.md`. If it's missing or empty, pause the item — `factory advance ITEM waiting-human --reason "design stage requires Phase 4 design skill"` — then follow the waiting-human rule below. If it already exists and is non-empty, someone has recorded a choice already; run `factory advance ITEM plan` instead (the plan gate validates the choice itself).
+   If the item's stage is `design` and the factory-design skill isn't present yet, don't run design work yourself: check `.factory/items/<id>/design/choice.md`. If it's missing or empty, pause the item — `factory advance ITEM waiting-human --reason "design stage requires Phase 4 design skill"` — then follow the waiting-human rule below. If it already exists and is non-empty, someone has recorded a choice already; run `factory advance ITEM plan` instead (the plan gate validates the choice itself). When that branch fires, skip step 4 and return to step 0 — the branch's advance substitutes for invoking a stage skill this iteration.
 4. **Invoke the mapped skill** for the item. Let it do the stage's work and its own `factory advance` on success.
 5. **Re-check mode:**
    - step: stop here.
