@@ -140,6 +140,11 @@ def cmd_prune(args):
 
 
 def cmd_next(args):
+    metas, errors = items.list_items_safe(args.repo)
+    if errors:
+        for error in errors:
+            print(error, file=sys.stderr)
+        return 2
     meta = dispatch.next_item(args.repo)
     if args.json:
         print(json.dumps(meta, indent=2, sort_keys=True))

@@ -60,6 +60,17 @@ class CliDispatchTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("no such item", err)
 
+    def test_next_with_corrupt_item_exits_2_with_error_message(self):
+        self.run_cli("init")
+        self.run_cli("add", "Good Item")
+        # Corrupt a second item by writing garbage to .factory/items/0002-bad/item.md
+        items_dir = Path(self.repo) / ".factory" / "items" / "0002-bad"
+        items_dir.mkdir(parents=True, exist_ok=True)
+        (items_dir / "item.md").write_text("garbage data\n", encoding="utf-8")
+        code, out, err = self.run_cli("next")
+        self.assertEqual(code, 2)
+        self.assertIn("0002-bad", err)
+
 
 if __name__ == "__main__":
     unittest.main()

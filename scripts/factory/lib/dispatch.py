@@ -1,8 +1,8 @@
 """Deterministic work selection for the dispatcher skill. Spec §4."""
 
-from . import items
+from . import items, machine
 
-NOT_ACTIONABLE = ("done", "blocked", "waiting-human")
+NOT_ACTIONABLE = ("done",) + machine.SPECIAL
 
 
 def _by_priority(metas):
