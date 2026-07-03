@@ -66,3 +66,60 @@ def file_bid(repo, agent, topic, claim, evidence, surface, severity, item=""):
     _check(bid, "escalation-bid", "bid")
     append_ledger(repo, "bids", bid)
     return bid
+
+
+def _find_bid(repo, bid_id):
+    for bid in read_ledger(repo, "bids"):
+        if bid["id"] == bid_id:
+            return bid
+    raise CouncilError(f"no such bid: {bid_id}")
+
+
+def _judgement_for(repo, bid_id):
+    for jdg in read_ledger(repo, "judgements"):
+        if jdg["bid"] == bid_id:
+            return jdg
+    return None
+
+
+def record_judgement(repo, bid_id, decision, reason, surface=None, anchor=None):
+    bid = _find_bid(repo, bid_id)
+    if decision not in DECISIONS:
+        raise CouncilError(f"unknown decision {decision!r}; one of {DECISIONS}")
+    if _judgement_for(repo, bid_id) is not None:
+        raise CouncilError(f"{bid_id} already judged; judgements are final")
+    if decision in AUTHORIZING and not (surface and anchor):
+        raise CouncilError(f"{decision} requires --surface and --anchor naming the edit")
+    jdg = {
+        "id": next_ledger_id(repo, "judgements", "jdg"),
+        "ts": logs.now_stamp(),
+        "bid": bid_id, "decision": decision, "reason": reason,
+    }
+    if surface:
+        jdg["surface"] = surface
+    if anchor:
+        jdg["anchor"] = anchor
+    _check(jdg, "orchestrator-judgement", "judgement")
+    rep = {
+        "ts": logs.now_stamp(),
+        "agent": bid["agent"], "topic": bid["topic"],
+        "delta": DECISION_DELTAS[decision], "judgement": jdg["id"],
+    }
+    _check(rep, "reputation-event", "reputation")
+    append_ledger(repo, "judgements", jdg)
+    append_ledger(repo, "reputation", rep)
+    return jdg, rep
+
+
+def reputation_table(repo):
+    table = {}
+    for event in read_ledger(repo, "reputation"):
+        key = f"{event['agent']}/{event['topic']}"
+        table[key] = round(table.get(key, 0.0) + event["delta"], 2)
+    return table
+
+
+def is_change_authorized(repo, bid_id, surface):
+    jdg = _judgement_for(repo, bid_id)
+    return bool(jdg and jdg["decision"] in AUTHORIZING
+                and jdg.get("surface") == surface)
