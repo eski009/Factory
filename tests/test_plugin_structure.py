@@ -1,0 +1,46 @@
+import json
+import re
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+FRONTMATTER = re.compile(r"^---\n.*?\n---\n", re.DOTALL)
+
+
+class TestPluginStructure(unittest.TestCase):
+    def test_plugin_json_valid(self):
+        data = json.loads((ROOT / ".claude-plugin/plugin.json").read_text())
+        self.assertEqual(data["name"], "factory")
+
+    def test_hooks_json_references_existing_executable(self):
+        data = json.loads((ROOT / "hooks/hooks.json").read_text())
+        self.assertIn("SessionStart", json.dumps(data))
+        script = ROOT / "hooks/session-start.sh"
+        self.assertTrue(script.exists())
+        self.assertTrue(script.stat().st_mode & 0o111, "hook must be executable")
+
+    def test_commands_have_frontmatter(self):
+        commands = sorted((ROOT / "commands").glob("*.md"))
+        self.assertEqual([p.stem for p in commands],
+                         ["add", "init", "packet", "run", "status"])
+        for path in commands:
+            self.assertRegex(path.read_text(), FRONTMATTER, path.name)
+
+    @unittest.skipUnless((ROOT / "skills").is_dir(), "skills arrive in Task 3")
+    def test_skills_have_frontmatter_and_matching_names(self):
+        for skill in sorted((ROOT / "skills").glob("*/SKILL.md")):
+            text = skill.read_text()
+            self.assertRegex(text, FRONTMATTER, str(skill))
+            self.assertIn(f"name: {skill.parent.name}", text, str(skill))
+            self.assertIn("description: Use when", text, str(skill))
+
+    @unittest.skipUnless((ROOT / "agents").is_dir(), "agents arrive in Task 7")
+    def test_agents_have_frontmatter(self):
+        agents = sorted((ROOT / "agents").glob("*.md"))
+        self.assertTrue(len(agents) >= 1)
+        for path in agents:
+            self.assertRegex(path.read_text(), FRONTMATTER, path.name)
+
+
+if __name__ == "__main__":
+    unittest.main()
