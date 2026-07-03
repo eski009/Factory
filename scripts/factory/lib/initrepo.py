@@ -72,22 +72,41 @@ def validate_tree(repo):
     if items_root.exists():
         for sub in sorted(items_root.iterdir()):
             item_md = sub / "item.md"
+            meta = None
+            schema_errors = []
             if item_md.exists():
                 try:
                     meta, _ = items.parse_item(item_md.read_text(encoding="utf-8"))
-                    errors.extend(validate(meta, schema, sub.name))
+                    if meta.get("id") != sub.name:
+                        errors.append(
+                            f"{sub.name}: id {meta['id']!r} does not match "
+                            "directory name")
+                    schema_errors = validate(meta, schema, sub.name)
+                    errors.extend(schema_errors)
                 except items.ItemError as exc:
                     errors.append(f"{sub.name}/item.md: {exc}")
             log_path = sub / "log.jsonl"
+            log_events = []
+            log_valid = True
             if log_path.exists():
                 for lineno, line in enumerate(
                         log_path.read_text(encoding="utf-8").splitlines(), 1):
                     if not line.strip():
                         continue
                     try:
-                        json.loads(line)
+                        log_events.append(json.loads(line))
                     except json.JSONDecodeError:
                         errors.append(f"{sub.name}/log.jsonl:{lineno}: invalid JSON")
+                        log_valid = False
+            if meta is not None and not schema_errors and log_valid:
+                expected = "idea"
+                for event in log_events:
+                    if event.get("event") == "stage.advance":
+                        expected = event.get("data", {}).get("to", expected)
+                if meta["stage"] != expected:
+                    errors.append(
+                        f"{sub.name}: stage {meta['stage']!r} does not match "
+                        f"log (expected {expected!r})")
     entries = {}
     clean = {}
     for name in LEDGERS:
@@ -125,6 +144,14 @@ def _check_ledger_consistency(entries):
     bids_by_id = {bid["id"]: bid for bid in entries["bids"]}
     judgements = entries["judgements"]
     reputation = entries["reputation"]
+
+    for ledger_name in ("bids", "judgements"):
+        seen = set()
+        for entry in entries[ledger_name]:
+            entry_id = entry.get("id")
+            if entry_id in seen:
+                errors.append(f"ledgers/consistency: duplicate id {entry_id}")
+            seen.add(entry_id)
 
     judgements_by_bid = {}
     for jdg in judgements:

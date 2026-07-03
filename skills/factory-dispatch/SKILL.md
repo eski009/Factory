@@ -26,6 +26,7 @@ Run these steps in order, every stage transition, in every mode:
    | Stage | Skill |
    |---|---|
    | idea | factory-triage (covers the idea → triage → spec transitions) |
+   | triage | factory-triage |
    | spec | factory-spec |
    | design | factory-design |
    | plan | factory-plan |

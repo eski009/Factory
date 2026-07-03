@@ -40,6 +40,16 @@ class TestLedgerPlumbing(CouncilTest):
         self.bid()
         self.assertEqual(council.next_ledger_id(self.repo, "bids", "bid"), "bid-0002")
 
+    def test_next_ledger_id_does_not_reuse_id_after_delete(self):
+        # I1: a count-based id would reuse bid-0001 after the first line is
+        # deleted; the id must be derived from the max existing suffix.
+        self.bid()
+        self.bid()
+        path = self.repo / ".factory/ledgers/bids.jsonl"
+        lines = path.read_text(encoding="utf-8").splitlines()
+        path.write_text(lines[1] + "\n", encoding="utf-8")  # delete bid-0001's line
+        self.assertEqual(council.next_ledger_id(self.repo, "bids", "bid"), "bid-0003")
+
 
 class TestFileBid(CouncilTest):
     def test_valid_bid_appended(self):

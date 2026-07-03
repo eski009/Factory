@@ -1,8 +1,9 @@
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.factory.lib import items
+from scripts.factory.lib import items, paths
 
 VALID = """---
 id: 0001-dark-mode
@@ -94,6 +95,16 @@ class TestStorage(unittest.TestCase):
     def test_load_missing_raises(self):
         with self.assertRaises(items.ItemError):
             items.load_item(self.repo, "0999-nope")
+
+    def test_load_dir_id_mismatch_raises(self):
+        # A copied/renamed item dir whose item.md still carries the
+        # original id must be refused, not silently loaded.
+        meta, body = items.parse_item(VALID)
+        items.save_item(self.repo, meta, body)
+        copy_dir = paths.item_dir(self.repo, "0002-dark-mode-copy")
+        shutil.copytree(paths.item_dir(self.repo, "0001-dark-mode"), copy_dir)
+        with self.assertRaises(items.ItemError):
+            items.load_item(self.repo, "0002-dark-mode-copy")
 
     def test_list_items_sorted(self):
         for i, title in ((2, "b"), (1, "a")):

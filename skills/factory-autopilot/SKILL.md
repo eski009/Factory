@@ -31,7 +31,7 @@ Stop the run when either condition is met:
 - **Backlog drained** — `factory-dispatch` in loop mode returns nothing actionable (`factory next` comes back null and nothing is waiting on a resumable answer).
 - **Budget exhausted** — a caller-provided budget (from `$ARGUMENTS` on `/factory:autopilot`, e.g. a time or item-count hint) runs out. Autopilot doesn't invent a budget when none is given — treat an absent budget as "run until drained." Check the budget at each loop-iteration boundary — between items, at `factory-dispatch`'s step 5 (re-check mode / pick next). When the budget is spent, stop advancing new items, finish any half-done stage safely, and go straight to writing the run-summary packet.
 
-Either way, before exiting, write a run-summary packet to `docs/factory/packets/` (a bespoke packet, not a per-item one) covering: items advanced this run, items parked at gates (with their stage and reason), and any items blocked. This is autopilot's own exit report, separate from any per-item packets the loop already wrote along the way.
+Either way, before exiting, write a run-summary packet to `docs/factory/packets/reports/` (a bespoke packet, not a per-item one) covering: items advanced this run, items parked at gates (with their stage and reason), and any items blocked. This is autopilot's own exit report, separate from any per-item packets the loop already wrote along the way — it lives under `reports/` so it doesn't linger in the top-level packets listing the SessionStart hook treats as "awaiting human review."
 
 ## 5. Scheduling
 

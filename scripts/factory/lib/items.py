@@ -78,7 +78,12 @@ def load_item(repo, item_id):
     path = paths.item_dir(repo, item_id) / "item.md"
     if not path.exists():
         raise ItemError(f"no such item: {item_id}")
-    return parse_item(path.read_text(encoding="utf-8"))
+    meta, body = parse_item(path.read_text(encoding="utf-8"))
+    if meta["id"] != item_id:
+        raise ItemError(
+            f"item dir {item_id!r} contains id {meta['id']!r} - "
+            "dir name and id must match")
+    return meta, body
 
 
 def save_item(repo, meta, body=""):

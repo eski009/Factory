@@ -69,6 +69,13 @@ class TestPruneRole(unittest.TestCase):
         with self.assertRaises(council.CouncilError):
             prune.prune_role(self.repo, "intern")
 
+    def test_missing_role_file_raises_council_error(self):
+        # M2: a valid role with no role doc on disk must refuse with a
+        # CouncilError ("run init"), not a raw FileNotFoundError.
+        self.path.unlink()
+        with self.assertRaises(council.CouncilError):
+            prune.prune_role(self.repo, "customer")
+
 
 if __name__ == "__main__":
     unittest.main()

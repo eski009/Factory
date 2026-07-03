@@ -5,6 +5,9 @@ escalation bids; the orchestrator records exactly one judgement per bid;
 only accept/merge authorize a canonical edit naming surface + anchor.
 Reputation is derived from judgements (wolf tax), never hand-authored.
 Spec §6.
+
+Appends are O_APPEND-safe, but ID generation assumes a single writer per
+repo; concurrent sessions should not file bids simultaneously.
 """
 
 import json
@@ -45,7 +48,15 @@ def append_ledger(repo, name, entry):
 
 
 def next_ledger_id(repo, name, prefix):
-    return f"{prefix}-{len(read_ledger(repo, name)) + 1:04d}"
+    nums = []
+    for entry in read_ledger(repo, name):
+        entry_id = entry.get("id")
+        if not entry_id:
+            continue
+        suffix = entry_id.rsplit("-", 1)[-1]
+        if suffix.isdigit():
+            nums.append(int(suffix))
+    return f"{prefix}-{max(nums, default=0) + 1:04d}"
 
 
 def _check(entry, schema_name, label):

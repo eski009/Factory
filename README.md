@@ -54,7 +54,9 @@ claude --plugin-dir /path/to/Factory
 skills (test-driven-development, systematic-debugging,
 verification-before-completion, using-git-worktrees,
 finishing-a-development-branch) for execution discipline rather than
-vendoring them. Install it alongside Factory.
+vendoring them. Install it alongside Factory. This requirement is not
+machine-enforced — plugin manifests don't support dependency
+declarations — so install Superpowers yourself alongside Factory.
 
 ## Quickstart
 

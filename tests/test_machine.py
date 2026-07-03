@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -61,6 +62,13 @@ class TestLegality(MachineTest):
         self.assertEqual(meta["stage"], "triage")
         self.assertEqual(logs.count_events(self.repo, "0001-thing", "stage.advance"), 1)
 
+    def test_done_items_cannot_be_paused(self):
+        make_item(self.repo, stage="done")
+        with self.assertRaises(machine.GateError):
+            machine.advance(self.repo, "0001-thing", "waiting-human", reason="oops")
+        with self.assertRaises(machine.GateError):
+            machine.advance(self.repo, "0001-thing", "blocked", reason="oops")
+
     def test_pause_and_resume_only_to_paused_from(self):
         make_item(self.repo, stage="design")
         machine.advance(self.repo, "0001-thing", "waiting-human", reason="pick a design")
@@ -70,6 +78,19 @@ class TestLegality(MachineTest):
             machine.advance(self.repo, "0001-thing", "plan")
         meta = machine.advance(self.repo, "0001-thing", "design")
         self.assertNotIn("paused-from", meta)
+
+    def test_advance_on_copied_dir_with_stale_id_raises_item_error(self):
+        # C1: a copied/renamed item dir whose item.md still carries the
+        # original id must not silently write into the original item's
+        # files. load_item (called by advance) refuses it.
+        make_item(self.repo)
+        copy_dir = paths.item_dir(self.repo, "0002-thing-copy")
+        shutil.copytree(paths.item_dir(self.repo, "0001-thing"), copy_dir)
+        with self.assertRaises(items.ItemError):
+            machine.advance(self.repo, "0002-thing-copy", "triage")
+        # the original item's file must be untouched
+        original, _ = items.load_item(self.repo, "0001-thing")
+        self.assertEqual(original["stage"], "idea")
 
     def test_unknown_stage_raises_gate_error(self):
         make_item(self.repo, stage="idea")

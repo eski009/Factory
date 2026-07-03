@@ -27,7 +27,7 @@ Read `merge` from `.factory/config.json` (`auto`, `queue`, or `tiered`):
 3. Log `ship.merged` per the Contract, immediately followed by `factory advance ITEM done`.
 4. Update `docs/factory/roadmap.md`: move this item's line to reflect stage `done` (the file is one line per item with `(stage)` — update that parenthetical; there is no separate "Shipped" section to move it into unless the file already has one). The roadmap's flat one-line-per-item convention (see `factory-triage`) is why "move to Shipped" cashes out this way: with no separate section to move a line into, updating the stage tag to `done` in place *is* the move — a deliberate reading of the spec's "moves to shipped" wording against this file's actual shape, not a shortcut around it.
 5. Append one line to `docs/factory/brain/decisions.md` recording what shipped and how (mode, ref, item id). This is the one ship-log exception to the council-judgement bid firewall: a factual record of what happened, not a judgement — it still doesn't authorize any other brain edit, and durable *judgements* about the item still need their own bid/judge cycle.
-6. `factory packet ITEM` and hand its path back as the shipped report.
+6. `factory packet ITEM`, then move that packet to `docs/factory/packets/reports/<id>-shipped.md` and hand back that path as the shipped report — reports live under the `reports/` subdirectory so they don't linger in the top-level packets listing the SessionStart hook treats as "awaiting human review."
 
 ## On failure
 

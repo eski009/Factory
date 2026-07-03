@@ -1,4 +1,8 @@
-"""Deterministic work selection for the dispatcher skill. Spec §4."""
+"""Deterministic work selection for the dispatcher skill. Spec §4.
+
+Selection is priority+id only; spec §4's "dependencies satisfied" clause
+is deferred and not implemented here.
+"""
 
 from . import items, machine
 

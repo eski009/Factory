@@ -113,6 +113,8 @@ def advance(repo, item_id, to, reason=None):
     if to in SPECIAL:
         if frm in SPECIAL:
             raise GateError(f"cannot move {frm} -> {to}")
+        if frm == "done":
+            raise GateError("done items cannot be paused")
         meta["paused-from"] = frm
         meta["paused-reason"] = reason or ""
     elif frm in SPECIAL:

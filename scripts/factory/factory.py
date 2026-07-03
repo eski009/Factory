@@ -9,9 +9,16 @@ import sys
 if __package__ in (None, ""):
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod
+    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths
 else:
-    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod
+    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths
+
+
+def _require_factory_repo(repo):
+    if not paths.config_path(repo).exists():
+        print("not a factory repo (run init)", file=sys.stderr)
+        return False
+    return True
 
 
 def cmd_init(args):
@@ -28,6 +35,9 @@ def cmd_validate(args):
 
 
 def cmd_add(args):
+    if not args.title.strip():
+        print("error: title must not be empty", file=sys.stderr)
+        return 1
     item_id = items.new_item_id(args.repo, args.title)
     now = logs.now_stamp()
     meta = {"id": item_id, "title": args.title, "stage": "idea",
@@ -43,6 +53,8 @@ def cmd_add(args):
 
 
 def cmd_status(args):
+    if not _require_factory_repo(args.repo):
+        return 2
     metas, errors = items.list_items_safe(args.repo)
     rows = sorted(metas, key=lambda m: (m.get("priority", 9999), m["id"]))
     if args.json:
@@ -140,6 +152,8 @@ def cmd_prune(args):
 
 
 def cmd_next(args):
+    if not _require_factory_repo(args.repo):
+        return 2
     metas, errors = items.list_items_safe(args.repo)
     if errors:
         for error in errors:

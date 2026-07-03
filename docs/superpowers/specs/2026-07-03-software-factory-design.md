@@ -220,3 +220,4 @@ Each phase lands independently useful and tested.
 - **Merge policy default** is `auto`; Steve hasn't explicitly confirmed — flag at first ship. Config knob exists either way.
 - **First pilot repo** unknown ("Domino" from the predecessor spec is a candidate). Factory is product-agnostic; pilot selection happens at first install.
 - **Repo/plugin final name:** working name `factory`; confirm before publishing to a marketplace.
+- **Item dependencies** are deferred: dispatcher selection (§4) is priority+id only, not "dependencies satisfied."

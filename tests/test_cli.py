@@ -37,6 +37,16 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("run init", err)
 
+    def test_status_without_init_exits_2(self):
+        code, _, err = self.run_cli("status")
+        self.assertEqual(code, 2)
+        self.assertIn("not a factory repo (run init)", err)
+
+    def test_next_without_init_exits_2(self):
+        code, _, err = self.run_cli("next")
+        self.assertEqual(code, 2)
+        self.assertIn("not a factory repo (run init)", err)
+
     def test_add_and_status(self):
         self.run_cli("init")
         code, out, _ = self.run_cli("add", "Dark mode", "--kind", "ui")
@@ -78,6 +88,22 @@ class CliTest(unittest.TestCase):
         code, _, err = self.run_cli("add")
         self.assertEqual(code, 1)
         self.assertIn("title", err)
+
+    def test_add_empty_title_rejected(self):
+        self.run_cli("init")
+        code, _, err = self.run_cli("add", "")
+        self.assertEqual(code, 1)
+        self.assertTrue(err.strip())
+        items_dir = Path(self.repo, ".factory/items")
+        self.assertFalse(items_dir.exists() and list(items_dir.iterdir()))
+
+    def test_add_whitespace_only_title_rejected(self):
+        self.run_cli("init")
+        code, _, err = self.run_cli("add", "   ")
+        self.assertEqual(code, 1)
+        self.assertTrue(err.strip())
+        items_dir = Path(self.repo, ".factory/items")
+        self.assertFalse(items_dir.exists() and list(items_dir.iterdir()))
 
     def test_add_multiline_title_rejected(self):
         self.run_cli("init")

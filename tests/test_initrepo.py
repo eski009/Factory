@@ -1,4 +1,5 @@
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -65,6 +66,19 @@ class InitTest(unittest.TestCase):
         errors = initrepo.validate_tree(self.repo)
         self.assertEqual(errors, ["0001-x/log.jsonl:2: invalid JSON"])
 
+    def test_validate_flags_dir_id_mismatch(self):
+        # C1: a copied item dir whose item.md still names the original id.
+        initrepo.init(self.repo)
+        meta = {"id": "0001-x", "title": "X", "stage": "idea", "kind": "ui",
+                "created": "2026-07-03T10:00:00Z", "updated": "2026-07-03T10:00:00Z"}
+        items.save_item(self.repo, meta, "")
+        copy_dir = paths.item_dir(self.repo, "0002-x-copy")
+        shutil.copytree(paths.item_dir(self.repo, "0001-x"), copy_dir)
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any(
+            "0002-x-copy" in e and "does not match directory name" in e
+            for e in errors))
+
     def test_validate_flags_schema_violation(self):
         initrepo.init(self.repo)
         meta = {"id": "0001-x", "title": "X", "stage": "idea", "kind": "ui",
@@ -84,6 +98,44 @@ class InitTest(unittest.TestCase):
         errors = initrepo.validate_tree(self.repo)
         self.assertEqual(len(errors), 1)
         self.assertIn("bids.jsonl:1", errors[0])
+
+    def test_validate_flags_hand_edited_stage_mismatching_log(self):
+        # C2: hand-edit stage idea -> ship with no stage.advance events logged.
+        initrepo.init(self.repo)
+        meta = {"id": "0001-x", "title": "X", "stage": "idea", "kind": "ui",
+                "created": "2026-07-03T10:00:00Z", "updated": "2026-07-03T10:00:00Z"}
+        items.save_item(self.repo, meta, "")
+        item_md = paths.item_dir(self.repo, "0001-x") / "item.md"
+        item_md.write_text(item_md.read_text().replace("stage: idea", "stage: ship"))
+        errors = initrepo.validate_tree(self.repo)
+        self.assertIn(
+            "0001-x: stage 'ship' does not match log (expected 'idea')", errors)
+
+    def test_validate_clean_for_legitimately_advanced_item(self):
+        # C2: an item advanced through the real engine stays clean.
+        initrepo.init(self.repo)
+        import os
+        from scripts.factory.lib import machine
+        os.environ["FACTORY_NOW"] = "2026-07-03T12:00:00Z"
+        try:
+            meta = {"id": "0001-x", "title": "X", "stage": "idea", "kind": "backend",
+                    "created": "2026-07-03T10:00:00Z", "updated": "2026-07-03T10:00:00Z"}
+            items.save_item(self.repo, meta, "")
+            machine.advance(self.repo, "0001-x", "triage")
+        finally:
+            os.environ.pop("FACTORY_NOW", None)
+        self.assertEqual(initrepo.validate_tree(self.repo), [])
+
+    def test_validate_clean_for_fresh_add_at_idea_with_only_created_event(self):
+        # C2: a fresh item with only an item.created log event (stage idea,
+        # no stage.advance events) must not be flagged.
+        initrepo.init(self.repo)
+        from scripts.factory.lib import logs
+        meta = {"id": "0001-x", "title": "X", "stage": "idea", "kind": "ui",
+                "created": "2026-07-03T10:00:00Z", "updated": "2026-07-03T10:00:00Z"}
+        items.save_item(self.repo, meta, "")
+        logs.append_event(self.repo, "0001-x", "item.created")
+        self.assertEqual(initrepo.validate_tree(self.repo), [])
 
     def test_validate_accepts_valid_ledger_entries(self):
         initrepo.init(self.repo)
@@ -189,6 +241,25 @@ class ConsistencyTest(unittest.TestCase):
         errors = initrepo.validate_tree(self.repo)
         self.assertTrue(any(
             "has 0 reputation events" in e for e in errors))
+
+    def test_duplicate_bid_id_flagged(self):
+        # I1: hand-forged duplicate bid ids must be flagged by validate.
+        forged = {"id": "bid-0001", "ts": "2026-07-03T12:00:00Z", "agent": "product",
+                  "topic": "t2", "item": "", "claim": "another claim",
+                  "evidence": ["e"], "surface": "s", "severity": "low"}
+        self.council.append_ledger(self.repo, "bids", forged)
+        errors = initrepo.validate_tree(self.repo)
+        self.assertIn("ledgers/consistency: duplicate id bid-0001", errors)
+
+    def test_duplicate_judgement_id_flagged(self):
+        # I1: hand-forged duplicate judgement ids must be flagged.
+        self.council.record_judgement(
+            self.repo, "bid-0001", "reject", "no")
+        forged = {"id": "jdg-0001", "ts": "2026-07-03T12:00:00Z", "bid": "bid-0001",
+                  "decision": "reject", "reason": "dup"}
+        self.council.append_ledger(self.repo, "judgements", forged)
+        errors = initrepo.validate_tree(self.repo)
+        self.assertIn("ledgers/consistency: duplicate id jdg-0001", errors)
 
     def test_duplicate_reputation_events_flagged(self):
         jdg, rep = self.council.record_judgement(

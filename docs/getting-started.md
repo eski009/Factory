@@ -114,7 +114,8 @@ how much it does unattended:
   false; otherwise it drains the backlog (or stops when the optional budget
   hint runs out), never answers its own human gates (no auto `choice`, no
   auto merge past the configured policy, no direct edits to
-  `docs/factory/brain/`), and writes a run-summary packet before exiting.
+  `docs/factory/brain/`), and writes a run-summary packet to
+  `docs/factory/packets/reports/` before exiting.
 
 Autopilot only ever does what the loop and the configured gates already
 permit — it's a bigger wrapper, not a bigger hammer.

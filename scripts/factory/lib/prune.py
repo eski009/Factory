@@ -25,6 +25,8 @@ def prune_role(repo, role, apply=False):
     if role not in ROLES:
         raise CouncilError(f"unknown role {role!r}; one of {ROLES}")
     path = paths.docs_root(repo) / "council" / f"{role}.md"
+    if not path.exists():
+        raise CouncilError("role file missing - run init")
     lines = path.read_text(encoding="utf-8").splitlines()
     kept, archived = propose(lines)
     archive_path = None
