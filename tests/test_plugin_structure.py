@@ -63,6 +63,13 @@ class TestPluginStructure(unittest.TestCase):
         self.assertIn("options.html", text)
         self.assertIn("factory choice", text)
 
+    def test_capability_upgrade_references_exist_and_are_linked(self):
+        skill_text = (ROOT / "skills/capabilities/SKILL.md").read_text()
+        for name in ("workflow-fanout", "artifact-hosting", "scheduling", "designsync"):
+            ref = ROOT / f"skills/capabilities/references/{name}.md"
+            self.assertTrue(ref.exists(), str(ref))
+            self.assertIn(f"references/{name}.md", skill_text, name)
+
 
 if __name__ == "__main__":
     unittest.main()

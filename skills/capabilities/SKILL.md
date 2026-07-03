@@ -7,10 +7,10 @@ Factory skills are written against a degraded baseline that works on any Claude 
 
 | Capability | Probe | With it | Without it |
 |---|---|---|---|
-| Workflow tool | tool present in tool list | Fan out council rounds and independent plan tasks via Workflow | Parallel Task subagent dispatches in one message |
-| Artifact tool | tool present in tool list | Host the options page as an artifact | Write HTML to `items/<id>/design/options.html` and tell the user to open it |
-| DesignSync | tool present in tool list | Pull/push claude.ai/design tokens | Use `docs/factory/brain/design-system.md` tokens |
-| Scheduled agents | tool present in tool list | `loop` mode runs on a schedule | User runs `/factory:run loop` manually |
+| Workflow tool | tool present in tool list | Fan out council rounds and independent plan tasks via Workflow → see references/workflow-fanout.md | Parallel Task subagent dispatches in one message |
+| Artifact tool | tool present in tool list | Host the options page as an artifact → see references/artifact-hosting.md | Write HTML to `items/<id>/design/options.html` and tell the user to open it |
+| DesignSync | tool present in tool list | Pull/push claude.ai/design tokens → see references/designsync.md | Use `docs/factory/brain/design-system.md` tokens |
+| Scheduled agents | tool present in tool list | `loop` mode runs on a schedule → see references/scheduling.md | User runs `/factory:run loop` manually |
 
 Probe by attempting nothing: check the tool list. Never let a missing optional tool fail a stage — the degraded path is the contract, upgrades are opportunistic.
 
