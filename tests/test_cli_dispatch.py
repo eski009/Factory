@@ -92,6 +92,21 @@ class CliDispatchTest(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("refused:", err)
 
+    def test_doctor_on_fresh_repo_exits_0_with_readable_output(self):
+        self.run_cli("init")
+        code, out, _ = self.run_cli("doctor")
+        self.assertEqual(code, 0)
+        self.assertIn("tree_valid:", out)
+        self.assertIn("True", out)
+
+    def test_doctor_json_on_fresh_repo_exits_0_with_valid_json(self):
+        self.run_cli("init")
+        code, out, _ = self.run_cli("doctor", "--json")
+        self.assertEqual(code, 0)
+        parsed = json.loads(out)
+        self.assertTrue(parsed["tree_valid"])
+        self.assertEqual(parsed["merge_policy"], "auto")
+
 
 if __name__ == "__main__":
     unittest.main()

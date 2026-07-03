@@ -9,9 +9,9 @@ import sys
 if __package__ in (None, ""):
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod
+    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod
 else:
-    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod
+    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod
 
 
 def cmd_init(args):
@@ -176,6 +176,15 @@ def cmd_choice(args):
     return 0
 
 
+def cmd_doctor(args):
+    report = doctor_mod.report(args.repo)
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        print(doctor_mod.render(report))
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="factory")
     parser.add_argument("--repo", default=".")
@@ -252,6 +261,10 @@ def main(argv=None):
     p.add_argument("option")
     p.add_argument("--notes")
     p.set_defaults(func=cmd_choice)
+
+    p = sub.add_parser("doctor", help="readout of repo integration state")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_doctor)
 
     try:
         args = parser.parse_args(argv)
