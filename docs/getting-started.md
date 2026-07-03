@@ -41,7 +41,7 @@ which scaffolds two trees (only filling gaps — it never overwrites an
 existing file, and never touches your product code or `CLAUDE.md`):
 
 - `.factory/` — `items/`, `ledgers/{bids,judgements,reputation}.jsonl`,
-  `runs/`, and `config.json` (defaults: `{"merge": "auto", "gates": ["design"]}`).
+  `runs/`, and `config.json` (defaults: `{"version": 1, "merge": "auto", "gates": ["design"]}`).
 - `docs/factory/` — `packets/` and the product brain scaffolding under
   `brain/` (`vision.md`, `users.md`, `constraints.md`, `design-system.md`,
   `decisions.md`, `open-questions.md`) plus council role docs under
@@ -137,8 +137,10 @@ To check in on a running factory from any session:
 which reports items by priority, the next actionable item, memory health,
 and any packets waiting under `docs/factory/packets/`.
 
-For a lower-level readout of the repo's integration state (whether
-`.factory/` and `docs/factory/` are present and consistent), run:
+For a lower-level readout of the repo's integration state (whether the
+state tree validates, whether design-system tokens and a DesignSync
+project are configured, the merge policy and gates, and open/pending
+item counts), run:
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.py" --repo . doctor
