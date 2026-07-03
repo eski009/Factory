@@ -21,6 +21,7 @@ Use `superpowers:writing-plans` to build the plan. Read `items/<id>/spec.md` (an
 - **Acceptance-criteria references:** every task cites which numbered item in the spec's `## Acceptance criteria` it satisfies, so a reviewer can trace task back to requirement without re-reading the whole spec.
 - **One-subagent-sized tasks:** size each task so a single subagent dispatch can complete it standalone (the writing-plans skill's "Task Right-Sizing" section) — this factory always executes plans one task per subagent, never inline batches.
 - Skip writing-plans' "Execution Handoff" section — this factory has one execution path (the `implement` stage skill), not a choice between subagent-driven and inline execution.
+- **Plan header "For agentic workers" line:** replace the REQUIRED SUB-SKILL boilerplate with `> **For agentic workers:** Executed by the factory-implement skill — one fresh subagent per task. Steps use checkbox (- [ ]) syntax for tracking.`
 
 ## Steps
 
