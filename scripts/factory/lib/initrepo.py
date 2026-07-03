@@ -15,6 +15,8 @@ _INSTALL_ROOT = Path(__file__).resolve().parents[3]
 TEMPLATES = _INSTALL_ROOT / "templates" / "docs-factory"
 SCHEMAS = _INSTALL_ROOT / "schemas"
 LEDGERS = ("bids", "judgements", "reputation")
+LEDGER_SCHEMAS = {"bids": "escalation-bid", "judgements": "orchestrator-judgement",
+                  "reputation": "reputation-event"}
 DEFAULT_CONFIG = {"version": 1, "merge": "auto", "gates": ["design"]}
 
 
@@ -94,7 +96,11 @@ def validate_tree(repo):
             if not line.strip():
                 continue
             try:
-                json.loads(line)
+                entry = json.loads(line)
             except json.JSONDecodeError:
                 errors.append(f"ledgers/{name}.jsonl:{lineno}: invalid JSON")
+                continue
+            for msg in validate(entry, load_schema(LEDGER_SCHEMAS[name]),
+                                f"ledgers/{name}.jsonl:{lineno}"):
+                errors.append(msg)
     return errors

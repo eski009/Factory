@@ -74,6 +74,30 @@ class InitTest(unittest.TestCase):
         item_md.write_text(item_md.read_text().replace("stage: idea", "stage: shipping"))
         self.assertTrue(initrepo.validate_tree(self.repo))
 
+    def test_validate_flags_schema_invalid_ledger_entry(self):
+        initrepo.init(self.repo)
+        bad_bid = {"id": "bid-0001", "ts": "2026-07-03T12:00:00Z", "agent": "intern",
+                   "topic": "t", "item": "", "claim": "c", "evidence": ["e"],
+                   "surface": "s", "severity": "low"}
+        (paths.ledgers_dir(self.repo) / "bids.jsonl").write_text(
+            json.dumps(bad_bid, sort_keys=True) + "\n", encoding="utf-8")
+        errors = initrepo.validate_tree(self.repo)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("bids.jsonl:1", errors[0])
+
+    def test_validate_accepts_valid_ledger_entries(self):
+        initrepo.init(self.repo)
+        from scripts.factory.lib import council
+        import os
+        os.environ["FACTORY_NOW"] = "2026-07-03T12:00:00Z"
+        try:
+            council.file_bid(self.repo, agent="product", topic="t", claim="c",
+                             evidence=["e"], surface="s", severity="low")
+            council.record_judgement(self.repo, "bid-0001", "reject", "no")
+        finally:
+            os.environ.pop("FACTORY_NOW", None)
+        self.assertEqual(initrepo.validate_tree(self.repo), [])
+
 
 if __name__ == "__main__":
     unittest.main()
