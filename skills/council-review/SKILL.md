@@ -7,6 +7,8 @@ Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.p
 
 Bounded two-round council protocol (spec §6), ported from superpowers-council. Runs identically for both council moments — triage and review — only the seed content differs. No group chat: agents never see each other's notes, only the seed and the synthesis.
 
+For Workflow-based fan-out of the rounds, see the capabilities skill's `references/workflow-fanout.md` (degraded path — parallel subagents — is the default).
+
 ## Attention, not suppression
 
 Before Round 1, run `factory reputation --json`. Use scores to order which agents' output you read and weigh first. Reputation ranks attention — it never suppresses or skips a claim, no matter how low an agent's score.

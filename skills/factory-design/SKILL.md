@@ -5,6 +5,8 @@ description: Use when a factory item is at stage design - generates 2-4 UI mocku
 
 Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.py" --repo .`. Item paths like `items/<id>/...` live under `.factory/` — the full path is `.factory/items/<id>/...`.
 
+For publishing the options page as a hosted artifact, see the capabilities skill's `references/artifact-hosting.md`.
+
 ## Contract
 
 - **Entry stage:** `design` (only reachable for `kind: ui` or `kind: mixed` — `backend` items skip this stage entirely).

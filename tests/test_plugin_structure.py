@@ -28,7 +28,7 @@ class TestPluginStructure(unittest.TestCase):
     def test_commands_have_frontmatter(self):
         commands = sorted((ROOT / "commands").glob("*.md"))
         self.assertEqual([p.stem for p in commands],
-                         ["add", "init", "packet", "run", "status"])
+                         ["add", "autopilot", "init", "packet", "run", "status"])
         for path in commands:
             self.assertRegex(path.read_text(), FRONTMATTER, path.name)
 
@@ -62,6 +62,20 @@ class TestPluginStructure(unittest.TestCase):
         self.assertRegex(text, FRONTMATTER, str(skill))
         self.assertIn("options.html", text)
         self.assertIn("factory choice", text)
+
+    def test_autopilot_command_exists(self):
+        cmd = ROOT / "commands/autopilot.md"
+        self.assertTrue(cmd.exists())
+        text = cmd.read_text()
+        self.assertRegex(text, FRONTMATTER, str(cmd))
+        self.assertIn("factory-autopilot", text)
+
+    def test_autopilot_skill_never_answers_its_own_human_gates(self):
+        skill = ROOT / "skills/factory-autopilot/SKILL.md"
+        self.assertTrue(skill.exists())
+        text = skill.read_text()
+        self.assertRegex(text, FRONTMATTER, str(skill))
+        self.assertIn("never answers its own human gates", text.lower())
 
     def test_capability_upgrade_references_exist_and_are_linked(self):
         skill_text = (ROOT / "skills/capabilities/SKILL.md").read_text()

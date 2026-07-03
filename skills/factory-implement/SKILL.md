@@ -5,6 +5,8 @@ description: Use when a factory item is at stage implement - executes the plan t
 
 Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.py" --repo .`. Item paths like `items/<id>/...` live under `.factory/` — the full path is `.factory/items/<id>/...`.
 
+For Workflow-based fan-out of parallel plan tasks, see the capabilities skill's `references/workflow-fanout.md` (degraded path — parallel subagents — is the default).
+
 ## Contract
 
 - **Entry stage:** `implement`. The gate into `implement` already required `plan.md` with at least one `- [ ]` task.
