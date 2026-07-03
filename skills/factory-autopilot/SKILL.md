@@ -19,7 +19,7 @@ Once the preflight passes, invoke `factory-dispatch` in `loop` mode. That skill'
 
 Autopilot is a wrapper, not a bigger hammer. It never gains authority the loop and its stage skills don't already have:
 
-- It never records a design `choice` on an item's behalf — `design/choice.md` is written only by a human (or an orchestrator relaying a human's pick), never by autopilot itself.
+- It never records a design `choice` on an item's behalf — `design/choice.md` is written only by a human via `factory choice`, never by autopilot itself.
 - It never merges outside the repo's configured `merge` policy (`merge`/`gates` in the factory config) — ship still stops wherever that policy says it must.
 - It never edits `docs/factory/brain/` directly — brain changes flow only through the judgement firewall (`council-judgement`).
 - Most importantly: **autopilot never answers its own human gates.** Any item that lands at `waiting-human` — whether from a design pause, a merge gate, or a mapped-skill-unavailable pause — stays parked exactly where the loop left it, with its packet written for a person to read. Autopilot never simulates a human, never picks a design option, never approves a merge, and never resumes a paused item itself. Only a real human action (e.g. `factory choice`) moves a parked item forward — the loop's own resume check picks that up on a later invocation.
@@ -29,7 +29,7 @@ Autopilot is a wrapper, not a bigger hammer. It never gains authority the loop a
 Stop the run when either condition is met:
 
 - **Backlog drained** — `factory-dispatch` in loop mode returns nothing actionable (`factory next` comes back null and nothing is waiting on a resumable answer).
-- **Budget exhausted** — a caller-provided budget (from `$ARGUMENTS` on `/factory:autopilot`, e.g. a time or item-count hint) runs out. Autopilot doesn't invent a budget when none is given — treat an absent budget as "run until drained."
+- **Budget exhausted** — a caller-provided budget (from `$ARGUMENTS` on `/factory:autopilot`, e.g. a time or item-count hint) runs out. Autopilot doesn't invent a budget when none is given — treat an absent budget as "run until drained." Check the budget at each loop-iteration boundary — between items, at `factory-dispatch`'s step 5 (re-check mode / pick next). When the budget is spent, stop advancing new items, finish any half-done stage safely, and go straight to writing the run-summary packet.
 
 Either way, before exiting, write a run-summary packet to `docs/factory/packets/` (a bespoke packet, not a per-item one) covering: items advanced this run, items parked at gates (with their stage and reason), and any items blocked. This is autopilot's own exit report, separate from any per-item packets the loop already wrote along the way.
 
