@@ -9,9 +9,9 @@ import sys
 if __package__ in (None, ""):
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod
+    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod
 else:
-    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod
+    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod
 
 
 def cmd_init(args):
@@ -165,6 +165,17 @@ def cmd_packet(args):
     return 0
 
 
+def cmd_choice(args):
+    try:
+        path = design_mod.record_choice(args.repo, args.item, args.option,
+                                        notes=args.notes)
+    except (machine.GateError, items.ItemError) as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    print(path)
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="factory")
     parser.add_argument("--repo", default=".")
@@ -235,6 +246,12 @@ def main(argv=None):
     p = sub.add_parser("packet", help="write a review packet for an item")
     p.add_argument("item")
     p.set_defaults(func=cmd_packet)
+
+    p = sub.add_parser("choice", help="record the human's design-option pick")
+    p.add_argument("item")
+    p.add_argument("option")
+    p.add_argument("--notes")
+    p.set_defaults(func=cmd_choice)
 
     try:
         args = parser.parse_args(argv)

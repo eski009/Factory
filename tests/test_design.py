@@ -1,0 +1,75 @@
+import os
+import tempfile
+import unittest
+from pathlib import Path
+
+from scripts.factory.lib import design, initrepo, items, logs, machine
+
+
+def put(repo, stage="design", kind="ui", paused_from=None):
+    meta = {"id": "0001-thing", "title": "Thing", "stage": stage, "kind": kind,
+            "priority": 1, "created": "2026-07-03T10:00:00Z",
+            "updated": "2026-07-03T10:00:00Z"}
+    if paused_from:
+        meta["paused-from"] = paused_from
+        meta["paused-reason"] = "pick a design option"
+    items.save_item(repo, meta, "# Thing\n")
+
+
+class TestRecordChoice(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        initrepo.init(self.repo)
+        os.environ["FACTORY_NOW"] = "2026-07-03T12:00:00Z"
+
+    def tearDown(self):
+        os.environ.pop("FACTORY_NOW", None)
+        self.tmp.cleanup()
+
+    def test_choice_at_design_stage(self):
+        put(self.repo)
+        path = design.record_choice(self.repo, "0001-thing", "b", notes="darker header")
+        text = path.read_text(encoding="utf-8")
+        self.assertIn("- option: b", text)
+        self.assertIn("- ts: 2026-07-03T12:00:00Z", text)
+        self.assertIn("darker header", text)
+        events = logs.read_events(self.repo, "0001-thing")
+        self.assertEqual(events[-1]["event"], "design.choice")
+        self.assertEqual(events[-1]["data"], {"option": "b"})
+
+    def test_choice_while_paused_from_design(self):
+        put(self.repo, stage="waiting-human", paused_from="design")
+        path = design.record_choice(self.repo, "0001-thing", "a")
+        self.assertIn("(no notes)", path.read_text(encoding="utf-8"))
+
+    def test_choice_overwrites(self):
+        put(self.repo)
+        design.record_choice(self.repo, "0001-thing", "a")
+        design.record_choice(self.repo, "0001-thing", "c")
+        self.assertIn("- option: c",
+                      (self.repo / ".factory/items/0001-thing/design/choice.md").read_text())
+
+    def test_backend_kind_refused(self):
+        put(self.repo, kind="backend", stage="plan")
+        with self.assertRaises(machine.GateError):
+            design.record_choice(self.repo, "0001-thing", "a")
+
+    def test_wrong_stage_refused_with_stage_named(self):
+        put(self.repo, stage="implement")
+        with self.assertRaises(machine.GateError) as ctx:
+            design.record_choice(self.repo, "0001-thing", "a")
+        self.assertIn("implement", str(ctx.exception))
+
+    def test_paused_from_other_stage_refused(self):
+        put(self.repo, stage="waiting-human", paused_from="review")
+        with self.assertRaises(machine.GateError):
+            design.record_choice(self.repo, "0001-thing", "a")
+
+    def test_missing_item_raises_item_error(self):
+        with self.assertRaises(items.ItemError):
+            design.record_choice(self.repo, "0999-nope", "a")
+
+
+if __name__ == "__main__":
+    unittest.main()

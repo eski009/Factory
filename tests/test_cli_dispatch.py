@@ -71,6 +71,27 @@ class CliDispatchTest(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("0002-bad", err)
 
+    def test_choice_on_design_stage_ui_item_prints_path(self):
+        from scripts.factory.lib import items
+        self.run_cli("init")
+        # Create an item directly at design stage
+        meta = {"id": "0001-ui-thing", "title": "UI Thing", "stage": "design", "kind": "ui",
+                "priority": 1, "created": "2026-07-03T10:00:00Z",
+                "updated": "2026-07-03T10:00:00Z"}
+        items.save_item(Path(self.repo), meta, "# UI Thing\n")
+        code, out, _ = self.run_cli("choice", "0001-ui-thing", "a")
+        self.assertEqual(code, 0)
+        path = out.strip()
+        self.assertTrue(Path(path).exists())
+        self.assertIn("choice.md", path)
+
+    def test_choice_on_backend_item_exits_2_with_refused(self):
+        self.run_cli("init")
+        self.run_cli("add", "Backend Thing", "--kind", "backend")
+        code, _, err = self.run_cli("choice", "0001-backend-thing", "a")
+        self.assertEqual(code, 2)
+        self.assertIn("refused:", err)
+
 
 if __name__ == "__main__":
     unittest.main()
