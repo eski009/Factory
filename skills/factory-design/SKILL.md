@@ -8,6 +8,7 @@ Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.p
 ## Contract
 
 - **Entry stage:** `design` (only reachable for `kind: ui` or `kind: mixed` — `backend` items skip this stage entirely).
+- **Entry check:** If `items/<id>/design/choice.md` exists and is non-empty, the human has already chosen — skip option generation, run `factory advance ITEM plan`, delete `docs/factory/packets/<id>-design.md` if present, and exit. Only proceed with normal generation if `choice.md` is absent or empty.
 - **Artifacts produced:** `items/<id>/design/options.html`, packet `docs/factory/packets/<id>-design.md`.
 - **Exit:** `factory advance ITEM waiting-human --reason "pick a design option: see docs/factory/packets/<id>-design.md"`, then `factory packet ITEM`.
 
@@ -29,7 +30,7 @@ Write one self-contained HTML file to `items/<id>/design/options.html`:
 
 - Zero external requests — no CDN fonts, scripts, or images; no network calls of any kind.
 - 2-4 options, each a labeled `<section data-option="a">` (etc.) headed "Option A — <direction name>", "Option B — <direction name>", and so on.
-- Options must be **genuinely distinct directions** — differences in layout, structure, or interaction model — not palette or font swaps of the same underlying design. If you can't name what structurally differs between two options, they're one option.
+- Options must be **genuinely distinct directions** — differences in layout, structure, or interaction model — not palette or font swaps of the same underlying design. For example: single-column form vs. wizard flow vs. dashboard panel = three directions; the same layout in two palettes = one direction. If you can't name what structurally differs between two options, they're one option.
 - Each option renders the item's actual UI surface from `spec.md` — real content and controls for this item, not lorem-ipsum or generic placeholder abstractions.
 - Respect the design-system tokens read above (colors, spacing, type scale).
 - If the design system defines both light and dark treatments, render both for each option; if it only defines one, one is enough.
@@ -52,4 +53,4 @@ Write `docs/factory/packets/<id>-design.md` directly — this is a bespoke packe
 
 ## Resume
 
-This skill does not poll or wait for the pick. Once the human runs `factory choice`, the dispatcher's step-0 resume check (in `factory-dispatch`) notices `design/choice.md` is present and non-empty on the next `/factory:run`, and advances the item automatically. Nothing here needs to watch for that.
+When the human runs `factory choice`, the dispatcher's step-0 resume check (in `factory-dispatch`) notices `design/choice.md` is present and non-empty on the next `/factory:run`, and unpauses the item back to `design`. On the next dispatch iteration, this skill re-invokes at `design` stage. The entry check (above) detects the recorded choice in `design/choice.md`, skips option generation, runs `factory advance ITEM plan`, and exits — the human's pick is now acted upon. This is the two-hop path: pause→resume unpause to design→entry check advances to plan.
