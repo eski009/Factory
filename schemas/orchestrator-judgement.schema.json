@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "orchestrator-judgement",
+  "type": "object",
+  "required": ["id", "ts", "bid", "decision", "reason"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {"type": "string", "pattern": "^jdg-[0-9]{4}$"},
+    "ts": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"},
+    "bid": {"type": "string", "pattern": "^bid-[0-9]{4}$"},
+    "decision": {"type": "string", "enum": ["accept", "reject", "defer", "merge", "downgrade"]},
+    "reason": {"type": "string", "minLength": 1},
+    "surface": {"type": "string", "minLength": 1},
+    "anchor": {"type": "string", "minLength": 1}
+  }
+}

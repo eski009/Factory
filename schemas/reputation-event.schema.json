@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "reputation-event",
+  "type": "object",
+  "required": ["ts", "agent", "topic", "delta", "judgement"],
+  "additionalProperties": false,
+  "properties": {
+    "ts": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"},
+    "agent": {"type": "string", "enum": ["product", "ui-taste", "architecture", "engineering-quality", "customer", "commercial"]},
+    "topic": {"type": "string", "minLength": 1},
+    "delta": {"type": "number"},
+    "judgement": {"type": "string", "pattern": "^jdg-[0-9]{4}$"}
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "escalation-bid",
+  "type": "object",
+  "required": ["id", "ts", "agent", "topic", "item", "claim", "evidence", "surface", "severity"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {"type": "string", "pattern": "^bid-[0-9]{4}$"},
+    "ts": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"},
+    "agent": {"type": "string", "enum": ["product", "ui-taste", "architecture", "engineering-quality", "customer", "commercial"]},
+    "topic": {"type": "string", "minLength": 1},
+    "item": {"type": "string"},
+    "claim": {"type": "string", "minLength": 1},
+    "evidence": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "surface": {"type": "string", "minLength": 1},
+    "severity": {"type": "string", "enum": ["low", "medium", "high"]}
+  }
+}
