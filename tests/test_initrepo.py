@@ -99,5 +99,77 @@ class InitTest(unittest.TestCase):
         self.assertEqual(initrepo.validate_tree(self.repo), [])
 
 
+class ConsistencyTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        from scripts.factory.lib import council
+        self.council = council
+        initrepo.init(self.repo)
+        import os
+        os.environ["FACTORY_NOW"] = "2026-07-03T12:00:00Z"
+        self.bid = council.file_bid(
+            self.repo, agent="architecture", topic="boundaries",
+            claim="Split module", evidence=["src/big.py"],
+            surface="brain/decisions.md", severity="high")
+
+    def tearDown(self):
+        import os
+        os.environ.pop("FACTORY_NOW", None)
+        self.tmp.cleanup()
+
+    def test_clean_state_via_file_bid_and_record_judgement_validates(self):
+        self.council.record_judgement(
+            self.repo, "bid-0001", "accept", "good find",
+            surface="brain/decisions.md", anchor="## Module boundaries")
+        self.assertEqual(initrepo.validate_tree(self.repo), [])
+
+    def test_double_judgement_flagged(self):
+        self.council.record_judgement(self.repo, "bid-0001", "reject", "no")
+        forged = {"id": "jdg-0002", "ts": "2026-07-03T12:00:00Z", "bid": "bid-0001",
+                  "decision": "accept", "reason": "changed my mind",
+                  "surface": "brain/decisions.md", "anchor": "## X"}
+        self.council.append_ledger(self.repo, "judgements", forged)
+        rep = {"ts": "2026-07-03T12:00:00Z", "agent": "architecture",
+               "topic": "boundaries", "delta": 0.05, "judgement": "jdg-0002"}
+        self.council.append_ledger(self.repo, "reputation", rep)
+        errors = initrepo.validate_tree(self.repo)
+        self.assertIn(
+            "ledgers/consistency: bid bid-0001 judged more than once", errors)
+
+    def test_accept_judgement_missing_surface_anchor_flagged(self):
+        forged = {"id": "jdg-0001", "ts": "2026-07-03T12:00:00Z", "bid": "bid-0001",
+                  "decision": "accept", "reason": "no surface/anchor"}
+        self.council.append_ledger(self.repo, "judgements", forged)
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any(
+            "ledgers/consistency: judgement jdg-0001 (accept) missing surface/anchor" in e
+            for e in errors))
+
+    def test_reputation_wrong_delta_flagged(self):
+        jdg, rep = self.council.record_judgement(
+            self.repo, "bid-0001", "accept", "good find",
+            surface="brain/decisions.md", anchor="## Module boundaries")
+        # Overwrite the ledger with a forged reputation event carrying the wrong delta.
+        ledger_path = self.repo / ".factory/ledgers/reputation.jsonl"
+        bad_rep = dict(rep)
+        bad_rep["delta"] = 0.99
+        ledger_path.write_text(json.dumps(bad_rep, sort_keys=True) + "\n",
+                                encoding="utf-8")
+        errors = initrepo.validate_tree(self.repo)
+        self.assertIn(
+            f"ledgers/consistency: reputation for {jdg['id']} has wrong delta/agent/topic",
+            errors)
+
+    def test_judgement_unknown_bid_flagged(self):
+        forged = {"id": "jdg-0001", "ts": "2026-07-03T12:00:00Z", "bid": "bid-0999",
+                  "decision": "reject", "reason": "no such bid"}
+        self.council.append_ledger(self.repo, "judgements", forged)
+        errors = initrepo.validate_tree(self.repo)
+        self.assertIn(
+            "ledgers/consistency: judgement jdg-0001 references unknown bid bid-0999",
+            errors)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -88,19 +88,84 @@ def validate_tree(repo):
                         json.loads(line)
                     except json.JSONDecodeError:
                         errors.append(f"{sub.name}/log.jsonl:{lineno}: invalid JSON")
+    entries = {}
+    clean = {}
     for name in LEDGERS:
         ledger = paths.ledgers_dir(repo) / f"{name}.jsonl"
-        if not ledger.exists():
+        parsed = []
+        line_errors = False
+        if ledger.exists():
+            for lineno, line in enumerate(ledger.read_text(encoding="utf-8").splitlines(), 1):
+                if not line.strip():
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    errors.append(f"ledgers/{name}.jsonl:{lineno}: invalid JSON")
+                    line_errors = True
+                    continue
+                msgs = validate(entry, load_schema(LEDGER_SCHEMAS[name]),
+                                 f"ledgers/{name}.jsonl:{lineno}")
+                if msgs:
+                    errors.extend(msgs)
+                    line_errors = True
+                else:
+                    parsed.append(entry)
+        entries[name] = parsed
+        clean[name] = not line_errors
+    if all(clean.values()):
+        errors.extend(_check_ledger_consistency(entries))
+    return errors
+
+
+def _check_ledger_consistency(entries):
+    from . import council
+
+    errors = []
+    bids_by_id = {bid["id"]: bid for bid in entries["bids"]}
+    judgements = entries["judgements"]
+    reputation = entries["reputation"]
+
+    judgements_by_bid = {}
+    for jdg in judgements:
+        judgements_by_bid.setdefault(jdg["bid"], []).append(jdg)
+    for bid_id, jdgs in judgements_by_bid.items():
+        if len(jdgs) > 1:
+            errors.append(f"ledgers/consistency: bid {bid_id} judged more than once")
+
+    for jdg in judgements:
+        if jdg["bid"] not in bids_by_id:
+            errors.append(
+                f"ledgers/consistency: judgement {jdg['id']} "
+                f"references unknown bid {jdg['bid']}")
+        if jdg["decision"] in council.AUTHORIZING and not (
+                jdg.get("surface") and jdg.get("anchor")):
+            errors.append(
+                f"ledgers/consistency: judgement {jdg['id']} "
+                f"({jdg['decision']}) missing surface/anchor")
+
+    judgements_by_id = {jdg["id"]: jdg for jdg in judgements}
+    reputation_by_judgement = {}
+    for rep in reputation:
+        reputation_by_judgement.setdefault(rep["judgement"], []).append(rep)
+        if rep["judgement"] not in judgements_by_id:
+            errors.append(
+                f"ledgers/consistency: reputation event references "
+                f"unknown judgement {rep['judgement']}")
+
+    for jdg in judgements:
+        reps = reputation_by_judgement.get(jdg["id"], [])
+        if len(reps) != 1:
+            errors.append(
+                f"ledgers/consistency: judgement {jdg['id']} has "
+                f"{len(reps)} reputation events (expected 1)")
             continue
-        for lineno, line in enumerate(ledger.read_text(encoding="utf-8").splitlines(), 1):
-            if not line.strip():
-                continue
-            try:
-                entry = json.loads(line)
-            except json.JSONDecodeError:
-                errors.append(f"ledgers/{name}.jsonl:{lineno}: invalid JSON")
-                continue
-            for msg in validate(entry, load_schema(LEDGER_SCHEMAS[name]),
-                                f"ledgers/{name}.jsonl:{lineno}"):
-                errors.append(msg)
+        rep = reps[0]
+        bid = bids_by_id.get(jdg["bid"])
+        expected_delta = council.DECISION_DELTAS.get(jdg["decision"])
+        if bid is None or rep["delta"] != expected_delta \
+                or rep["agent"] != bid["agent"] or rep["topic"] != bid["topic"]:
+            errors.append(
+                f"ledgers/consistency: reputation for {jdg['id']} "
+                f"has wrong delta/agent/topic")
     return errors
