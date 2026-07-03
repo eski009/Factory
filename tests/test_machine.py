@@ -71,6 +71,14 @@ class TestLegality(MachineTest):
         meta = machine.advance(self.repo, "0001-thing", "design")
         self.assertNotIn("paused-from", meta)
 
+    def test_unknown_stage_raises_gate_error(self):
+        make_item(self.repo, stage="idea")
+        item_md = paths.item_dir(self.repo, "0001-thing") / "item.md"
+        item_md.write_text(item_md.read_text().replace("stage: idea", "stage: bogus"),
+                           encoding="utf-8")
+        with self.assertRaises(machine.GateError):
+            machine.advance(self.repo, "0001-thing", "triage")
+
 
 class TestGates(MachineTest):
     def test_spec_requires_triage_record_and_priority(self):

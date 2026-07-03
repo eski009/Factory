@@ -25,7 +25,10 @@ def stage_sequence(kind):
 
 def next_stage(meta):
     seq = stage_sequence(meta["kind"])
-    idx = seq.index(meta["stage"])
+    try:
+        idx = seq.index(meta["stage"])
+    except ValueError:
+        raise GateError(f"unknown stage {meta['stage']!r} for kind {meta['kind']!r}")
     return seq[idx + 1] if idx + 1 < len(seq) else None
 
 
