@@ -7,24 +7,32 @@ default human gate.
 
 Works on any Claude model; Fable-only features are opportunistic
 upgrades, never requirements. See
-`docs/superpowers/specs/2026-07-03-software-factory-design.md`.
+[`docs/superpowers/specs/2026-07-03-software-factory-design.md`](docs/superpowers/specs/2026-07-03-software-factory-design.md)
+for the full design, and [`docs/getting-started.md`](docs/getting-started.md)
+for a first-time walkthrough.
 
 ## Status
 
-Phases 1-4: engine, council, plugin skills layer, and the design gate —
-the zero-dependency Python engine (work-item state machine with enforced
-gates, schemas, target-repo init, CLI), the memory-firewalled council
-(bids, judgements, reputation, health, pruning), the full
-skills/commands/agents layer that runs the pipeline end to end, and the
-design gate itself.
+Phases 1-6 complete: engine, council, plugin skills layer, design gate,
+capability upgrades, and release scaffolding.
 
-**Design gate:** for `ui`/`mixed` items, the `design` stage generates 2-4
-mockup options to a self-contained options page, writes a review packet
-recommending one, and pauses the item at `waiting-human`. A human answers
-with `factory choice <id> <option>` (or in-session); the next
-`/factory:run` auto-resumes the item back through `design`, which detects
-the recorded choice and advances it to `plan`. `backend` items skip this
-stage entirely.
+- **Product-brain pipeline** — a work item runs `idea → triage → spec →
+  design → plan → implement → review → verify → ship → done` under a
+  gate-checked state machine that refuses any transition whose
+  preconditions aren't met.
+- **Bounded council with a memory firewall** — agents file evidence-backed
+  bids, an orchestrator judges them, reputation accrues per agent/topic,
+  and the product brain (`docs/factory/brain/`) can only change through
+  that judgement path, never a direct edit.
+- **Design gate** — `ui`/`mixed` items generate 2-4 genuinely distinct
+  mockup options to a self-contained page, pause at `waiting-human` with a
+  review packet, and resume automatically once a human answers with
+  `factory choice`; `backend` items skip it entirely.
+- **Autopilot** — a bounded autonomous loop (`/factory:autopilot`) that
+  preflights repo health, drains the backlog or a budget, and never
+  answers its own human gates.
+- **Works on any Claude model** — Fable-only features are opportunistic
+  upgrades, never requirements.
 
 ## Install as plugin
 
@@ -53,15 +61,19 @@ vendoring them. Install it alongside Factory.
 Once both plugins are installed in a target repo:
 
 ```
-/factory:init your-product   # scaffold .factory/ and docs/factory/, seed the brain
-/factory:add "Dark mode"     # add a work item to the backlog
-/factory:run                 # run the pipeline (default mode: item)
+/factory:init your-product    # scaffold .factory/ and docs/factory/, seed the brain
+/factory:add "Dark mode"      # add a work item to the backlog
+/factory:run                  # run the pipeline (default mode: item)
+/factory:status               # items by priority, next actionable item, packets, health
+/factory:packet <id>          # render a review packet for an item
+/factory:autopilot [budget]   # run the loop unattended until drained or budget spent
 ```
 
 `/factory:init` also invokes the `factory-intake` skill to seed
 `docs/factory/brain/` from real sources in the target repo — a human should
 review that seeded brain before the first council run treats it as ground
-truth.
+truth. See [`docs/getting-started.md`](docs/getting-started.md) for the full
+walkthrough, including the design gate and the autonomy dial.
 
 ## Install into a target repo (engine only, no plugin)
 
@@ -72,11 +84,21 @@ python3 scripts/factory/factory.py --repo /path/to/your/repo validate
 
 ## Engine CLI
 
+The plugin's skills drive this CLI; it's also usable standalone. Subcommands:
+`init`, `validate`, `add`, `status`, `next`, `advance`, `log`, `packet`,
+`choice`, `bid`, `judge`, `reputation`, `health`, `prune`, `doctor`.
+
 ```bash
-factory.py add "Dark mode" --kind ui   # create a work item
-factory.py status                      # list items by priority
-factory.py advance 0001-dark-mode triage
+factory.py add "Dark mode" --kind ui        # create a work item
+factory.py status                           # list items by priority
+factory.py next                             # get the next actionable item
+factory.py advance 0001-dark-mode triage    # move an item to a stage (gate-checked)
 factory.py log 0001-dark-mode verify.green --data '{"tests":"12 passed"}'
+factory.py packet 0001-dark-mode            # write/render a review packet
+factory.py choice 0001-dark-mode b          # record the human's design-option pick
+factory.py reputation                       # derived reputation per agent/topic
+factory.py health                           # memory-health score and recommendation
+factory.py doctor                           # readout of repo integration state
 ```
 
 `advance` is the deterministic gatekeeper: it refuses any transition
