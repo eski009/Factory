@@ -74,6 +74,11 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("--data", err)
 
+    def test_malformed_usage_returns_one(self):
+        code, _, err = self.run_cli("add")
+        self.assertEqual(code, 1)
+        self.assertIn("title", err)
+
 
 if __name__ == "__main__":
     unittest.main()

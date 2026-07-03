@@ -110,7 +110,12 @@ def main(argv=None):
     p.add_argument("--data")
     p.set_defaults(func=cmd_log)
 
-    args = parser.parse_args(argv)
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        if exc.code == 0:
+            raise
+        return 1
     return args.func(args)
 
 
