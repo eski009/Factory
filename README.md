@@ -11,23 +11,50 @@ upgrades, never requirements. See
 for the full design, and [`docs/getting-started.md`](docs/getting-started.md)
 for a first-time walkthrough.
 
+## How it works
+
+```
+idea → triage[1] → spec → design[2] → plan → implement → review[3] → verify → ship → done
+```
+
+*(`backend` items skip `design` entirely — `plan` follows `spec` directly.)*
+
+- **[1] council, triage mode** — before `spec` is written: bounded council
+  bids plus an orchestrator judgement decide build/priority/scope.
+- **[2] THE human gate** — `ui`/`mixed` items only. `factory-design` writes
+  2-4 mockup options and a review packet, then pauses the item at
+  `waiting-human`. A human answers `factory choice <id> <a-d>`; the next
+  `/factory:run` notices the recorded pick and resumes the item straight
+  into `plan`.
+- **[3] council, review mode** — after `implement`: the council reviews the
+  diff against spec and brain before the item can reach `verify`.
+
+### 60 seconds from idea to shipped
+
+```
+$ /factory:add "Dark mode"          # files a work item at stage idea
+$ /factory:run                      # idea → triage[1] → spec → design;
+                                     #   pauses at waiting-human with
+                                     #   docs/factory/packets/0001-dark-mode-design.md
+$ factory choice 0001-dark-mode b   # records the human's pick of option b
+$ /factory:run                      # resumes design → plan → implement →
+                                     #   review[3] → verify → ship → done
+```
+
+See [`docs/getting-started.md`](docs/getting-started.md) for the full
+first-time walkthrough, including the autonomy dial.
+
 ## Status
 
 Phases 1-6 complete: engine, council, plugin skills layer, design gate,
 capability upgrades, and release scaffolding.
 
-- **Product-brain pipeline** — a work item runs `idea → triage → spec →
-  design → plan → implement → review → verify → ship → done` under a
-  gate-checked state machine that refuses any transition whose
-  preconditions aren't met.
+- **Product-brain pipeline** — a gate-checked state machine (see "How it
+  works" above) refuses any transition whose preconditions aren't met.
 - **Bounded council with a memory firewall** — agents file evidence-backed
   bids, an orchestrator judges them, reputation accrues per agent/topic,
   and the product brain (`docs/factory/brain/`) can only change through
   that judgement path, never a direct edit.
-- **Design gate** — `ui`/`mixed` items generate 2-4 genuinely distinct
-  mockup options to a self-contained page, pause at `waiting-human` with a
-  review packet, and resume automatically once a human answers with
-  `factory choice`; `backend` items skip it entirely.
 - **Autopilot** — a bounded autonomous loop (`/factory:autopilot`) that
   preflights repo health, drains the backlog or a budget, and never
   answers its own human gates.

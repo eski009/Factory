@@ -4,6 +4,32 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.2.0] - 2026-07-04
+
+### Added
+
+- **`validate` integrity audit** — `factory validate` now cross-checks the
+  bid/judgement/reputation ledgers for duplicate ids, judgements referencing
+  unknown bids, missing surface/anchor on authorizing decisions, and
+  reputation events with the wrong delta/agent/topic or a missing/duplicate
+  judgement link.
+- **`factory priority`** — a CLI subcommand to set an item's priority
+  (`factory priority <id> <n>`) independent of the triage stage.
+- **`factory-roadmap` skill** — turns a PRD (and optional design file) into
+  triaged work items and a prioritized `docs/factory/roadmap.md`, invoked
+  via `/factory:roadmap <prd-path> [<design-path>]`.
+- **Brownfield intake** — `factory-intake` now detects an existing target
+  repo (routes, models, tests, tooling config) and runs collectors plus a
+  taste packet to seed the product brain from real code rather than a
+  blank scaffold.
+- **Orchestration and model-tiering pattern references** —
+  `skills/capabilities/references/orchestration-patterns.md` and
+  `model-tiering.md`, documenting fan-out patterns and which tier must run
+  a given subagent.
+- **README "How it works"** — an ASCII pipeline diagram (stages, the design
+  gate, both council moments) plus a 60-seconds-from-idea-to-shipped
+  annotated example of the real commands.
+
 ## [0.1.0] - 2026-07-03
 
 ### Added
