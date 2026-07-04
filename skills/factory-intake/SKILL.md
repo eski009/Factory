@@ -46,8 +46,44 @@ resolve it, instead of writing invented content into that surface.
 ## Never
 
 Never touch product code or `CLAUDE.md`. This skill only writes to
-`docs/factory/brain/*.md`; it has no license to change anything else in the
-target repo, however tempting a fix looks along the way.
+`docs/factory/brain/*.md` and, in brownfield mode, `docs/factory/packets/taste.md`;
+it has no license to change anything else in the target repo, however
+tempting a fix looks along the way.
+
+## Brownfield mode
+
+Brownfield means the target repo already contains product code — routes,
+components, business logic — rather than a fresh scaffold with placeholder
+files. If the inventory above turns up real application code (not just
+tooling config), treat this as a brownfield seed and run three collectors in
+addition to the inventory:
+
+**1. Repo mining (all cited).** Read structure, don't invent it:
+
+- lint/format configs and observed naming/structure conventions → `constraints.md`
+- theme files, CSS variables, design tokens, component library → `design-system.md`
+- routes, screens, navigation surface → `users.md`
+- `git log`, ADRs, PR titles → `decisions.md`
+- the test suite, read as a behavior spec, feeding `constraints.md` and `users.md`
+
+Same citation rule as above: every claim needs `(source: <path>)`.
+
+**2. Taste packet.** Write `docs/factory/packets/taste.md`, a questionnaire
+for the human covering: 3 products whose UI they admire and why; hard
+non-negotiables; what "done" or "quality" means here; voice and tone;
+anti-references (what to avoid). Tell them their answers get edited directly
+into the packet, and the next intake or roadmap run folds those answers into
+the brain with `(source: docs/factory/packets/taste.md)` citations. The
+packet is optional — leaving it unanswered blocks nothing downstream. The
+SessionStart hook lists any file under `docs/factory/packets/` as "awaiting
+human review"; `taste.md` showing up there unanswered is expected in
+brownfield mode, not a defect to clean up.
+
+**3. Ongoing accrual.** Collectors only bootstrap the brain once. The
+compounding channel for taste going forward is the existing mechanism:
+council bids get filed, an orchestrator turns them into judgements, and
+judgements accrue into each role's memory — that loop, not another intake
+pass, is how taste keeps sharpening after seeding.
 
 ## Finish
 

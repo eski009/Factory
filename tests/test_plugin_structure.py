@@ -85,6 +85,11 @@ class TestPluginStructure(unittest.TestCase):
         self.assertIn("factory add", text)
         self.assertIn("factory priority", text)
 
+    def test_intake_skill_covers_brownfield_and_taste_packet(self):
+        text = (ROOT / "skills/factory-intake/SKILL.md").read_text()
+        self.assertIn("taste.md", text)
+        self.assertIn("brownfield", text)
+
     def test_capability_upgrade_references_exist_and_are_linked(self):
         skill_text = (ROOT / "skills/capabilities/SKILL.md").read_text()
         for name in ("workflow-fanout", "artifact-hosting", "scheduling", "designsync"):
