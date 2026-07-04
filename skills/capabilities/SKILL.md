@@ -14,4 +14,6 @@ Factory skills are written against a degraded baseline that works on any Claude 
 
 Probe by attempting nothing: check the tool list. Never let a missing optional tool fail a stage — the degraded path is the contract, upgrades are opportunistic.
 
+**Process patterns** (not capability-gated — these apply regardless of which tools or model are available): see references/orchestration-patterns.md for the seven patterns that make this factory's outcomes reproducible on any orchestrating model, and references/model-tiering.md for which model tier each kind of task needs.
+
 Apply this row by row: check the tool list once per capability you need, take the matching branch, and move on. Don't ask the user whether a tool is available, don't retry a probe that already came back negative, and don't block a stage on an absent capability — fall through to the "Without it" column and keep going.
