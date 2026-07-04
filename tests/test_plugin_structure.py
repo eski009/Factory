@@ -85,6 +85,13 @@ class TestPluginStructure(unittest.TestCase):
         self.assertIn("factory add", text)
         self.assertIn("factory priority", text)
 
+    def test_roadmap_command_names_its_skill(self):
+        cmd = ROOT / "commands/roadmap.md"
+        self.assertTrue(cmd.exists())
+        text = cmd.read_text()
+        self.assertRegex(text, FRONTMATTER, str(cmd))
+        self.assertIn("factory-roadmap", text)
+
     def test_intake_skill_covers_brownfield_and_taste_packet(self):
         text = (ROOT / "skills/factory-intake/SKILL.md").read_text()
         self.assertIn("taste.md", text)

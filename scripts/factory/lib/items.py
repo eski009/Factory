@@ -148,6 +148,8 @@ def new_item_id(repo, title):
 
 
 def set_priority(repo, item_id, priority):
+    if isinstance(priority, bool) or not isinstance(priority, int):
+        raise ItemError("priority must be an integer >= 1")
     if priority < 1:
         raise ItemError("priority must be >= 1")
     meta, body = load_item(repo, item_id)

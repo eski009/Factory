@@ -57,11 +57,10 @@ class TestE2ECli(unittest.TestCase):
         # spec gate refuses without triage.md + priority
         self.cli("advance", item, "spec", expect=2)
         self.art(item, "triage.md")
-        # set priority via edited item.md through... there's no CLI for priority;
-        # skills edit frontmatter directly, so do the same here:
-        item_md = self.target / ".factory/items" / item / "item.md"
-        item_md.write_text(item_md.read_text().replace(
-            "kind: ui", "kind: ui\npriority: 1"), encoding="utf-8")
+        # set priority through the CLI (Phase 7), then confirm the tree still
+        # validates -- priority.set is gate-neutral -- before the spec gate reads it
+        self.cli("priority", item, "1")
+        self.cli("validate")
         self.cli("advance", item, "spec")
         # spec -> design
         self.art(item, "spec.md")

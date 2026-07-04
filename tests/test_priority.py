@@ -86,6 +86,24 @@ class TestSetPriority(unittest.TestCase):
         loaded, _ = items.load_item(self.repo, "0001-thing")
         self.assertEqual(loaded["updated"], "2026-07-04T10:00:00Z")
 
+    def test_set_priority_keeps_tree_valid(self):
+        put(self.repo)
+        self.assertEqual(initrepo.validate_tree(self.repo), [])
+        items.set_priority(self.repo, "0001-thing", 3)
+        # priority.set is gate-neutral: the tree still validates and the
+        # stage reconstructed from the log is unaffected.
+        self.assertEqual(initrepo.validate_tree(self.repo), [])
+
+    def test_set_priority_rejects_non_integer(self):
+        put(self.repo)
+        for bad in (2.5, True, "3"):
+            with self.assertRaises(items.ItemError) as ctx:
+                items.set_priority(self.repo, "0001-thing", bad)
+            self.assertIn("integer", str(ctx.exception))
+        # a rejected set must not have mutated the item (guard fires first)
+        loaded, _ = items.load_item(self.repo, "0001-thing")
+        self.assertNotIn("priority", loaded)
+
 
 if __name__ == "__main__":
     unittest.main()

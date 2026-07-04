@@ -21,7 +21,7 @@ If a design file was given, in this same pass extract the tokens, components, an
 
 ## 2. Seed the brain first
 
-Before any triage happens, seed `docs/factory/brain/vision.md`, `users.md`, and `constraints.md` from the PRD — evidence-only, with an inline citation on every claim: `(source: <prd-path>#<section>)`. Anything the PRD doesn't settle (users you can't confirm, constraints it doesn't state) goes to `brain/open-questions.md` naming what's unknown, never invented into the surface.
+Before any triage happens, seed `docs/factory/brain/vision.md`, `users.md`, and `constraints.md` from the PRD — evidence-only, with an inline citation on every claim: `(source: <prd-path>#<section>)`. Anything the PRD doesn't settle (users you can't confirm, constraints it doesn't state) goes to `docs/factory/brain/open-questions.md` naming what's unknown, never invented into the surface.
 
 When this seeding is done, say this to the user verbatim: "A human reviews the seeded brain before the first council run treats it as ground truth — say so when you finish."
 
@@ -29,18 +29,17 @@ When this seeding is done, say this to the user verbatim: "A human reviews the s
 
 ## 3. Batch triage
 
-Run the `council-review` skill in **triage mode** exactly once over the whole candidate list — one `seed-context.md` listing every candidate from step 1 (title, provisional kind, cited section), not one council run per candidate. The council returns, per candidate, a build/don't-build call, a relative priority ranking, and its reasoning.
-
-For this batch run, council-review writes `seed-context.md`, round files (`round-1/<role>.md`, etc.), and `synthesis.md` under `.factory/runs/roadmap/` instead of under items/<id>/reviews/ — no items exist yet at triage time. Per-item `triage.md` files are written only after candidates are accepted and added as items.
+Run the `council-review` skill in **batch triage mode** exactly once over the whole candidate list. Invoke it with a review root of `.factory/runs/roadmap/` — no item exists yet at triage time — and a batch seed listing every candidate from step 1 (title, provisional kind, cited section), not one council run per candidate. council-review then writes `seed-context.md`, its round files, and `synthesis.md` under `.factory/runs/roadmap/`. The council returns, per candidate, a build/don't-build call, a relative priority ranking, and its reasoning. Per-item `triage.md` files are written only after candidates are accepted and added as items.
 
 For each candidate the council accepts, in order:
 
 1. Before adding, check idempotency (see below) — skip if an equivalent open item already exists.
 2. `factory add "TITLE" --kind KIND` — capture the printed item id.
 3. `factory priority ITEM N` — N is that candidate's position in the council's relative ranking (1 = highest).
-4. Write `items/<id>/triage.md` citing the council synthesis (`reviews/synthesis.md`) for the build call, priority, and any scope notes.
+4. Write `items/<id>/triage.md` citing the batch synthesis (`.factory/runs/roadmap/synthesis.md`) for the build call, priority, and any scope notes.
+5. Advance the item out of triage so the next `/factory:run` resumes it at `spec` rather than re-running per-item triage: `factory advance ITEM triage` then `factory advance ITEM spec`. The spec gate's preconditions — a non-empty `triage.md` and a set `priority` — are both satisfied by steps 3-4, so this is the batch equivalent of factory-triage's own build-exit. (An item left at `idea` would be routed back through per-item council triage on the next run, discarding this batch pass.)
 
-For each candidate the council rejects, append an entry to `brain/open-questions.md` naming the candidate and the council's stated reason — rejected candidates are never silently dropped.
+For each candidate the council rejects, append an entry to `docs/factory/brain/open-questions.md` naming the candidate and the council's stated reason — rejected candidates are never silently dropped.
 
 Once all accepted candidates are filed, write `docs/factory/roadmap.md` in priority order, one line per item, following the flat convention from `factory-triage`: `- [priority] <item-id> <title> (stage)`.
 

@@ -24,8 +24,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   blank scaffold.
 - **Orchestration and model-tiering pattern references** —
   `skills/capabilities/references/orchestration-patterns.md` and
-  `model-tiering.md`, documenting fan-out patterns and which tier must run
-  a given subagent.
+  `model-tiering.md`, documenting the session-proven orchestration patterns
+  and which model tier runs a given task or subagent.
 - **README "How it works"** — an ASCII pipeline diagram (stages, the design
   gate, both council moments) plus a 60-seconds-from-idea-to-shipped
   annotated example of the real commands.
