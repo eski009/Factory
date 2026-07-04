@@ -124,6 +124,21 @@ class TestStorage(unittest.TestCase):
         self.assertEqual(items.slugify("Hello, World! 42"), "hello-world-42")
         self.assertEqual(items.slugify("???"), "item")
 
+    def test_list_items_safe_excludes_id_mismatch(self):
+        # F3: when dir name doesn't match item.md id, item is excluded and error recorded
+        meta, _ = items.parse_item(VALID)
+        items.save_item(self.repo, meta, "")
+        # Copy the item dir with a different name (dir name won't match id)
+        copy_dir = paths.item_dir(self.repo, "0002-dark-mode-copy")
+        shutil.copytree(paths.item_dir(self.repo, "0001-dark-mode"), copy_dir)
+        # list_items_safe should return only the original, with error for the copy
+        metas, errors = items.list_items_safe(self.repo)
+        ids = [m["id"] for m in metas]
+        self.assertEqual(ids, ["0001-dark-mode"])
+        self.assertEqual(len(errors), 1)
+        self.assertIn("0002-dark-mode-copy", errors[0])
+        self.assertIn("does not match directory name", errors[0])
+
 
 if __name__ == "__main__":
     unittest.main()

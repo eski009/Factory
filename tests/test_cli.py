@@ -138,6 +138,31 @@ class CliTest(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["id"], "0001-good-one")
 
+    def test_status_flags_dir_id_mismatch(self):
+        # F3: dir/id mismatch causes exit 2, only original in output
+        import shutil
+        self.run_cli("init")
+        self.run_cli("add", "Original")
+        # Copy the item dir with a different name
+        orig_dir = Path(self.repo, ".factory/items/0001-original")
+        copy_dir = Path(self.repo, ".factory/items/0002-copy")
+        shutil.copytree(orig_dir, copy_dir)
+        # status should show error and only the original item
+        code, out, err = self.run_cli("status")
+        self.assertEqual(code, 2)
+        self.assertIn("0002-copy", err)
+        self.assertIn("does not match directory name", err)
+        self.assertIn("0001-original", out)
+        self.assertNotIn("0002-copy", out)
+
+    def test_add_without_init_exits_2(self):
+        # F4: add on uninitialized repo exits 2
+        code, out, err = self.run_cli("add", "New item")
+        self.assertEqual(code, 2)
+        self.assertIn("not a factory repo (run init)", err)
+        items_dir = Path(self.repo, ".factory/items")
+        self.assertFalse(items_dir.exists() and list(items_dir.iterdir()))
+
 
 if __name__ == "__main__":
     unittest.main()

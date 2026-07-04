@@ -23,6 +23,7 @@ class InitTest(unittest.TestCase):
         self.assertTrue((self.repo / "docs/factory/brain/vision.md").exists())
         self.assertTrue((self.repo / "docs/factory/council/product.md").exists())
         self.assertTrue((self.repo / "docs/factory/packets").is_dir())
+        self.assertTrue((self.repo / "docs/factory/packets/reports").is_dir())
         config = json.loads((self.repo / ".factory/config.json").read_text())
         self.assertEqual(config["merge"], "auto")
         self.assertEqual(config["gates"], ["design"])
@@ -36,6 +37,14 @@ class InitTest(unittest.TestCase):
         second = initrepo.init(self.repo)
         self.assertEqual(second, [])
         self.assertEqual(marker.read_text(), "MY EDIT\n")
+
+    def test_init_scaffolds_packets_reports_idempotently(self):
+        # F2: packets/reports dir is created on first init, idempotent on second
+        first = initrepo.init(self.repo)
+        self.assertTrue((self.repo / "docs/factory/packets/reports").is_dir())
+        self.assertTrue(any("packets/reports" in p for p in first))
+        second = initrepo.init(self.repo)
+        self.assertEqual(second, [])
 
     def test_validate_missing_config(self):
         errors = initrepo.validate_tree(self.repo)
@@ -149,6 +158,19 @@ class InitTest(unittest.TestCase):
         finally:
             os.environ.pop("FACTORY_NOW", None)
         self.assertEqual(initrepo.validate_tree(self.repo), [])
+
+    def test_validate_ignores_stage_advance_with_non_dict_data(self):
+        # F1: non-dict data in stage.advance should not crash; expected stays unchanged
+        initrepo.init(self.repo)
+        from scripts.factory.lib import logs
+        meta = {"id": "0001-x", "title": "X", "stage": "idea", "kind": "ui",
+                "created": "2026-07-03T10:00:00Z", "updated": "2026-07-03T10:00:00Z"}
+        items.save_item(self.repo, meta, "")
+        # Append a malformed stage.advance with string data; it should be ignored
+        logs.append_event(self.repo, "0001-x", "stage.advance", "oops")
+        # Validate should not crash; expected stays at "idea", matching the item
+        errors = initrepo.validate_tree(self.repo)
+        self.assertEqual(errors, [])
 
 
 class ConsistencyTest(unittest.TestCase):

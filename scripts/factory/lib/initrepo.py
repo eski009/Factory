@@ -28,7 +28,8 @@ def init(repo, product=None):
     repo = Path(repo)
     created = []
     for d in (paths.items_dir(repo), paths.ledgers_dir(repo),
-              paths.factory_root(repo) / "runs", paths.docs_root(repo) / "packets"):
+              paths.factory_root(repo) / "runs", paths.docs_root(repo) / "packets",
+              paths.docs_root(repo) / "packets" / "reports"):
         if not d.exists():
             d.mkdir(parents=True)
             created.append(str(d.relative_to(repo)))
@@ -102,7 +103,9 @@ def validate_tree(repo):
                 expected = "idea"
                 for event in log_events:
                     if event.get("event") == "stage.advance":
-                        expected = event.get("data", {}).get("to", expected)
+                        data = event.get("data")
+                        if isinstance(data, dict):
+                            expected = data.get("to", expected)
                 if meta["stage"] != expected:
                     errors.append(
                         f"{sub.name}: stage {meta['stage']!r} does not match "

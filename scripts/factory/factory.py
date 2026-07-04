@@ -35,6 +35,8 @@ def cmd_validate(args):
 
 
 def cmd_add(args):
+    if not _require_factory_repo(args.repo):
+        return 2
     if not args.title.strip():
         print("error: title must not be empty", file=sys.stderr)
         return 1

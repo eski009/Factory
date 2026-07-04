@@ -122,7 +122,10 @@ def list_items_safe(repo):
             continue
         try:
             meta, _ = parse_item(item_md.read_text(encoding="utf-8"))
-            metas.append(meta)
+            if meta["id"] != sub.name:
+                errors.append(f"{sub.name}: id {meta['id']!r} does not match directory name")
+            else:
+                metas.append(meta)
         except ItemError as exc:
             errors.append(f"{sub.name}: {exc}")
     return metas, errors
