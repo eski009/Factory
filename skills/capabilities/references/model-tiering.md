@@ -12,6 +12,8 @@ These patterns assume nothing about the orchestrating model — they are how the
 
 Reviewing is never delegated below the mid tier, full stop — even when the code under review came out of the cheapest tier. A cheap-tier implementer is only safe because a mid-or-higher reviewer is the backstop; drop the reviewer to the cheap tier too and the backstop is gone.
 
+**Who performs the whole-branch walk (pattern 4):** only an orchestrator already running on the most-capable tier may walk the flow inline; an orchestrator running on any lower tier (mid included) must dispatch the walk to a most-capable-tier subagent — a read-only reviewer — and merge its returned trace into the review synthesis rather than attempting the walk itself.
+
 ## Signals for upgrading
 
 Start a task at the tier the table above assigns, but move up mid-task on any of these signals rather than waiting for a downstream failure to force the issue:
@@ -22,4 +24,4 @@ Start a task at the tier the table above assigns, but move up mid-task on any of
 
 ## The omitted-model rule
 
-An omitted model choice silently inherits the most expensive tier available, not the cheapest, not a "reasonable default." That's a safe failure mode for cost but not for one it can mask: if the reason a stage is passing is that it silently escalated a task's tier rather than that the process actually works at the tier you intended, you won't find out until someone deliberately runs it on a cheap tier and it fails. Always choose the tier explicitly, per task, rather than leaving it to inherit — an explicit choice is a claim you can check; an inherited one is a guess wearing a default.
+An omitted model choice inherits the parent's model — not the most expensive tier available, not the cheapest, not a "reasonable default." When the orchestrator itself is running on the mid tier, an unspecified dispatch (a walk included) silently inherits mid tier too, one rung below what the table requires for that job. The failure mode is a silent downgrade masquerading as compliance: the stage still reports a pass, and nothing distinguishes "this actually works at the tier the table requires" from "this quietly ran a tier down and got lucky" until someone runs the same stage under a cheaper orchestrator and it breaks. Always choose the tier explicitly, per task, rather than leaving it to inherit — an explicit choice is a claim you can check; an inherited one is a guess wearing a default.

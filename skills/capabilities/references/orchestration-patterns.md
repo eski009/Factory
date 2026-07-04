@@ -20,7 +20,7 @@ These patterns assume nothing about the orchestrating model — they are how the
 
 ## 3. Independent task review with two verdicts, then fix → re-review
 
-**Rule:** every task gets a review pass independent of the implementer, and that review renders two separate verdicts — spec compliance and quality — not one blended judgment. A rejection triggers a fix, and the fix always gets a re-review; there is no "the fix was obviously right, skip it."
+**Rule:** every task gets a review pass independent of the implementer, and that review renders two separate verdicts — spec compliance and quality — not one blended judgment. A rejection triggers a fix, and the fix always gets a re-review; there is no "the fix was obviously right, skip it." The one exception: for a single-line/single-purpose fix with test evidence attached, the controller's own diff-read stands in for that re-review (pattern 6) — everything else still gets a full re-review.
 
 **Why:** spec compliance and quality fail independently — code can satisfy every acceptance criterion and still be a mess worth flagging, or read cleanly and quietly miss a criterion. Collapsing them into one verdict lets either failure mode hide behind the other. And a fix that isn't re-reviewed is a review gate with a hole in it: the one case most likely to introduce a new bug — a just-edited diff — is the one case skipping re-review leaves unchecked.
 
@@ -38,13 +38,13 @@ These patterns assume nothing about the orchestrating model — they are how the
 
 **Rule:** when a review (task-level or whole-branch) produces multiple findings, gather the complete list and hand it to one fixer in one dispatch — never spin up a separate fixer per finding.
 
-**Why:** a per-finding fixer rebuils the same context — reads the same files, re-derives the same understanding of the change — for every finding, and pays that cost again and again. One fixer with the complete list pays it once and can also see when two findings share a root cause, which per-finding dispatch never notices. This is also why audits should be finished before fixing starts: an audit that reports a partial list and triggers a fix wave, then a second partial list and a second wave, multiplies the same overhead the batching was meant to avoid.
+**Why:** a per-finding fixer rebuilds the same context — reads the same files, re-derives the same understanding of the change — for every finding, and pays that cost again and again. One fixer with the complete list pays it once and can also see when two findings share a root cause, which per-finding dispatch never notices. This is also why audits should be finished before fixing starts: an audit that reports a partial list and triggers a fix wave, then a second partial list and a second wave, multiplies the same overhead the batching was meant to avoid.
 
 **Tell:** dispatching a new fixer per bullet point in a findings list; starting a fix wave before an audit or review round has finished enumerating everything it found.
 
 ## 6. Controller verification for small fixes
 
-**Rule:** when a fix is small — a one-line change with test evidence attached — the orchestrating session verifies it directly by reading the diff, rather than routing it through another review round-trip.
+**Rule:** when a fix is small — a one-line change with test evidence attached — the orchestrating session verifies it directly by reading the diff, rather than routing it through another review round-trip. For a single-line/single-purpose fix with test evidence, this diff-read *is* the re-review pattern 3 requires, not a shortcut around it — and the substitution only holds if the diff clears a checklist: (a) the diff implements exactly the specified fix and nothing else; (b) the test evidence names the command run and its output; (c) the covering test actually exercises the changed line. Anything failing the checklist routes to a normal re-review.
 
 **Why:** review capacity is finite and should go where judgment is actually needed. A one-sentence fix with a passing test attached is faster and just as reliably checked by the controller reading the diff itself; running it through a full review cycle anyway doesn't buy more confidence, it just spends a review slot on a change too small to need one.
 
