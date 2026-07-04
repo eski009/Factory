@@ -25,9 +25,13 @@ Before any triage happens, seed `docs/factory/brain/vision.md`, `users.md`, and 
 
 When this seeding is done, say this to the user verbatim: "A human reviews the seeded brain before the first council run treats it as ground truth — say so when you finish."
 
+**HARD GATE:** Present the seeded surfaces (`docs/factory/brain/vision.md`, `users.md`, `constraints.md`, and `design-system.md` if applicable) to the human for review. Pause and await their explicit approval before proceeding to step 3. If running unattended (autopilot context), write a packet summarizing the seeded brain, request human review, and exit — do not proceed to batch triage until the brain is reviewed.
+
 ## 3. Batch triage
 
 Run the `council-review` skill in **triage mode** exactly once over the whole candidate list — one `seed-context.md` listing every candidate from step 1 (title, provisional kind, cited section), not one council run per candidate. The council returns, per candidate, a build/don't-build call, a relative priority ranking, and its reasoning.
+
+For this batch run, council-review writes `seed-context.md`, round files (`round-1/<role>.md`, etc.), and `synthesis.md` under `.factory/runs/roadmap/` instead of under items/<id>/reviews/ — no items exist yet at triage time. Per-item `triage.md` files are written only after candidates are accepted and added as items.
 
 For each candidate the council accepts, in order:
 
