@@ -107,6 +107,33 @@ class CliDispatchTest(unittest.TestCase):
         self.assertTrue(parsed["tree_valid"])
         self.assertEqual(parsed["merge_policy"], "auto")
 
+    def test_priority_on_item_prints_success_message(self):
+        from scripts.factory.lib import items
+        self.run_cli("init")
+        self.run_cli("add", "Thing")
+        code, out, _ = self.run_cli("priority", "0001-thing", "5")
+        self.assertEqual(code, 0)
+        self.assertIn("0001-thing priority 5", out)
+
+    def test_priority_non_integer_exits_1(self):
+        self.run_cli("init")
+        self.run_cli("add", "Thing")
+        code, _, _ = self.run_cli("priority", "0001-thing", "x")
+        self.assertEqual(code, 1)
+
+    def test_priority_zero_exits_2_with_refused(self):
+        self.run_cli("init")
+        self.run_cli("add", "Thing")
+        code, _, err = self.run_cli("priority", "0001-thing", "0")
+        self.assertEqual(code, 2)
+        self.assertIn("refused:", err)
+
+    def test_priority_non_existent_item_exits_2_with_refused(self):
+        self.run_cli("init")
+        code, _, err = self.run_cli("priority", "0999-nope", "1")
+        self.assertEqual(code, 2)
+        self.assertIn("refused:", err)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -7,7 +7,7 @@ Writes are deterministic: fixed field order, LF endings, trailing newline.
 
 import re
 
-from . import paths
+from . import logs, paths
 
 FIELD_ORDER = (
     "id", "title", "stage", "kind", "priority",
@@ -145,3 +145,14 @@ def new_item_id(repo, title):
             if m:
                 nums.append(int(m.group(1)))
     return f"{max(nums, default=0) + 1:04d}-{slugify(title)}"
+
+
+def set_priority(repo, item_id, priority):
+    if priority < 1:
+        raise ItemError("priority must be >= 1")
+    meta, body = load_item(repo, item_id)
+    meta["priority"] = priority
+    meta["updated"] = logs.now_stamp()
+    save_item(repo, meta, body)
+    logs.append_event(repo, item_id, "priority.set", {"priority": priority})
+    return meta

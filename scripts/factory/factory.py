@@ -192,6 +192,18 @@ def cmd_choice(args):
     return 0
 
 
+def cmd_priority(args):
+    if not _require_factory_repo(args.repo):
+        return 2
+    try:
+        items.set_priority(args.repo, args.item, args.priority)
+    except items.ItemError as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    print(f"{args.item} priority {args.priority}")
+    return 0
+
+
 def cmd_doctor(args):
     report = doctor_mod.report(args.repo)
     if args.json:
@@ -277,6 +289,11 @@ def main(argv=None):
     p.add_argument("option")
     p.add_argument("--notes")
     p.set_defaults(func=cmd_choice)
+
+    p = sub.add_parser("priority", help="set an item's priority (1+)")
+    p.add_argument("item")
+    p.add_argument("priority", type=int)
+    p.set_defaults(func=cmd_priority)
 
     p = sub.add_parser("doctor", help="readout of repo integration state")
     p.add_argument("--json", action="store_true")
