@@ -61,10 +61,34 @@ factory choice 0001-dark-mode b          ← you skim the mockups and choose B
 
 That's the whole loop: **add → run → pick a design → run → shipped.** The only thing you did by hand was choose the look.
 
+## It learns your taste
+
+Most AI reviewers start from a blank slate every time. Factory's council doesn't — it keeps a memory of *your* product, and that memory compounds with every review.
+
+Whenever the council reviews real work, each specialist files **evidence-backed opinions**: a constraint it confirmed, a pattern your codebase prefers, a market read. None of it lands in memory on trust. Each claim passes a **firewall** — the orchestrator judges it (accept / reject / defer …), and *only* an accepted, evidence-cited claim may update the product's "brain." No specialist edits that memory directly, and every change is logged with the judgement that authorized it. The memory sharpens; it never silently drifts.
+
+Two things compound over time:
+
+- **Each reviewer carries its own notes forward.** Next round, the UI seat already knows your design conventions and the architecture seat already knows your constraints — they judge against *your* standards, not generic ones.
+- **Being right earns attention.** Every judgement nudges a per-topic reputation score, so voices that have been right get read and weighed first next time. A low score never silences a claim, though — reputation ranks attention, it doesn't censor.
+
+You can seed this on day one — point Factory at an existing codebase and it mines your conventions, or answer a short "taste" questionnaire (products you admire, your non-negotiables, what "done" means to you). But the real sharpening happens on your own diffs, review after review.
+
+```mermaid
+flowchart LR
+    work[council reviews real work] --> bid[specialists file evidence-backed opinions]
+    bid --> gate{firewall — orchestrator judges}
+    gate -- accepted --> mem[(product brain + reviewer memory)]
+    gate -- rejected --> hist[kept as history, not merged]
+    mem --> work
+
+    classDef store fill:#e6f4ea,stroke:#34a853,color:#111;
+    class mem store;
+```
+
 ## What makes it different
 
 - **Autonomous where it can be, human where it should be.** One default stop (design) — and you can dial that up or down.
-- **A council with a memory, not a single reviewer.** Specialists file evidence-backed opinions; a *firewall* means the product's "brain" — its vision, users, and constraints — only changes through that reviewed path, never a silent edit.
 - **Evidence, not vibes.** Every stage transition is gate-checked by a deterministic engine; "done" requires proof — a spec on disk, a plan with tasks, green tests.
 - **Portable.** Works on any Claude model; faster-model features are bonuses, never requirements.
 
