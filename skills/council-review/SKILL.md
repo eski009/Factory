@@ -15,12 +15,13 @@ Before Round 1, run `factory reputation --json`. Use scores to order which agent
 
 ## Protocol
 
-1. **Seed context.** Every artifact below lives under a **review root**: `items/<id>/reviews/` for a single item (the default), or a caller-supplied root such as `.factory/runs/roadmap/` when no item exists yet (batch triage). Below, `reviews/` denotes that root. Write `reviews/seed-context.md`:
-   - Triage mode (single item): the item body + relevant brain surfaces (roadmap, open-questions, decisions, constraints).
+1. **Seed context.** Every artifact below lives under a **review root**: `items/<id>/reviews/` for a single item (the default), or a caller-supplied root such as `.factory/runs/roadmap/` (batch triage) or `.factory/runs/research/` (initiation research) when no item exists yet. Below, `reviews/` denotes that root. Write `reviews/seed-context.md`:
+   - Triage mode (single item): the item body + relevant brain surfaces (roadmap, open-questions, decisions, constraints, personas, market).
    - Triage mode (batch, e.g. from factory-roadmap): the full candidate list — one block per candidate (title, provisional kind, cited PRD section) — plus the same brain surfaces. The council ranks the candidates relative to each other in this one pass.
-   - Review mode: a diff summary + the item's spec.md.
+   - Research mode (initiation, e.g. from factory-research): the research seed — the intake-mined surfaces (constraints, design-system, users), the PRD/design file if provided, and the repo's outward surface (README, routes) — under review root `.factory/runs/research/`. Only the outward-facing seats are dispatched (see step 2); each researches its lens (web where available, inputs-only otherwise), every claim cited or marked UNSOURCED. Synthesis drafts the persona(s) + market read.
+   - Review mode: a diff summary + the item's spec.md + the persona surfaces (personas.md, market.md).
 
-2. **Round 1 — independent.** Dispatch the six council agents (`agents/council-product.md`, `council-ui-taste.md`, `council-architecture.md`, `council-engineering-quality.md`, `council-customer.md`, `council-commercial.md`) as parallel Task subagent calls in one message — the degraded baseline; see the `capabilities` skill for fan-out upgrades. Each agent receives ONLY `seed-context.md` and its own `docs/factory/council/<role>.md` — never another agent's memory file or round notes. Each agent:
+2. **Round 1 — independent.** Dispatch the six council agents (`agents/council-product.md`, `council-ui-taste.md`, `council-architecture.md`, `council-engineering-quality.md`, `council-customer.md`, `council-commercial.md`) as parallel Task subagent calls in one message — the degraded baseline; see the `capabilities` skill for fan-out upgrades. (In **research mode** only the four outward-facing seats are dispatched: `agents/council-customer.md`, `council-commercial.md`, `council-product.md`, `council-ui-taste.md`.) Each agent receives ONLY `seed-context.md` and its own `docs/factory/council/<role>.md` — never another agent's memory file or round notes. Each agent:
    - Raises at most 3 new claims.
    - Cites evidence (file path, line, or URL) for each claim, or marks it explicitly unsourced.
    - Returns its findings as its final report — seats hold Read/Grep/Glob only and never write files. The orchestrator (the invoking session, not a subagent) persists each returned report to `reviews/round-1/<role>.md` before moving on.

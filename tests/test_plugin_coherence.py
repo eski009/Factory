@@ -76,6 +76,15 @@ class TestPluginCoherence(unittest.TestCase):
         self.assertIn("session-start.sh", blob)
         self.assertTrue((ROOT / "hooks/session-start.sh").exists())
 
+    def test_council_review_seed_consumes_persona_surfaces(self):
+        # the persona/market surfaces factory-research writes must be pulled
+        # into council-review's seed (the downstream reasoned-against hook),
+        # and research mode must be documented.
+        text = read(ROOT / "skills/council-review/SKILL.md")
+        self.assertIn("personas", text)
+        self.assertIn("market", text)
+        self.assertIn("research mode", text.lower())
+
 
 if __name__ == "__main__":
     unittest.main()
