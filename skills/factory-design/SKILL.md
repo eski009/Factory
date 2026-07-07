@@ -33,7 +33,7 @@ Write one self-contained HTML file to `items/<id>/design/options.html`:
 - Zero external requests — no CDN fonts, scripts, or images; no network calls of any kind.
 - 2-4 options, each a labeled `<section data-option="a">` (etc.) headed "Option A — <direction name>", "Option B — <direction name>", and so on.
 - Options must be **genuinely distinct directions** — differences in layout, structure, or interaction model — not palette or font swaps of the same underlying design. For example: single-column form vs. wizard flow vs. dashboard panel = three directions; the same layout in two palettes = one direction. If you can't name what structurally differs between two options, they're one option.
-- Each option renders the item's actual UI surface from `spec.md` — real content and controls for this item, not lorem-ipsum or generic placeholder abstractions.
+- Each option renders the item's actual UI surface from `spec.md` — real content and controls for this item, not lorem-ipsum or generic placeholder abstractions — and serves the primary persona in `docs/factory/brain/personas.md` (their goals and context, not a generic user).
 - Respect the design-system tokens read above (colors, spacing, type scale).
 - If the design system defines both light and dark treatments, render both for each option; if it only defines one, one is enough.
 

@@ -124,6 +124,14 @@ class TestPluginStructure(unittest.TestCase):
             "A human reviews the seeded brain before the first council run "
             "treats it as ground truth", text)
 
+    def test_init_command_invokes_research(self):
+        text = (ROOT / "commands/init.md").read_text()
+        self.assertIn("factory-research", text)
+
+    def test_spec_and_design_reason_against_persona(self):
+        self.assertIn("personas.md", (ROOT / "skills/factory-spec/SKILL.md").read_text())
+        self.assertIn("personas.md", (ROOT / "skills/factory-design/SKILL.md").read_text())
+
 
 if __name__ == "__main__":
     unittest.main()

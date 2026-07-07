@@ -13,14 +13,14 @@ Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.p
 
 ## Read first
 
-Read the item body, `items/<id>/triage.md`, and the brain surfaces: `docs/factory/brain/vision.md`, `users.md`, `constraints.md`, and (for `ui`/`mixed` items) `design-system.md`.
+Read the item body, `items/<id>/triage.md`, and the brain surfaces: `docs/factory/brain/vision.md`, `users.md`, `personas.md`, `constraints.md`, and (for `ui`/`mixed` items) `design-system.md`.
 
 ## The autonomous substitute for brainstorming
 
 There is no human in this loop to argue with, so the dialogue that normally happens in brainstorming has to happen against the brain instead:
 
 1. **Enumerate the 3-5 key design questions** this item raises — the kind of thing a brainstorming partner would ask (scope boundary, key user flow, data shape, failure mode, what's explicitly out).
-2. **Answer each question from the brain.** For every question, check vision.md, users.md, constraints.md, and design-system.md for a real answer. An answer counts only if you can point to the source passage — don't infer one from vibes.
+2. **Answer each question from the brain.** For every question, check vision.md, users.md, personas.md, constraints.md, and design-system.md for a real answer — including whether the choice serves the primary persona. An answer counts only if you can point to the source passage — don't infer one from vibes.
 3. **Where the brain has no answer — a brain gap — choose the most reversible option.** Reversible means: cheapest to undo later, narrowest surface area, closest to what a user could reasonably expect. Never pick the option that's hardest to walk back just because it looks more complete.
 4. **Record the assumption** in the spec under `## Assumptions (brain gaps)`, naming the question, the choice made, and why it's reversible.
 5. **File a bid** for each brain gap via the `council-judgement` skill, targeting `--surface brain/open-questions.md`, so the gap becomes durable memory instead of getting silently re-decided by the next item that hits it:
