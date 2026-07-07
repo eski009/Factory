@@ -14,6 +14,13 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {"schedule": {"type": "string", "minLength": 1}}
+    },
+    "research": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "depth": {"type": "string", "enum": ["inputs-only", "web", "deep"]}
+      }
     }
   }
 }

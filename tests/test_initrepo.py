@@ -172,6 +172,28 @@ class InitTest(unittest.TestCase):
         errors = initrepo.validate_tree(self.repo)
         self.assertEqual(errors, [])
 
+    def test_default_config_has_research_depth_web(self):
+        initrepo.init(self.repo, product="demo")
+        config = json.loads((self.repo / ".factory/config.json").read_text())
+        self.assertEqual(config["research"], {"depth": "web"})
+
+    def test_validate_accepts_valid_research_depth(self):
+        initrepo.init(self.repo)
+        cfg = self.repo / ".factory/config.json"
+        data = json.loads(cfg.read_text())
+        data["research"] = {"depth": "deep"}
+        cfg.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        self.assertEqual(initrepo.validate_tree(self.repo), [])
+
+    def test_validate_rejects_bad_research_depth(self):
+        initrepo.init(self.repo)
+        cfg = self.repo / ".factory/config.json"
+        data = json.loads(cfg.read_text())
+        data["research"] = {"depth": "exhaustive"}
+        cfg.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any("depth" in e for e in errors))
+
 
 class ConsistencyTest(unittest.TestCase):
     def setUp(self):

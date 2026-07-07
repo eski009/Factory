@@ -17,7 +17,8 @@ SCHEMAS = _INSTALL_ROOT / "schemas"
 LEDGERS = ("bids", "judgements", "reputation")
 LEDGER_SCHEMAS = {"bids": "escalation-bid", "judgements": "orchestrator-judgement",
                   "reputation": "reputation-event"}
-DEFAULT_CONFIG = {"version": 1, "merge": "auto", "gates": ["design"]}
+DEFAULT_CONFIG = {"version": 1, "merge": "auto", "gates": ["design"],
+                  "research": {"depth": "web"}}
 
 
 def load_schema(name):
