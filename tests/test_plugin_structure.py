@@ -28,7 +28,7 @@ class TestPluginStructure(unittest.TestCase):
     def test_commands_have_frontmatter(self):
         commands = sorted((ROOT / "commands").glob("*.md"))
         self.assertEqual([p.stem for p in commands],
-                         ["add", "autopilot", "init", "packet", "roadmap", "run", "status"])
+                         ["add", "autopilot", "init", "packet", "research", "roadmap", "run", "status"])
         for path in commands:
             self.assertRegex(path.read_text(), FRONTMATTER, path.name)
 
@@ -103,6 +103,26 @@ class TestPluginStructure(unittest.TestCase):
             ref = ROOT / f"skills/capabilities/references/{name}.md"
             self.assertTrue(ref.exists(), str(ref))
             self.assertIn(f"references/{name}.md", skill_text, name)
+
+    def test_research_command_names_its_skill(self):
+        cmd = ROOT / "commands/research.md"
+        self.assertTrue(cmd.exists())
+        text = cmd.read_text()
+        self.assertRegex(text, FRONTMATTER, str(cmd))
+        self.assertIn("factory-research", text)
+
+    def test_research_skill_covers_persona_market_depth_and_gate(self):
+        skill = ROOT / "skills/factory-research/SKILL.md"
+        self.assertTrue(skill.exists())
+        text = skill.read_text()
+        self.assertRegex(text, FRONTMATTER, str(skill))
+        self.assertIn("personas.md", text)
+        self.assertIn("market.md", text)
+        self.assertIn("research.depth", text)
+        self.assertIn("research mode", text.lower())
+        self.assertIn(
+            "A human reviews the seeded brain before the first council run "
+            "treats it as ground truth", text)
 
 
 if __name__ == "__main__":
