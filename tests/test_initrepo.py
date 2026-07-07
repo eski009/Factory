@@ -194,6 +194,11 @@ class InitTest(unittest.TestCase):
         errors = initrepo.validate_tree(self.repo)
         self.assertTrue(any("depth" in e for e in errors))
 
+    def test_init_scaffolds_personas_and_market(self):
+        initrepo.init(self.repo)
+        self.assertTrue((self.repo / "docs/factory/brain/personas.md").exists())
+        self.assertTrue((self.repo / "docs/factory/brain/market.md").exists())
+
 
 class ConsistencyTest(unittest.TestCase):
     def setUp(self):
