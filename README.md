@@ -2,7 +2,7 @@
 
 > **From idea to shipped — on an assembly line of AI specialists, inside [Claude Code](https://claude.com/claude-code).**
 
-You give Factory a feature idea (or a whole PRD, or an existing codebase). It carries that idea all the way to merged, tested code — triage, spec, design, build, review, ship — with a team of AI specialists doing the work and a review *council* checking it along the way. It stops to ask you exactly one kind of question: **which design direction do you want.** Everything else runs on its own.
+You give Factory a feature idea (or a whole PRD, or an existing codebase). It carries that idea all the way to merged, tested code — triage, spec, design, build, review, ship — with a team of AI specialists doing the work and a review *council* that checks the work — and learns your taste as it goes. It stops to ask you exactly one kind of question: **which design direction do you want.** Everything else runs on its own.
 
 Runs on any Claude model.
 
@@ -10,10 +10,11 @@ Runs on any Claude model.
 
 Shipping a feature is never one step. It's a dozen: write a spec, pick a design, plan the work, write the code, review it, test it, merge it — and keep all of it moving.
 
-Factory is an **assembly line** for exactly that. You drop an idea onto the line; it moves from station to station, and a specialist handles each one. Three rules make it trustworthy:
+Factory is an **assembly line** for exactly that. You drop an idea onto the line; it moves from station to station, and a specialist handles each one. Four rules make it trustworthy:
 
 - **Nothing advances until it passes.** Every station has real checks — a spec must exist, a plan must list tasks, tests must be green. An item can't skip ahead on vibes.
-- **A council reviews the work — not a lone bot.** At two points (triage and code review), a panel of AI personas argues it out *with evidence*, and each one's track record is remembered.
+- **A council reviews the work — not a lone bot.** At two points (triage and code review), a panel of AI personas argues it out *with evidence*.
+- **The council learns your taste.** Evidence-backed findings pass a firewall into the product's durable memory, so the council gets sharper on *your* conventions and standards with every review — never generic, never a silent edit. *([more below](#it-learns-your-taste))*
 - **You're interrupted only where judgment matters.** The one built-in human stop is **design**: Factory produces a few real mockups and waits for you to choose. The rest is autonomous.
 
 ## How it works
