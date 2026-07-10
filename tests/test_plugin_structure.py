@@ -270,6 +270,27 @@ class TestPluginStructure(unittest.TestCase):
             text = (ROOT / rel).read_text().lower()
             self.assertNotIn("single source of truth", text, rel)
 
+    def test_factory_design_designsync_pull_and_push_hooks(self):
+        text = (ROOT / "skills/factory-design/SKILL.md").read_text()
+        # concrete pull + firewall mirror (AC 6)
+        self.assertIn("mcp__claude-design__list_files", text)
+        self.assertIn("mcp__claude-design__read_file", text)
+        self.assertIn("items/<id>/design/claude-design-pull.md", text)
+        self.assertIn("council-judgement", text)
+        self.assertIn("never edits `design-system.md` directly", text)
+        # push points (AC 8)
+        self.assertIn("mcp__claude-design__write_files", text)
+        self.assertIn("chosen-direction note", text)
+        self.assertIn("never blocks `factory advance ITEM plan`", text)
+        # spend convention (AC 9)
+        self.assertIn('"provenance":"proxy"', text)
+        self.assertIn("no `tokens` key", text)
+        # degraded contract survives verbatim (AC 2)
+        self.assertIn("never block or fail when it's absent", text)
+        self.assertIn("the design-system.md fallback is the contract",
+                      text)
+        self.assertIn("This skill never writes `design/choice.md`", text)
+
 
 if __name__ == "__main__":
     unittest.main()
