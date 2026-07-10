@@ -132,6 +132,46 @@ class TestPluginStructure(unittest.TestCase):
         self.assertIn("personas.md", (ROOT / "skills/factory-spec/SKILL.md").read_text())
         self.assertIn("personas.md", (ROOT / "skills/factory-design/SKILL.md").read_text())
 
+    def test_focus_group_reference_has_templates_and_caps(self):
+        ref = ROOT / "skills/factory-research/references/focus-group.md"
+        self.assertTrue(ref.exists(), str(ref))
+        text = ref.read_text()
+        # four templates present (AC 5)
+        for heading in ("## Roster template", "## Interview guide template",
+                        "## Transcript template", "## Findings template",
+                        "## Spend log template"):
+            self.assertIn(heading, text, heading)
+        # numeric caps stated (AC 5)
+        self.assertIn("4–6 personas", text)
+        self.assertIn("≤500 words", text)
+        self.assertIn("≤10 questions", text)
+        self.assertIn("≤5 bullets per persona", text)
+        self.assertIn("exactly one `## Synthesis` paragraph", text)
+        self.assertIn("one `## Next action` line", text)
+        # roster fields and classes (AC 6)
+        for field in ("Label", "Class", "Relationship",
+                      "Can credibly inform", "Cannot credibly inform"):
+            self.assertIn(field, text, field)
+        self.assertIn("sme | customer | buyer | decision-maker | influencer",
+                      text)
+        self.assertIn("at least two distinct classes", text)
+        # banners (AC 7)
+        self.assertIn(
+            "This transcript is an AI-roleplayed simulation, not user "
+            "evidence.", text)
+        self.assertIn("docs/factory/brain/constraints.md", text)
+        # spend contract (AC 10)
+        for field in ("run date", "trigger", "persona count",
+                      "subagent count", "timestamps",
+                      "UNMEASURED"):
+            self.assertIn(field, text, field)
+
+    def test_focus_group_guide_template_is_human_usable(self):
+        text = (ROOT /
+                "skills/factory-research/references/focus-group.md").read_text()
+        self.assertIn("human-usable as-is", text)
+        self.assertIn("no AI, roleplay, or meta instructions", text)
+
 
 if __name__ == "__main__":
     unittest.main()
