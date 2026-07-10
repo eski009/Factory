@@ -155,14 +155,23 @@ def format_duration(seconds):
     return f"{hours:02d}h {minutes:02d}m"
 
 
+def _token_segments(measured):
+    """Render only token keys actually observed (nonzero summed) across
+    valid measured events — never fabricate 'input 0'/'output 0' for a
+    split that was never logged. Shared by render_text and
+    render_receipt so they cannot diverge."""
+    if measured is None:
+        return []
+    return [f"{key} {measured[key]}" for key in TOKEN_KEYS if measured[key]]
+
+
 def _measured_text(summary):
     measured = summary["measured"]
-    if measured is None:
+    segments = _token_segments(measured)
+    if not segments:
         return "[measured] tokens: none logged"
-    figures = f"input {measured['input']}, output {measured['output']}"
-    if measured["total"]:
-        figures += f", total {measured['total']}"
-    return f"[measured] tokens: {figures} ({measured['events']} spend events)"
+    return (f"[measured] tokens: {', '.join(segments)} "
+            f"({measured['events']} spend events)")
 
 
 def render_text(summary):
@@ -209,11 +218,11 @@ def render_receipt(summary):
              f"{summary['dispatches']} dispatches, "
              f"{summary['retries']} retries")
     measured = summary["measured"]
-    if measured is None:
+    segments = _token_segments(measured)
+    if not segments:
         measured_line = "- [measured] tokens: none logged"
     else:
-        measured_line = (f"- [measured] tokens: input {measured['input']}, "
-                         f"output {measured['output']} "
+        measured_line = (f"- [measured] tokens: {', '.join(segments)} "
                          f"({measured['events']} events)")
     return "\n".join([
         proxy,

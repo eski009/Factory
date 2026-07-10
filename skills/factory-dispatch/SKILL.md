@@ -53,7 +53,7 @@ For any fan-out or design rendering, follow the capabilities skill.
 
 ### Spend logging
 
-At every subagent fan-out point for an item, when each dispatch (or batch) completes, the orchestrating session logs one spend event: `factory log ITEM spend --data '{"provenance":"measured","stage":"<stage>","source":"<skill>","dispatches":<n>,"tokens":{"input":<n>,"output":<n>}}'` using the token counts the harness reports for those subagents. If the harness surfaces no token usage, log the same event with `"provenance":"proxy"` and **no** `tokens` key. Never estimate or invent token numbers; the orchestrator's own main-loop burn is never logged as measured. Stage skills apply this same convention at their own fan-out points; the engine neither requires nor verifies these events at gates.
+At every subagent fan-out point for an item, when each dispatch (or batch) completes, the orchestrating session logs one spend event: `factory log ITEM spend --data '{"provenance":"measured","stage":"<stage>","source":"<skill>","dispatches":<n>,"tokens":{"total":<n>}}'` (include `"input"`/`"output"` instead or additionally when the harness reports them) using the token counts the harness reports for those subagents. If the harness surfaces no token usage, log the same event with `"provenance":"proxy"` and **no** `tokens` key. Never estimate or invent token numbers; the orchestrator's own main-loop burn is never logged as measured. Stage skills apply this same convention at their own fan-out points; the engine neither requires nor verifies these events at gates.
 
 ## Context hygiene
 

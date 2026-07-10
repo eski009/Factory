@@ -229,6 +229,35 @@ class RenderTextTest(CostTestCase):
         self.assertEqual(cost.format_duration(93780), "1d 02h 03m")
         self.assertEqual(cost.format_duration(59), "00h 00m")
 
+    def test_total_only_events_render_total_not_zero_splits(self):
+        self.log_at("2026-07-03T10:00:00Z", "spend",
+                    {"provenance": "measured", "stage": "plan",
+                     "dispatches": 1, "tokens": {"total": 146946}})
+        os.environ["FACTORY_NOW"] = "2026-07-03T10:05:00Z"
+        summary = cost.summarize(self.repo, ITEM)
+        text = cost.render_text(summary)
+        self.assertIn("total 146946", text)
+        self.assertNotIn("input 0", text)
+        self.assertNotIn("output 0", text)
+        receipt = cost.render_receipt(summary)
+        self.assertIn("total 146946", receipt)
+        self.assertIn("(1 events)", receipt)
+        self.assertNotIn("input 0", receipt)
+        self.assertNotIn("output 0", receipt)
+
+    def test_mixed_keys_render_all_observed(self):
+        self.log_at("2026-07-03T10:00:00Z", "spend",
+                    {"provenance": "measured", "stage": "plan",
+                     "dispatches": 1,
+                     "tokens": {"input": 100, "output": 50}})
+        self.log_at("2026-07-03T10:01:00Z", "spend",
+                    {"provenance": "measured", "stage": "plan",
+                     "dispatches": 1, "tokens": {"total": 200}})
+        os.environ["FACTORY_NOW"] = "2026-07-03T10:05:00Z"
+        summary = cost.summarize(self.repo, ITEM)
+        text = cost.render_text(summary)
+        self.assertIn("input 100, output 50, total 200", text)
+
 
 class RenderReceiptTest(CostTestCase):
     def test_receipt_is_exactly_three_tagged_bullets(self):
