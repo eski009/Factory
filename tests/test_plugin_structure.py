@@ -209,6 +209,12 @@ class TestPluginStructure(unittest.TestCase):
         # reference file linked (Task 1 interface)
         self.assertIn("focus-group.md", section)
 
+    def test_research_command_documents_focus_group_flags(self):
+        text = (ROOT / "commands/research.md").read_text()
+        self.assertIn("--focus-group", text)
+        self.assertIn("--no-focus-group", text)
+        self.assertIn("factory-research", text)
+
 
 if __name__ == "__main__":
     unittest.main()
