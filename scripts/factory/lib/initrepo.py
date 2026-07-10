@@ -115,7 +115,7 @@ def validate_tree(repo):
             log_valid = True
             if log_path.exists():
                 for lineno, line in enumerate(
-                        log_path.read_text(encoding="utf-8").splitlines(), 1):
+                        log_path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
                     if not line.strip():
                         continue
                     try:
@@ -146,7 +146,7 @@ def validate_tree(repo):
         parsed = []
         line_errors = False
         if ledger.exists():
-            for lineno, line in enumerate(ledger.read_text(encoding="utf-8").splitlines(), 1):
+            for lineno, line in enumerate(ledger.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
                 if not line.strip():
                     continue
                 try:

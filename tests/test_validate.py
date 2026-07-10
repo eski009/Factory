@@ -1,7 +1,9 @@
 import json
+import tempfile
 import unittest
 from pathlib import Path
 
+from scripts.factory.lib import initrepo, items, paths
 from scripts.factory.lib.validate import validate
 
 SCHEMAS = Path(__file__).resolve().parents[1] / "schemas"
@@ -65,6 +67,37 @@ class TestConfigSchema(unittest.TestCase):
     def test_bad_merge_policy(self):
         cfg = {"version": 1, "merge": "yolo", "gates": []}
         self.assertTrue(validate(cfg, load("config")))
+
+
+class TestValidateTreeToleratesInvalidUtf8(unittest.TestCase):
+    """Item spec 0007 Task 5: validate flags invalid UTF-8, never crashes."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        initrepo.init(self.repo)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_invalid_utf8_log_line_flagged_not_crash(self):
+        meta = {"id": "0001-x", "title": "X", "stage": "idea", "kind": "ui",
+                "created": "2026-07-03T10:00:00Z", "updated": "2026-07-03T10:00:00Z"}
+        items.save_item(self.repo, meta, "")
+        log_path = paths.item_dir(self.repo, "0001-x") / "log.jsonl"
+        with log_path.open("ab") as f:
+            f.write(b'\xff\xfe{"event"\n')
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any(
+            "log.jsonl:" in e and "invalid JSON" in e for e in errors))
+
+    def test_invalid_utf8_ledger_line_flagged_not_crash(self):
+        ledger_path = paths.ledgers_dir(self.repo) / "bids.jsonl"
+        with ledger_path.open("ab") as f:
+            f.write(b'\xff\xfe{"id"\n')
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any(
+            "bids.jsonl:" in e and "invalid JSON" in e for e in errors))
 
 
 if __name__ == "__main__":
