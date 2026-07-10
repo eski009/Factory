@@ -111,7 +111,8 @@ class SummarizeTimelineTest(CostTestCase):
         summary = cost.summarize(self.repo, ITEM)
         expected = {"item", "window", "elapsed_seconds", "active_seconds",
                     "waiting_seconds", "advances", "retries", "dispatches",
-                    "stages", "measured", "unmeasured", "invalid_spend_events"}
+                    "stages", "measured", "unmeasured", "invalid_spend_events",
+                    "corrupt_log_lines"}
         self.assertEqual(set(summary), expected)
         self.assertIsNone(summary["measured"])
         self.assertEqual(summary["unmeasured"], "orchestrator main-loop tokens")
@@ -282,6 +283,68 @@ class RenderReceiptTest(CostTestCase):
             "- [measured] tokens: input 182340, output 21877 (1 events)",
             receipt)
         self.assertIn("6 dispatches", receipt)
+
+
+class CorruptLogSurfacingTest(CostTestCase):
+    """Item spec 0007 §2: skipped-line count surfaced on every surface."""
+
+    def corrupt_line(self):
+        path = self.repo / f".factory/items/{ITEM}/log.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
+            f.write('{"event": "spend", "ts": \n')
+
+    def test_summarize_counts_corrupt_lines(self):
+        self.log_at("2026-07-03T10:00:00Z", "item.created")
+        self.corrupt_line()
+        os.environ["FACTORY_NOW"] = "2026-07-03T10:05:00Z"
+        summary = cost.summarize(self.repo, ITEM)
+        self.assertEqual(summary["corrupt_log_lines"], 1)
+
+    def test_clean_log_zero_and_other_fields_unchanged(self):
+        self.log_at("2026-07-03T10:00:00Z", "item.created")
+        os.environ["FACTORY_NOW"] = "2026-07-03T10:05:00Z"
+        summary = cost.summarize(self.repo, ITEM)
+        self.assertEqual(summary["corrupt_log_lines"], 0)
+        self.assertEqual(summary["advances"], 0)
+        self.assertEqual(summary["stages"]["idea"]["active_seconds"], 300)
+        self.assertEqual(summary["invalid_spend_events"], 0)
+
+    def test_render_text_corrupt_line_when_nonzero(self):
+        self.log_at("2026-07-03T10:00:00Z", "item.created")
+        self.corrupt_line()
+        os.environ["FACTORY_NOW"] = "2026-07-03T10:05:00Z"
+        text = cost.render_text(cost.summarize(self.repo, ITEM))
+        self.assertIn(
+            "corrupt log lines: 1 (skipped; run factory validate)", text)
+
+    def test_render_text_silent_when_zero(self):
+        self.log_at("2026-07-03T10:00:00Z", "item.created")
+        os.environ["FACTORY_NOW"] = "2026-07-03T10:05:00Z"
+        text = cost.render_text(cost.summarize(self.repo, ITEM))
+        self.assertNotIn("corrupt log lines", text)
+
+    def test_receipt_suffixes_proxy_bullet_when_nonzero(self):
+        self.log_at("2026-07-03T10:00:00Z", "item.created")
+        self.corrupt_line()
+        os.environ["FACTORY_NOW"] = "2026-07-03T10:05:00Z"
+        receipt = cost.render_receipt(cost.summarize(self.repo, ITEM))
+        lines = receipt.splitlines()
+        self.assertEqual(len(lines), 3)
+        self.assertTrue(lines[0].startswith("- [proxy] active "))
+        self.assertTrue(
+            lines[0].endswith(", 1 corrupt log lines skipped"), lines[0])
+
+    def test_receipt_byte_identical_when_zero(self):
+        self.log_at("2026-07-03T10:00:00Z", "item.created")
+        os.environ["FACTORY_NOW"] = "2026-07-03T10:05:00Z"
+        receipt = cost.render_receipt(cost.summarize(self.repo, ITEM))
+        self.assertEqual(receipt, "\n".join([
+            "- [proxy] active 00h 05m (waiting 00h 00m), "
+            "0 advances, 0 dispatches, 0 retries",
+            "- [measured] tokens: none logged",
+            "- [unmeasured] UNMEASURED: orchestrator main-loop tokens",
+        ]))
 
 
 if __name__ == "__main__":
