@@ -27,6 +27,8 @@ With a project linked and the MCP present in an interactive session, `factory-de
 
 If the bid is rejected, the pulled tokens still govern this session's options; the brain stays unchanged. Either way the repo files stay canonical — the mirror bid is how headless runs inherit interactive pulls, never a bypass.
 
+Compare the pulled token bullets against design-system.md's current recorded tokens first, and file the bid only when the snapshot differs — when the tokens are unchanged, skip the bid entirely, note "tokens unchanged — no mirror bid" in the run notes, and let the session proceed on the pulled tokens as usual. The first accepted mirror judgement replaces design-system.md's invented-neutrals fallback tokens bullet (which self-describes as replaceable) rather than accumulating beside it; later accepted mirrors update that same bullet.
+
 ## Push: convenience mirror, never a second writer
 
 Pushed artifacts (options.html, a chosen-direction note, built output) are convenience mirrors in the linked project via `mcp__claude-design__write_files` (optionally `mcp__claude-design__render_preview`), exactly like the Artifact-tool pattern in `skills/factory-design/SKILL.md`: a convenience view, not a second source of truth. Nothing viewed, commented, or picked inside Claude Design records a decision — every design-gate decision still terminates in `factory choice` / `design.record_choice`, the sole writer of `design/choice.md`. Pushes never write `design/choice.md`, and a failed push never blocks a stage: at design time it never blocks the options exit or `factory advance ITEM plan`; at ship time it is never grounds for `ship.failed` and never delays `factory advance ITEM done`.

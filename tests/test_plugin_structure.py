@@ -300,6 +300,24 @@ class TestPluginStructure(unittest.TestCase):
         self.assertIn('"provenance":"proxy"', text)
         self.assertIn("Headless ship runs skip it entirely", text)
 
+    def test_designsync_pull_bid_divergence_guard(self):
+        ref = (ROOT / "skills/capabilities/references/designsync.md").read_text()
+        self.assertIn("file the bid only when the snapshot differs", ref)
+        self.assertIn("tokens unchanged", ref)
+        skill = (ROOT / "skills/factory-design/SKILL.md").read_text()
+        self.assertIn("only when the snapshot differs", skill)
+
+    def test_design_packet_discloses_token_provenance(self):
+        text = (ROOT / "skills/factory-design/SKILL.md").read_text()
+        self.assertIn("token source", text)
+        self.assertIn("mirror bid", text)
+        self.assertIn("rejected", text)
+
+    def test_designsync_mirror_supersedes_fallback_tokens(self):
+        ref = (ROOT / "skills/capabilities/references/designsync.md").read_text()
+        self.assertIn("replaces", ref)
+        self.assertIn("fallback tokens", ref)
+
 
 if __name__ == "__main__":
     unittest.main()
