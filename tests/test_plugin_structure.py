@@ -291,6 +291,15 @@ class TestPluginStructure(unittest.TestCase):
                       text)
         self.assertIn("This skill never writes `design/choice.md`", text)
 
+    def test_factory_ship_claude_design_push_is_non_blocking(self):
+        text = (ROOT / "skills/factory-ship/SKILL.md").read_text()
+        self.assertIn("mcp__claude-design__", text)
+        self.assertIn("mcp__claude-design__write_files", text)
+        self.assertIn("never grounds for `ship.failed`", text)
+        self.assertIn("never delays `factory advance ITEM done`", text)
+        self.assertIn('"provenance":"proxy"', text)
+        self.assertIn("Headless ship runs skip it entirely", text)
+
 
 if __name__ == "__main__":
     unittest.main()
