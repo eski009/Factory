@@ -29,6 +29,10 @@ Read `merge` from `.factory/config.json` (`auto`, `queue`, or `tiered`):
 5. Append one line to `docs/factory/brain/decisions.md` recording what shipped and how (mode, ref, item id). This is the one ship-log exception to the council-judgement bid firewall: a factual record of what happened, not a judgement — it still doesn't authorize any other brain edit, and durable *judgements* about the item still need their own bid/judge cycle.
 6. `factory packet ITEM`, then move that packet to `docs/factory/packets/reports/<id>-shipped.md` and hand back that path as the shipped report — reports live under the `reports/` subdirectory so they don't linger in the top-level packets listing the SessionStart hook treats as "awaiting human review."
 
+## Claude Design mirror (optional)
+
+When the shipping session has any `mcp__claude-design__*` tool present (probe per the `capabilities` skill's `references/designsync.md`; interactive sessions only) and `.factory/config.json` sets `designsync_project`, optionally push the item's built UI output to the linked Claude Design project via `mcp__claude-design__write_files` as a convenience mirror, after `ship.merged` is logged. Strictly best-effort and non-blocking: a push failure is never grounds for `ship.failed`, never delays `factory advance ITEM done`, and logs its own spend event — `factory log ITEM spend --data '{"provenance":"proxy","stage":"ship","source":"factory-ship","note":"claude-design push round-trip"}'`. The repo's merged output stays canonical; the linked project is never a second source of truth. Headless ship runs skip it entirely.
+
 ## On failure
 
 If the merge conflicts, or the merged-result suite fails: revert the merge (leave the branch and the pre-merge default branch state intact), log `ship.failed` with the reason, do not advance, and report to the dispatcher — do not attempt a second merge strategy unprompted.

@@ -22,7 +22,7 @@ Read, in this order:
 
 1. `docs/factory/brain/design-system.md` — always present, the headless fallback. This is the tokens surface every option must respect.
 2. `items/<id>/spec.md`'s `## Acceptance criteria` — the UI surface the options must actually render.
-3. If DesignSync is available (per the `capabilities` skill, interactive sessions only), pull the linked claude.ai/design project's tokens as the preferred source over step 1 — never block or fail when it's absent; the design-system.md fallback is the contract, DesignSync is opportunistic.
+3. If DesignSync is available (per the `capabilities` skill — probe: any `mcp__claude-design__*` tool present in the tool list, interactive sessions only) and `.factory/config.json` sets `designsync_project`, pull the linked Claude Design project's tokens via `mcp__claude-design__list_files` / `mcp__claude-design__read_file` as the preferred source over step 1. Write a dated snapshot of the pulled tokens to `items/<id>/design/claude-design-pull.md`, then mirror toward the brain the same way the thin-design-system bid below works: file a bid targeting `brain/design-system.md` via the `council-judgement` skill with that snapshot as `--evidence` — this skill never edits `design-system.md` directly; the brain changes only on an accepted judgement (mechanics: the capabilities skill's `references/designsync.md`). Log one spend event for the pull round-trip: `factory log ITEM spend --data '{"provenance":"proxy","stage":"design","source":"factory-design","note":"claude-design pull round-trip"}'` — provenance `proxy` with no `tokens` key, never estimated. A missing tool, a missing `designsync_project`, or a failed MCP call falls through silently to step 1 — never block or fail when it's absent; the design-system.md fallback is the contract, DesignSync is opportunistic.
 
 If design-system.md is thin or placeholder (no real tokens, just scaffolding), don't stall on it: use restrained neutral defaults for the options, and file a bid targeting `brain/design-system.md` via the `council-judgement` skill so the gap becomes durable instead of getting silently re-decided by the next design item.
 
@@ -38,6 +38,8 @@ Write one self-contained HTML file to `items/<id>/design/options.html`:
 - If the design system defines both light and dark treatments, render both for each option; if it only defines one, one is enough.
 
 When the Artifact tool is present (per the `capabilities` skill), additionally publish the same file as an artifact for one-click viewing. The local `items/<id>/design/options.html` file stays canonical either way — the artifact is a convenience view, not a second source of truth.
+
+Likewise, when DesignSync is available (per the `capabilities` skill) and `designsync_project` is set, additionally push `options.html` to the linked Claude Design project via `mcp__claude-design__write_files` (optionally `mcp__claude-design__render_preview`) as the same kind of convenience view. Best-effort: a failed push never blocks the Exit sequence below. The local file stays canonical here too, and nothing viewed, commented, or picked inside Claude Design records a decision — the pick still terminates in `factory choice`. Log one spend event for the push round-trip: `factory log ITEM spend --data '{"provenance":"proxy","stage":"design","source":"factory-design","note":"claude-design push round-trip"}'`.
 
 ## The design packet
 
@@ -56,3 +58,5 @@ Write `docs/factory/packets/<id>-design.md` directly — this is a bespoke packe
 ## Resume
 
 When the human runs `factory choice`, the dispatcher's step-0 resume check (in `factory-dispatch`) notices `design/choice.md` is present and non-empty on the next `/factory:run`, and unpauses the item back to `design`. On the next dispatch iteration, this skill re-invokes at `design` stage. The entry check (above) detects the recorded choice in `design/choice.md`, skips option generation, runs `factory advance ITEM plan`, and exits — the human's pick is now acted upon. This is the two-hop path: pause→resume unpause to design→entry check advances to plan.
+
+On that entry-check resume, when DesignSync is available (per the `capabilities` skill) and `designsync_project` is set, optionally push a short chosen-direction note (the picked option and any notes read from `design/choice.md`) to the linked Claude Design project via `mcp__claude-design__write_files` before advancing. Best-effort: a failed push never blocks `factory advance ITEM plan`, and the push never writes `design/choice.md` — it mirrors the recorded pick, it doesn't record one. Log one spend event for the push round-trip (same `"provenance":"proxy"` form as above). Headless resumes skip it entirely.

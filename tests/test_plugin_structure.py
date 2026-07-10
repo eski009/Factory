@@ -215,6 +215,91 @@ class TestPluginStructure(unittest.TestCase):
         self.assertIn("--no-focus-group", text)
         self.assertIn("factory-research", text)
 
+    def test_designsync_reference_names_tool_family_and_mechanics(self):
+        ref = ROOT / "skills/capabilities/references/designsync.md"
+        self.assertTrue(ref.exists(), str(ref))
+        text = ref.read_text()
+        # tool family + probe (AC 4)
+        self.assertIn("mcp__claude-design__", text)
+        for tool in ("get_project", "list_files", "read_file",
+                     "write_files", "render_preview"):
+            self.assertIn(f"mcp__claude-design__{tool}", text, tool)
+        self.assertIn("presence of any tool in the family", text)
+        # canonical-mirror rule; interactive-only survives (AC 5)
+        self.assertIn("never a second source of truth", text)
+        self.assertIn("items/<id>/design/", text)
+        self.assertIn("## Interactive-only", text)
+        self.assertIn(
+            "the degraded path is the tested contract, not an error state",
+            text)
+        # pull + firewall mirror mechanics (AC 6)
+        self.assertIn("items/<id>/design/claude-design-pull.md", text)
+        self.assertIn("bid targeting `brain/design-system.md`", text)
+        self.assertIn("council-judgement", text)
+        self.assertIn("accepted judgement", text)
+        self.assertIn("never edits `design-system.md` directly", text)
+        # single-writer rule (AC 7)
+        self.assertIn("factory choice", text)
+        self.assertIn("design.record_choice", text)
+        self.assertIn("never write `design/choice.md`", text)
+        # spend convention (AC 9)
+        self.assertIn("factory log", text)
+        self.assertIn('"provenance":"proxy"', text)
+        self.assertIn("no `tokens` key", text)
+        self.assertIn("Never estimate", text)
+        # linking = reuse of designsync_project, no new surface (AC 10)
+        self.assertIn("designsync_project", text)
+        self.assertIn("no new key, no new command, and no schema diff",
+                      text)
+        self.assertIn("open-questions.md", text)
+
+    def test_designsync_capability_row_names_tool_family(self):
+        text = (ROOT / "skills/capabilities/SKILL.md").read_text()
+        self.assertIn(
+            "| DesignSync | any `mcp__claude-design__*` tool present "
+            "in tool list |", text)
+        self.assertIn("references/designsync.md", text)
+        self.assertIn("Never let a missing optional tool fail a stage",
+                      text)
+
+    def test_designsync_surfaces_never_say_single_source_of_truth(self):
+        for rel in ("skills/capabilities/SKILL.md",
+                    "skills/capabilities/references/designsync.md",
+                    "skills/factory-design/SKILL.md",
+                    "skills/factory-ship/SKILL.md"):
+            text = (ROOT / rel).read_text().lower()
+            self.assertNotIn("single source of truth", text, rel)
+
+    def test_factory_design_designsync_pull_and_push_hooks(self):
+        text = (ROOT / "skills/factory-design/SKILL.md").read_text()
+        # concrete pull + firewall mirror (AC 6)
+        self.assertIn("mcp__claude-design__list_files", text)
+        self.assertIn("mcp__claude-design__read_file", text)
+        self.assertIn("items/<id>/design/claude-design-pull.md", text)
+        self.assertIn("council-judgement", text)
+        self.assertIn("never edits `design-system.md` directly", text)
+        # push points (AC 8)
+        self.assertIn("mcp__claude-design__write_files", text)
+        self.assertIn("chosen-direction note", text)
+        self.assertIn("never blocks `factory advance ITEM plan`", text)
+        # spend convention (AC 9)
+        self.assertIn('"provenance":"proxy"', text)
+        self.assertIn("no `tokens` key", text)
+        # degraded contract survives verbatim (AC 2)
+        self.assertIn("never block or fail when it's absent", text)
+        self.assertIn("the design-system.md fallback is the contract",
+                      text)
+        self.assertIn("This skill never writes `design/choice.md`", text)
+
+    def test_factory_ship_claude_design_push_is_non_blocking(self):
+        text = (ROOT / "skills/factory-ship/SKILL.md").read_text()
+        self.assertIn("mcp__claude-design__", text)
+        self.assertIn("mcp__claude-design__write_files", text)
+        self.assertIn("never grounds for `ship.failed`", text)
+        self.assertIn("never delays `factory advance ITEM done`", text)
+        self.assertIn('"provenance":"proxy"', text)
+        self.assertIn("Headless ship runs skip it entirely", text)
+
 
 if __name__ == "__main__":
     unittest.main()
