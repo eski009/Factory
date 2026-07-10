@@ -79,6 +79,33 @@ class CouncilCliTest(unittest.TestCase):
         code, _, _ = self.run_cli("prune", "intern")
         self.assertEqual(code, 2)
 
+    def judge_first_bid(self):
+        self.file_bid()
+        self.run_cli("judge", "bid-0001", "accept", "--reason", "ok",
+                     "--surface", "brain/design-system.md",
+                     "--anchor", "## Spacing")
+
+    def test_reputation_warns_on_corrupt_ledger_line(self):
+        self.judge_first_bid()
+        rep = Path(self.repo, ".factory/ledgers/reputation.jsonl")
+        with rep.open("a", encoding="utf-8") as f:
+            f.write('{"agent": "ui-taste", "delta": \n')
+        code, out, err = self.run_cli("reputation")
+        self.assertEqual(code, 0)
+        self.assertIn("ui-taste/spacing", out)
+        self.assertIn("+0.05", out)
+        self.assertEqual(
+            err.strip(),
+            "ledgers/reputation.jsonl: 1 corrupt lines skipped "
+            "(run factory validate)")
+
+    def test_reputation_clean_ledger_empty_stderr(self):
+        self.judge_first_bid()
+        code, out, err = self.run_cli("reputation")
+        self.assertEqual(code, 0)
+        self.assertIn("ui-taste/spacing", out)
+        self.assertEqual(err, "")
+
 
 if __name__ == "__main__":
     unittest.main()
