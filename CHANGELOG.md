@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **Claude Design mirror (DesignSync made concrete)** — the DesignSync
+  capability now names the `mcp__claude-design__*` tool family: link a
+  project once via `designsync_project`, and interactive design runs pull
+  its tokens (mirrored into `design-system.md` only through the brain
+  firewall) and push mockups/chosen directions back as convenience views.
+  Repo files stay canonical; headless runs are unchanged; every round-trip
+  logs proxy spend.
 - **Per-item cost meter** — `factory cost <id>` aggregates each item's
   `log.jsonl` into an honest spend report: per-stage active vs waiting
   wall-clock (human gate time never counted as effort), dispatch/retry
