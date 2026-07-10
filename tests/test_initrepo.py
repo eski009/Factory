@@ -200,6 +200,77 @@ class InitTest(unittest.TestCase):
         self.assertTrue((self.repo / "docs/factory/brain/market.md").exists())
 
 
+class SpendValidateTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        initrepo.init(self.repo)
+        meta = {"id": "0001-x", "title": "X", "stage": "idea", "kind": "ui",
+                "created": "2026-07-03T10:00:00Z", "updated": "2026-07-03T10:00:00Z"}
+        items.save_item(self.repo, meta, "")
+        import os
+        os.environ["FACTORY_NOW"] = "2026-07-03T12:00:00Z"
+
+    def tearDown(self):
+        import os
+        os.environ.pop("FACTORY_NOW", None)
+        self.tmp.cleanup()
+
+    def log_spend(self, data):
+        from scripts.factory.lib import logs
+        logs.append_event(self.repo, "0001-x", "spend", data)
+
+    def test_schema_loads_and_requires_provenance(self):
+        schema = initrepo.load_schema("spend-event")
+        self.assertEqual(schema["required"], ["provenance"])
+        self.assertEqual(schema["properties"]["provenance"]["enum"],
+                         ["measured", "proxy", "unmeasured"])
+        self.assertNotIn("additionalProperties", schema)
+
+    def test_spend_missing_provenance_flagged_with_file_line(self):
+        self.log_spend({"stage": "implement", "dispatches": 2})
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any(
+            "0001-x/log.jsonl:1" in e and "provenance" in e for e in errors))
+
+    def test_spend_bad_provenance_enum_flagged(self):
+        self.log_spend({"provenance": "estimated"})
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any(
+            "0001-x/log.jsonl:1" in e and "'estimated'" in e for e in errors))
+
+    def test_tokens_on_proxy_event_flagged(self):
+        self.log_spend({"provenance": "proxy", "tokens": {"input": 5}})
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any(
+            "tokens present but provenance is not 'measured'" in e
+            for e in errors))
+
+    def test_measured_without_tokens_flagged(self):
+        self.log_spend({"provenance": "measured", "dispatches": 1})
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any(
+            "measured spend event requires tokens" in e for e in errors))
+
+    def test_spend_with_non_object_data_flagged(self):
+        self.log_spend("oops")
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any(
+            "0001-x/log.jsonl:1" in e and "must be an object" in e
+            for e in errors))
+
+    def test_valid_spend_and_unknown_events_stay_clean(self):
+        self.log_spend({"provenance": "measured", "stage": "review",
+                        "source": "factory-review", "dispatches": 6,
+                        "tokens": {"input": 182340, "output": 21877},
+                        "extra-key": "tolerated"})
+        self.log_spend({"provenance": "proxy", "stage": "implement",
+                        "dispatches": 2})
+        from scripts.factory.lib import logs
+        logs.append_event(self.repo, "0001-x", "some.unknown.event", {"x": 1})
+        self.assertEqual(initrepo.validate_tree(self.repo), [])
+
+
 class ConsistencyTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

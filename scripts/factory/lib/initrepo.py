@@ -25,6 +25,29 @@ def load_schema(name):
     return json.loads((SCHEMAS / f"{name}.schema.json").read_text(encoding="utf-8"))
 
 
+SPEND_TOKEN_KEYS = ("input", "output", "total")
+
+
+def spend_event_errors(data, path):
+    """Spend-event contract: schema plus the two conditional rules the
+    stdlib validator subset cannot express. Item spec 0004 §1, §4."""
+    if not isinstance(data, dict):
+        return [f"{path}: spend event data must be an object"]
+    errors = validate(data, load_schema("spend-event"), path)
+    provenance = data.get("provenance")
+    tokens = data.get("tokens")
+    if tokens is not None and provenance != "measured":
+        errors.append(
+            f"{path}: tokens present but provenance is not 'measured'")
+    if provenance == "measured" and not (
+            isinstance(tokens, dict)
+            and any(key in tokens for key in SPEND_TOKEN_KEYS)):
+        errors.append(
+            f"{path}: measured spend event requires tokens with at least "
+            "one of input/output/total")
+    return errors
+
+
 def init(repo, product=None):
     repo = Path(repo)
     created = []
@@ -96,10 +119,15 @@ def validate_tree(repo):
                     if not line.strip():
                         continue
                     try:
-                        log_events.append(json.loads(line))
+                        event = json.loads(line)
                     except json.JSONDecodeError:
                         errors.append(f"{sub.name}/log.jsonl:{lineno}: invalid JSON")
                         log_valid = False
+                        continue
+                    log_events.append(event)
+                    if isinstance(event, dict) and event.get("event") == "spend":
+                        errors.extend(spend_event_errors(
+                            event.get("data"), f"{sub.name}/log.jsonl:{lineno}"))
             if meta is not None and not schema_errors and log_valid:
                 expected = "idea"
                 for event in log_events:
