@@ -19,6 +19,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **Design-mirror refinements** — the pull-mirror bid now fires only when
+  pulled tokens actually differ (no judge busywork on stable design
+  systems); design packets disclose the token source, snapshot path, and
+  mirror-bid status (including rejections); the first accepted mirror
+  replaces the invented-neutrals fallback tokens rather than accumulating.
 - **Claude Design mirror (DesignSync made concrete)** — the DesignSync
   capability now names the `mcp__claude-design__*` tool family: link a
   project once via `designsync_project`, and interactive design runs pull
