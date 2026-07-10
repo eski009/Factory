@@ -19,7 +19,7 @@ Read `research.depth` from `.factory/config.json` (`inputs-only | web | deep`, d
 
 - `inputs-only` — reason only from the PRD/repo already on hand; no web.
 - `web` (default) — research the open web (competitors, category conventions, real user voice in reviews/forums), citing URLs; produce one primary persona + a market read.
-- `deep` — `web` plus a persona set (primary + secondaries) and a fuller competitive teardown; fan out the gather step per competitor/segment (see the `capabilities` skill).
+- `deep` — `web` plus a persona set (primary + secondaries) and a fuller competitive teardown; fan out the gather step per competitor/segment (see the `capabilities` skill). Depth `deep` also runs the focus-group step (§3b); a `--focus-group` argument forces it at any depth, `--no-focus-group` suppresses it at `deep`.
 
 If the depth needs the web and this run has no web access, **degrade to `inputs-only`** and add an entry to `docs/factory/brain/open-questions.md` naming the gap ("market/user web research not run — no web access this run; re-run with web for deeper grounding"). A missing capability degrades output, never blocks the run.
 
@@ -30,6 +30,58 @@ Gather the grounding: the intake-mined surfaces (`constraints.md`, `design-syste
 ## 3. Council research mode
 
 Run the `council-review` skill in **research mode** with review root `.factory/runs/research/` and the seed from step 2. Research mode dispatches only the outward-facing seats — `customer` (jobs-to-be-done, real user pains/voice), `commercial` (market, competitors, positioning), `product` (segments, use cases, differentiation), `ui-taste` (category design conventions). Each researches its lens (web at `web`/`deep`, inputs-only otherwise); every claim carries a citation or is marked UNSOURCED. The synthesis drafts the persona(s) + market read into `.factory/runs/research/synthesis.md`.
+
+## 3b. Focus group (opt-in)
+
+Simulated structured interviews with 4–6 stakeholder personas of the *target
+product*. Templates and hard caps live in this skill's `focus-group.md`
+reference file (under its own `references/` directory) — follow them exactly. **Trigger:** runs only when the resolved depth is `deep`
+or the run was passed an explicit `--focus-group` argument; `--no-focus-group`
+suppresses it at `deep`. It never runs on the default `web` path or at
+`inputs-only` without the explicit flag. When the trigger is off, this
+section is skipped entirely and the skill behaves as before.
+
+All artifacts live under `.factory/runs/research/focus-group/<YYYY-MM-DD>/`
+(same-day re-runs suffix `-2`, `-3`, …): `roster.md`, `guides/`,
+`transcripts/`, `findings.md`, `spend.md`.
+
+1. **Roster.** The orchestrator (never a subagent) derives 4–6 personas from
+   the research seed and council synthesis — SMEs, potential customers,
+   buyers, decision-makers — spanning at least two classes, per the roster
+   template. Roster personas are ephemeral: no council memory, no
+   reputation entries, no `agents/` files.
+2. **Interview guides.** One per persona, tailored to that stakeholder's
+   relationship to the product, per the guide template: ≤500 words,
+   6–10 open-ended questions, human-usable as-is (a human can read one
+   verbatim to a real person). The guides are a first-class artifact — the
+   bridge to interviewing real people.
+3. **Simulated interviews.** Uses one subagent per persona, one interview round
+   each, sequential by default (fan-out per the `capabilities` skill is an
+   optional upgrade), 4–6 dispatches maximum, no cross-persona debate — a
+   subagent sees only its own roster entry, guide, and the product seed.
+   Each transcript opens with the simulation banner from the template.
+4. **Findings + firewall.** The orchestrator synthesizes `findings.md` under
+   the template caps. Every interview-derived claim carries
+   `(simulated: focus-group run <date>)` and never fact-grade `(source:)` —
+   in findings, in `synthesis.md`, and in any brain surface it reaches. A
+   summary is mirrored into `docs/factory/brain/open-questions.md` naming
+   the run directory and stating the findings are unvalidated hypotheses,
+   resolved only by interviewing real humans with the guides. This step may
+   never edit, resolve, or mark progress against the "Persona validation"
+   entry in open-questions.md. (See the synthetic-evidence rule in
+   `docs/factory/brain/constraints.md`.)
+5. **Spend log.** Write `spend.md` per the template — the run's own
+   token/effort record (or the explicit UNMEASURED marker plus effort
+   proxies). Quote its summary in the Exit report.
+
+**Autopilot:** never silent — under autopilot the focus group runs only if
+the human pre-configured `research.depth: "deep"`; autopilot never adds
+`--focus-group` on its own, and the packet must name that a simulation ran,
+its run directory, and its spend summary.
+
+**Idempotency:** a re-run creates a new dated run directory, augments prior
+runs (never clobbers), and appends its open-questions mirror rather than
+rewriting prior entries.
 
 ## 4. Seed the surfaces (evidence only)
 
@@ -52,4 +104,4 @@ Always say this to the user when you finish, verbatim: "A human reviews the seed
 
 ## Exit
 
-Report the persona label(s), competitor count, and number of assumptions logged, and remind that human review precedes `/factory:run` or `/factory:roadmap`.
+Report the persona label(s), competitor count, and number of assumptions logged, and remind that human review precedes `/factory:run` or `/factory:roadmap`. When the focus-group step ran, also report the roster size, the run directory, and the spend summary from `spend.md`.

@@ -172,6 +172,43 @@ class TestPluginStructure(unittest.TestCase):
         self.assertIn("human-usable as-is", text)
         self.assertIn("no AI, roleplay, or meta instructions", text)
 
+    def test_research_skill_focus_group_section(self):
+        text = (ROOT / "skills/factory-research/SKILL.md").read_text()
+        # section exists between §3 and §4 (AC 1)
+        i3 = text.index("## 3. Council research mode")
+        i3b = text.index("## 3b. Focus group (opt-in)")
+        i4 = text.index("## 4. Seed the surfaces")
+        self.assertTrue(i3 < i3b < i4, "3b must sit between 3 and 4")
+        section = text[i3b:i4]
+        # run root, artifact set, citation class (AC 1)
+        self.assertIn(".factory/runs/research/focus-group/", section)
+        for artifact in ("roster.md", "guides/", "transcripts/",
+                         "findings.md", "spend.md"):
+            self.assertIn(artifact, section, artifact)
+        self.assertIn("(simulated: focus-group run", section)
+        # trigger rule (AC 2)
+        self.assertIn("--focus-group", text)
+        self.assertIn("--no-focus-group", text)
+        self.assertIn("never runs on the default `web` path", text)
+        # hard gate untouched (AC 3)
+        self.assertIn(
+            "A human reviews the seeded brain before the first council run "
+            "treats it as ground truth", text)
+        # firewall rules (AC 4)
+        self.assertIn("never fact-grade `(source:)`", section)
+        self.assertIn("open-questions.md", section)
+        self.assertIn("Persona validation", section)
+        # interview mechanics (AC 9)
+        self.assertIn("one subagent per persona", section)
+        self.assertIn("one interview round", section)
+        self.assertIn("sequential", section)
+        self.assertIn("no cross-persona debate", section)
+        # autopilot rule (AC 11)
+        self.assertIn("autopilot", section.lower())
+        self.assertIn("never", section.lower())
+        # reference file linked (Task 1 interface)
+        self.assertIn("focus-group.md", section)
+
 
 if __name__ == "__main__":
     unittest.main()
