@@ -44,6 +44,24 @@ class TestPacket(unittest.TestCase):
         packet.write_packet(self.repo, "0001-thing")
         self.assertEqual(path.read_text(), first)
 
+    def test_spend_section_three_bullets_before_respond(self):
+        text = packet.render_packet(self.repo, "0001-thing")
+        self.assertIn("## Spend", text)
+        self.assertLess(text.index("## Recent events"), text.index("## Spend"))
+        self.assertLess(text.index("## Spend"), text.index("## Respond"))
+        section = text.split("## Spend\n")[1].split("\n\n## Respond")[0]
+        lines = section.splitlines()
+        self.assertEqual(len(lines), 3)
+        for line, tag in zip(lines, ("[proxy]", "[measured]", "[unmeasured]")):
+            self.assertTrue(line.startswith(f"- {tag}"), line)
+
+    def test_spend_section_is_honest_about_unmeasured(self):
+        text = packet.render_packet(self.repo, "0001-thing")
+        self.assertIn("UNMEASURED", text)
+        self.assertIn("- [measured] tokens: none logged", text)
+        self.assertNotIn("$0", text)
+        self.assertNotIn("≈$", text)
+
 
 if __name__ == "__main__":
     unittest.main()
