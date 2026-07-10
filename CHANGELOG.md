@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **Per-item cost meter** — `factory cost <id>` aggregates each item's
+  `log.jsonl` into an honest spend report: per-stage active vs waiting
+  wall-clock (human gate time never counted as effort), dispatch/retry
+  counts, and harness-reported token totals with structural provenance
+  (`measured | proxy | unmeasured` — never blended, UNMEASURED always loud).
+  Skills log `spend` events at fan-out points via the existing `factory log`;
+  `factory validate` checks them; packets gain a three-line `## Spend`
+  receipt and `status --json` a `spend` field.
+
 - **Focus-group research step (opt-in)** — `factory-research` §3b: 4–6
   simulated stakeholder interviews with per-persona guides, firewalled
   assumption-grade findings, and a per-run spend log. Depth `deep` now
