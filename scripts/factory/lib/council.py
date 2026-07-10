@@ -42,7 +42,7 @@ def read_ledger_with_stats(repo, name):
         return [], 0
     entries = []
     skipped = 0
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         if not line.strip():
             continue
         try:

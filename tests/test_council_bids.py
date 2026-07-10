@@ -116,6 +116,18 @@ class TestTolerantLedger(CouncilTest):
         self.assertEqual(council.next_ledger_id(self.repo, "bids", "bid"),
                          "bid-0004")
 
+    def test_invalid_utf8_ledger_line_skipped(self):
+        self.bid()
+        path = self.repo / ".factory/ledgers/bids.jsonl"
+        with path.open("ab") as f:
+            f.write(b'\xff\xfe{"id"\n')
+        entries = council.read_ledger(self.repo, "bids")
+        self.assertEqual(len(entries), 1)
+        _, skipped = council.read_ledger_with_stats(self.repo, "bids")
+        self.assertEqual(skipped, 1)
+        self.assertEqual(council.next_ledger_id(self.repo, "bids", "bid"),
+                         "bid-0003")
+
 
 if __name__ == "__main__":
     unittest.main()

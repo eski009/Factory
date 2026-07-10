@@ -45,7 +45,7 @@ def read_events_with_stats(repo, item_id):
         return [], 0
     events = []
     skipped = 0
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         if not line.strip():
             continue
         try:

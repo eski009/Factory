@@ -117,6 +117,15 @@ class TestTolerantRead(unittest.TestCase):
         self.assertEqual(len(events), 1)
         self.assertEqual(skipped, 0)
 
+    def test_invalid_utf8_line_counts_as_corrupt(self):
+        logs.append_event(self.repo, "0001-x", "item.created")
+        path = self.repo / ".factory/items/0001-x/log.jsonl"
+        with path.open("ab") as f:
+            f.write(b'\xff\xfe{"event"\n')
+        events, skipped = logs.read_events_with_stats(self.repo, "0001-x")
+        self.assertEqual([e["event"] for e in events], ["item.created"])
+        self.assertEqual(skipped, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
