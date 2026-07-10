@@ -235,6 +235,22 @@ class CliTest(unittest.TestCase):
         code, _, _ = self.run_cli("validate")
         self.assertEqual(code, 0)
 
+    def test_status_json_and_cost_json_surface_corrupt_log_lines(self):
+        self.run_cli("init")
+        self.run_cli("add", "Thing")
+        log = Path(self.repo, ".factory/items/0001-thing/log.jsonl")
+        with log.open("a", encoding="utf-8") as f:
+            f.write('{"event": "spend", "ts": \n')
+        code, out, _ = self.run_cli("status", "--json")
+        self.assertEqual(code, 0)
+        rows = json.loads(out)
+        for row in rows:
+            self.assertIsInstance(row["spend"]["corrupt_log_lines"], int)
+        self.assertEqual(rows[0]["spend"]["corrupt_log_lines"], 1)
+        code, out, _ = self.run_cli("cost", "0001-thing", "--json")
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out)["corrupt_log_lines"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

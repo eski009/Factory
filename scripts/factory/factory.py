@@ -142,6 +142,10 @@ def cmd_judge(args):
 
 def cmd_reputation(args):
     table = council.reputation_table(args.repo)
+    _, skipped = council.read_ledger_with_stats(args.repo, "reputation")
+    if skipped:
+        print(f"ledgers/reputation.jsonl: {skipped} corrupt lines skipped "
+              "(run factory validate)", file=sys.stderr)
     if args.json:
         print(json.dumps(table, indent=2, sort_keys=True))
     else:

@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Tolerant log/ledger reading** — one corrupt `log.jsonl` or ledger line
+  no longer crashes `factory status --json`, `factory cost`, packet
+  rendering, gated advances, or `factory reputation`. Corrupt lines
+  (including invalid UTF-8) are skipped at a single read boundary and
+  surfaced loudly (`corrupt log lines: N (skipped; run factory validate)`,
+  receipt suffix, stderr warnings); `factory validate` flags them per-line
+  with exit 2 instead of crashing; `next_ledger_id` never reissues an id
+  whose line got corrupted.
+
 ### Added
 
 - **Claude Design mirror (DesignSync made concrete)** — the DesignSync

@@ -75,5 +75,59 @@ class TestFileBid(CouncilTest):
         self.assertEqual(self.bid()["item"], "")
 
 
+class TestTolerantLedger(CouncilTest):
+    """Item spec 0007 §4: ledger reads tolerant, ids never reissued."""
+
+    def corrupt_line(self, text='{"id": "bid-9999", "ts": '):
+        path = self.repo / ".factory/ledgers/bids.jsonl"
+        with path.open("a", encoding="utf-8") as f:
+            f.write(text + "\n")
+
+    def test_read_ledger_skips_corrupt_lines(self):
+        self.bid()
+        self.corrupt_line()
+        entries = council.read_ledger(self.repo, "bids")
+        self.assertEqual([e["id"] for e in entries], ["bid-0001"])
+
+    def test_read_ledger_with_stats_counts_skipped(self):
+        self.bid()
+        self.corrupt_line()
+        entries, skipped = council.read_ledger_with_stats(self.repo, "bids")
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(skipped, 1)
+
+    def test_non_dict_ledger_line_is_corrupt(self):
+        self.corrupt_line(text='["not", "a", "dict"]')
+        entries, skipped = council.read_ledger_with_stats(self.repo, "bids")
+        self.assertEqual(entries, [])
+        self.assertEqual(skipped, 1)
+
+    def test_read_ledger_with_stats_missing_file(self):
+        self.assertEqual(
+            council.read_ledger_with_stats(self.repo, "nonexistent"), ([], 0))
+
+    def test_next_ledger_id_floors_on_raw_line_count(self):
+        # bid-0001 and bid-0002 issued, then bid-0003's line is corrupted
+        # in place: parsed max is 2 but 3 non-blank lines exist, so the
+        # next id is bid-0004 — bid-0003 is never reissued.
+        self.bid()
+        self.bid()
+        self.corrupt_line(text='{"id": "bid-0003", "ts": ')
+        self.assertEqual(council.next_ledger_id(self.repo, "bids", "bid"),
+                         "bid-0004")
+
+    def test_invalid_utf8_ledger_line_skipped(self):
+        self.bid()
+        path = self.repo / ".factory/ledgers/bids.jsonl"
+        with path.open("ab") as f:
+            f.write(b'\xff\xfe{"id"\n')
+        entries = council.read_ledger(self.repo, "bids")
+        self.assertEqual(len(entries), 1)
+        _, skipped = council.read_ledger_with_stats(self.repo, "bids")
+        self.assertEqual(skipped, 1)
+        self.assertEqual(council.next_ledger_id(self.repo, "bids", "bid"),
+                         "bid-0003")
+
+
 if __name__ == "__main__":
     unittest.main()

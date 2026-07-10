@@ -32,12 +32,33 @@ def _ledger_path(repo, name):
     return paths.ledgers_dir(repo) / f"{name}.jsonl"
 
 
-def read_ledger(repo, name):
+def read_ledger_with_stats(repo, name):
+    """Tolerant read: returns (entries, skipped); a line is corrupt when
+    it fails json.loads or parses to a non-dict. Corrupt lines are never
+    repaired or removed here — factory validate flags them for the
+    human. Item spec 0007 §4."""
     path = _ledger_path(repo, name)
     if not path.exists():
-        return []
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()
-            if line.strip()]
+        return [], 0
+    entries = []
+    skipped = 0
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line.strip():
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            skipped += 1
+            continue
+        if not isinstance(entry, dict):
+            skipped += 1
+            continue
+        entries.append(entry)
+    return entries, skipped
+
+
+def read_ledger(repo, name):
+    return read_ledger_with_stats(repo, name)[0]
 
 
 def append_ledger(repo, name, entry):
@@ -48,15 +69,21 @@ def append_ledger(repo, name, entry):
 
 
 def next_ledger_id(repo, name, prefix):
+    entries, skipped = read_ledger_with_stats(repo, name)
     nums = []
-    for entry in read_ledger(repo, name):
+    for entry in entries:
         entry_id = entry.get("id")
         if not entry_id:
             continue
         suffix = entry_id.rsplit("-", 1)[-1]
         if suffix.isdigit():
             nums.append(int(suffix))
-    return f"{prefix}-{max(nums, default=0) + 1:04d}"
+    # Corruption-safe floor (item spec 0007 §4): append_ledger writes
+    # exactly one line per issued sequential id, so the raw non-blank
+    # line count (parsed + skipped) bounds the highest id ever issued.
+    # A corrupt line must never cause its id to be reissued.
+    floor = len(entries) + skipped
+    return f"{prefix}-{max(max(nums, default=0), floor) + 1:04d}"
 
 
 def _check(entry, schema_name, label):

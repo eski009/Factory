@@ -45,10 +45,12 @@ def summarize(repo, item_id):
     Raises items.ItemError for an unknown item, mirroring packet.
     Tolerant of malformed events: stage.advance without dict data/"to"
     or a parseable ts is skipped; invalid spend events are excluded
-    from every sum and surfaced as invalid_spend_events.
+    from every sum and surfaced as invalid_spend_events. Corrupt log
+    lines are skipped at the logs.read_events_with_stats boundary and
+    surfaced as corrupt_log_lines (item spec 0007 §2).
     """
     items.load_item(repo, item_id)
-    events = logs.read_events(repo, item_id)
+    events, corrupt = logs.read_events_with_stats(repo, item_id)
     now = logs.now_stamp()
 
     stages = {}
@@ -141,6 +143,7 @@ def summarize(repo, item_id):
         "measured": measured,
         "unmeasured": UNMEASURED_NOTE,
         "invalid_spend_events": invalid,
+        "corrupt_log_lines": corrupt,
     }
 
 
@@ -207,6 +210,9 @@ def render_text(summary):
         lines.append(f"invalid spend events: "
                      f"{summary['invalid_spend_events']} "
                      "(excluded; run factory validate)")
+    if summary["corrupt_log_lines"]:
+        lines.append(f"corrupt log lines: {summary['corrupt_log_lines']} "
+                     "(skipped; run factory validate)")
     return "\n".join(lines)
 
 
@@ -217,6 +223,8 @@ def render_receipt(summary):
              f"{summary['advances']} advances, "
              f"{summary['dispatches']} dispatches, "
              f"{summary['retries']} retries")
+    if summary["corrupt_log_lines"]:
+        proxy += f", {summary['corrupt_log_lines']} corrupt log lines skipped"
     measured = summary["measured"]
     segments = _token_segments(measured)
     if not segments:

@@ -180,5 +180,44 @@ class TestGates(MachineTest):
             machine.advance(self.repo, "0001-thing", "implement")
 
 
+class TestGateCorruption(MachineTest):
+    """Item spec 0007 §3: gates fail closed on corrupt evidence lines."""
+
+    def corrupt_line(self, text='{"event": "review.approved", "ts": '):
+        log = paths.item_dir(self.repo, "0001-thing") / "log.jsonl"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with log.open("a", encoding="utf-8") as f:
+            f.write(text + "\n")
+
+    def test_corrupt_approval_line_fails_closed(self):
+        # The only review.approved "evidence" is a corrupt line: the gate
+        # must refuse exactly as if the event were never logged.
+        make_item(self.repo, stage="review", priority=1)
+        write(self.repo, "reviews/synthesis.md")
+        self.corrupt_line()
+        with self.assertRaises(machine.GateError):
+            machine.advance(self.repo, "0001-thing", "verify")
+
+    def test_valid_approval_beside_corrupt_line_advances(self):
+        make_item(self.repo, stage="review", priority=1)
+        write(self.repo, "reviews/synthesis.md")
+        self.corrupt_line('{"event": "spend", "ts": ')
+        logs.append_event(self.repo, "0001-thing", "review.approved")
+        self.assertEqual(
+            machine.advance(self.repo, "0001-thing", "verify")["stage"],
+            "verify")
+
+    def test_rejection_cap_counts_parsed_events_only(self):
+        # 2 parsed rejections + 1 corrupt rejection line: count is 2, not
+        # 3, so review -> implement is still allowed (cap is > 2).
+        make_item(self.repo, stage="review", priority=1)
+        write(self.repo, "plan.md", "- [ ] Task 1\n")
+        logs.append_event(self.repo, "0001-thing", "review.rejected")
+        logs.append_event(self.repo, "0001-thing", "review.rejected")
+        self.corrupt_line('{"event": "review.rejected", "ts": ')
+        meta = machine.advance(self.repo, "0001-thing", "implement")
+        self.assertEqual(meta["stage"], "implement")
+
+
 if __name__ == "__main__":
     unittest.main()
