@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Added
+
+- **Focus-group research step (opt-in)** — `factory-research` §3b: 4–6
+  simulated stakeholder interviews with per-persona guides, firewalled
+  assumption-grade findings, and a per-run spend log. Depth `deep` now
+  includes the focus-group step; suppress with `--no-focus-group`, or force
+  it at any depth with `--focus-group` on `/factory:research`.
+
 ## [0.2.0] - 2026-07-04
 
 ### Added
