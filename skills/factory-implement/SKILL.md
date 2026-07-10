@@ -27,6 +27,10 @@ If this item has prior `review.rejected` events and `plan.md` has no unticked `-
 5. **On a task failing twice** (implementer + fix dispatch still can't clear task review after a second attempt): stop working this item. Leave the branch as-is — do not discard partial progress — log `implement.failed` per the Contract, and report to the dispatcher, which will apply its own two-strikes-then-blocked rule.
 6. When every task is ticked, run the item's full test suite (the commands named in each plan task, plus the project's overall suite if broader than per-task commands). Only when it's green: log `implement.completed` with the real task count and a short test summary, then advance to `review` per the Contract.
 
+## Spend logging
+
+At every subagent fan-out point for this item — in step 3, when each per-task implementer or reviewer dispatch (or batch) completes, and equally for the rework-path dispatches under Rework entry — the orchestrating session logs one spend event: `factory log ITEM spend --data '{"provenance":"measured","stage":"implement","source":"factory-implement","dispatches":<n>,"tokens":{"total":<n>}}'` (include `"input"`/`"output"` instead or additionally when the harness reports them) using the token counts the harness reports for those subagents. If the harness surfaces no token usage, log the same event with `"provenance":"proxy"` and **no** `tokens` key. Never estimate or invent token numbers; the orchestrator's own main-loop burn is never logged as measured. The engine neither requires nor verifies these events at gates — this is convention, not a gate.
+
 ## Notes
 
 - Never advance past a red suite — a false `implement.completed` would let a broken branch reach `review` looking finished.

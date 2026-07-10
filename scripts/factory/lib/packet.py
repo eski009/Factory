@@ -1,6 +1,6 @@
 """Render mobile-legible review packets for humans. Spec §5, §9."""
 
-from . import items, logs, paths
+from . import cost, items, logs, paths
 
 ARTIFACTS = ("triage.md", "spec.md", "plan.md", "design/choice.md",
              "reviews/synthesis.md")
@@ -24,6 +24,8 @@ def render_packet(repo, item_id):
     for event in logs.read_events(repo, item_id)[-5:]:
         lines.append(f"- {event['ts']} {event['event']}"
                      + (f" {event['data']}" if "data" in event else ""))
+    lines += ["", "## Spend"]
+    lines += cost.render_receipt(cost.summarize(repo, item_id)).splitlines()
     lines += ["", "## Respond",
               "Reply in session, or use the factory CLI to record your",
               "decision (for a design pause: `factory choice <id> <option>`),",

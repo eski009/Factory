@@ -163,6 +163,78 @@ class CliTest(unittest.TestCase):
         items_dir = Path(self.repo, ".factory/items")
         self.assertFalse(items_dir.exists() and list(items_dir.iterdir()))
 
+    def test_cost_unknown_item_exits_1(self):
+        self.run_cli("init")
+        code, _, err = self.run_cli("cost", "0999-none")
+        self.assertEqual(code, 1)
+        self.assertIn("no such item", err)
+
+    def test_cost_tier1_retroactive_with_zero_spend_events(self):
+        self.run_cli("init")
+        self.run_cli("add", "Thing")
+        self.run_cli("advance", "0001-thing", "triage")
+        code, out, _ = self.run_cli("cost", "0001-thing")
+        self.assertEqual(code, 0)
+        self.assertIn("[proxy] stage idea:", out)
+        self.assertIn("[measured] tokens: none logged", out)
+        self.assertIn(
+            "[unmeasured] UNMEASURED: orchestrator main-loop tokens", out)
+
+    def test_cost_json_parses_with_contract_keys(self):
+        self.run_cli("init")
+        self.run_cli("add", "Thing")
+        code, out, _ = self.run_cli("cost", "0001-thing", "--json")
+        self.assertEqual(code, 0)
+        summary = json.loads(out)
+        for key in ("item", "window", "elapsed_seconds", "active_seconds",
+                    "waiting_seconds", "advances", "retries", "dispatches",
+                    "stages", "measured", "unmeasured",
+                    "invalid_spend_events"):
+            self.assertIn(key, summary)
+        self.assertIsNone(summary["measured"])
+        self.assertEqual(summary["window"]["end"], "2026-07-03T12:00:00Z")
+
+    def test_status_json_rows_carry_spend_without_stages(self):
+        self.run_cli("init")
+        self.run_cli("add", "Thing")
+        code, out, _ = self.run_cli("status", "--json")
+        self.assertEqual(code, 0)
+        rows = json.loads(out)
+        self.assertIn("spend", rows[0])
+        self.assertNotIn("stages", rows[0]["spend"])
+        self.assertEqual(rows[0]["spend"]["item"], "0001-thing")
+
+    def test_status_table_output_unchanged(self):
+        self.run_cli("init")
+        self.run_cli("add", "Thing")
+        code, out, _ = self.run_cli("status")
+        self.assertEqual(code, 0)
+        expected = f"{'0001-thing':<40} {'idea':<14} p{'-':<4} mixed\n"
+        self.assertEqual(out, expected)
+
+    def test_validate_exits_2_on_bad_spend_event(self):
+        self.run_cli("init")
+        self.run_cli("add", "Thing")
+        self.run_cli("log", "0001-thing", "spend", "--data",
+                     '{"stage": "implement", "dispatches": 2}')
+        code, _, err = self.run_cli("validate")
+        self.assertEqual(code, 2)
+        self.assertIn("0001-thing/log.jsonl:2", err)
+        self.assertIn("provenance", err)
+
+    def test_log_spend_uses_unmodified_write_path(self):
+        self.run_cli("init")
+        self.run_cli("add", "Thing")
+        code, _, _ = self.run_cli(
+            "log", "0001-thing", "spend", "--data",
+            '{"provenance":"proxy","stage":"implement","dispatches":2}')
+        self.assertEqual(code, 0)
+        log = Path(self.repo,
+                   ".factory/items/0001-thing/log.jsonl").read_text()
+        self.assertIn('"event": "spend"', log)
+        code, _, _ = self.run_cli("validate")
+        self.assertEqual(code, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

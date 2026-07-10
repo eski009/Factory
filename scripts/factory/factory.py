@@ -9,9 +9,9 @@ import sys
 if __package__ in (None, ""):
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths
+    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost
 else:
-    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths
+    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost
 
 
 def _require_factory_repo(repo):
@@ -60,6 +60,10 @@ def cmd_status(args):
     metas, errors = items.list_items_safe(args.repo)
     rows = sorted(metas, key=lambda m: (m.get("priority", 9999), m["id"]))
     if args.json:
+        for m in rows:
+            spend = cost.summarize(args.repo, m["id"])
+            spend.pop("stages", None)
+            m["spend"] = spend
         print(json.dumps(rows, indent=2, sort_keys=True))
     else:
         for m in rows:
@@ -68,6 +72,19 @@ def cmd_status(args):
     for error in errors:
         print(error, file=sys.stderr)
     return 2 if errors else 0
+
+
+def cmd_cost(args):
+    try:
+        summary = cost.summarize(args.repo, args.item)
+    except items.ItemError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(summary, indent=2, sort_keys=True))
+    else:
+        print(cost.render_text(summary))
+    return 0
 
 
 def cmd_advance(args):
@@ -233,6 +250,11 @@ def main(argv=None):
     p = sub.add_parser("status", help="list items by priority")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_status)
+
+    p = sub.add_parser("cost", help="per-item spend summary, provenance-tagged")
+    p.add_argument("item")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_cost)
 
     p = sub.add_parser("advance", help="move an item to a stage (gate-checked)")
     p.add_argument("item")

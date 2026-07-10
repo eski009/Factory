@@ -22,6 +22,10 @@ Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.p
 5. **If clean:** confirm `reviews/synthesis.md` exists and is non-empty (it will, from step 2), log `review.approved`, and advance to `verify` per the Contract.
 6. **File durable learnings.** Anything from the council's synthesis worth remembering past this item (a recurring pattern, a spec ambiguity worth closing) goes through the `council-judgement` skill as a bid — do not edit `docs/factory/brain/` directly from here, matching council-review's own rule.
 
+## Spend logging
+
+At step 2's fan-out points, when each dispatch batch completes, the orchestrating session logs one spend event per council round — `factory log ITEM spend --data '{"provenance":"measured","stage":"review","source":"factory-review","dispatches":<n>,"tokens":{"total":<n>}}'` (include `"input"`/`"output"` instead or additionally when the harness reports them) with `dispatches` = the seat count for that round — plus one more event for the walk subagent when it is dispatched, all using the token counts the harness reports for those subagents. If the harness surfaces no token usage, log the same event with `"provenance":"proxy"` and **no** `tokens` key. Never estimate or invent token numbers; the orchestrator's own main-loop burn is never logged as measured. The engine neither requires nor verifies these events at gates.
+
 ## Notes
 
 - Rounds are lifetime-scoped, not scoped to this stage entry — a rejection from an earlier pass through `review` still counts toward the cap even if the item cycled through `implement` since.
