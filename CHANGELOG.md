@@ -27,6 +27,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **Interactive decision pages** — the design gate's options page is now
+  interactive: pick buttons for each option plus exactly one "None of
+  these", optional per-option commentary (composed into structured
+  `--notes`), a sticky bar with the live-composed `factory choice` command
+  (the zero-network, phone-friendly baseline), and a Record control a live
+  session can read back (browser-read capability) so the pick lands without
+  copy-paste. "None of these" routes the item back to design regeneration
+  with the commentary as input (capped at two rounds), never forward to
+  plan. Every capture path still terminates in `factory choice` — the
+  engine's single writer.
 - **Design-mirror refinements** — the pull-mirror bid now fires only when
   pulled tokens actually differ (no judge busywork on stable design
   systems); design packets disclose the token source, snapshot path, and
