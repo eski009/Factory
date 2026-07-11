@@ -1,6 +1,8 @@
 {
   "name": "factory",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Autonomous software factory: product brain, pipeline state machine, council review. Requires the superpowers plugin for execution discipline.",
-  "author": {"name": "Steve Coulson"}
+  "author": {
+    "name": "Steve Coulson"
+  }
 }
