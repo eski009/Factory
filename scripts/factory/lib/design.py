@@ -5,7 +5,7 @@ import re
 from . import items, logs, paths
 from .machine import GateError
 
-OPTION_RE = re.compile(r"^[a-d]$")
+OPTION_RE = re.compile(r"^(?:[a-d]|none)$")
 
 
 def record_choice(repo, item_id, option, notes=None):
@@ -18,7 +18,7 @@ def record_choice(repo, item_id, option, notes=None):
     if not (at_design or paused_at_design):
         raise GateError(f"choice requires stage design (or paused from it); item is at {stage!r}")
     if not OPTION_RE.match(option):
-        raise GateError(f"option must be one of a-d, got {option!r}")
+        raise GateError(f"option must be one of a-d or none, got {option!r}")
     path = paths.item_dir(repo, item_id) / "design" / "choice.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     body = notes if notes else "(no notes)"
