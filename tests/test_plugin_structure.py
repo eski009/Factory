@@ -99,7 +99,7 @@ class TestPluginStructure(unittest.TestCase):
 
     def test_capability_upgrade_references_exist_and_are_linked(self):
         skill_text = (ROOT / "skills/capabilities/SKILL.md").read_text()
-        for name in ("workflow-fanout", "artifact-hosting", "scheduling", "designsync", "orchestration-patterns", "model-tiering"):
+        for name in ("workflow-fanout", "artifact-hosting", "scheduling", "designsync", "orchestration-patterns", "model-tiering", "browser-read"):
             ref = ROOT / f"skills/capabilities/references/{name}.md"
             self.assertTrue(ref.exists(), str(ref))
             self.assertIn(f"references/{name}.md", skill_text, name)
@@ -358,6 +358,36 @@ class TestPluginStructure(unittest.TestCase):
         self.assertIn("This skill never writes `design/choice.md`", text)
         self.assertIn("never *authors a pick*", text)
         self.assertIn("move-and-delete", text)
+
+    def test_dispatch_resume_never_routes_on_choice_content(self):
+        text = (ROOT / "skills/factory-dispatch/SKILL.md").read_text()
+        self.assertIn("regardless of which option `choice.md` records", text)
+        self.assertIn(
+            "never advances a design item toward `plan` based on "
+            "`choice.md` content", text)
+        self.assertIn("belongs exclusively to factory-design's entry check",
+                      text)
+
+    def test_dispatch_short_circuit_guarded_against_none(self):
+        text = (ROOT / "skills/factory-dispatch/SKILL.md").read_text()
+        self.assertIn("records an option a–d", text)
+        self.assertIn("`- option: none` is not a satisfied artifact", text)
+        self.assertIn("take the pause branch below for it instead", text)
+
+    def test_browser_read_capability_row_and_reference(self):
+        skill = (ROOT / "skills/capabilities/SKILL.md").read_text()
+        self.assertIn(
+            "| Browser read-back | a browser-automation tool that can read "
+            "page DOM/console is present in the tool list |", skill)
+        self.assertIn("references/browser-read.md", skill)
+        ref = (ROOT /
+               "skills/capabilities/references/browser-read.md").read_text()
+        self.assertIn("Session-live only", ref)
+        self.assertIn("the *session*, not the page, invokes the engine", ref)
+        self.assertIn("never required, never blocks", ref)
+        self.assertIn("no server, no daemon", ref)
+        self.assertIn(
+            "requires a judgement amending the zero-network rule first", ref)
 
 
 if __name__ == "__main__":
