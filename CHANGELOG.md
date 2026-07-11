@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **Never-bricks completion** — byte-level (non-UTF-8) corruption in
+  `item.md`/`config.json` now yields clean refusals and validate flags
+  instead of tracebacks; gates fail closed on undecodable evidence; ledger
+  lines missing required keys are filtered at the read boundary (id floor
+  preserved) so reputation/judge/health survive; plain `factory status`
+  prints one aggregated corrupt-log-lines notice; validate flags every
+  corrupt shape the tolerant reader skips; corruption copy unified to
+  count-after-label.
 - **Tolerant log/ledger reading** — one corrupt `log.jsonl` or ledger line
   no longer crashes `factory status --json`, `factory cost`, packet
   rendering, gated advances, or `factory reputation`. Corrupt lines
