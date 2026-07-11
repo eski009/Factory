@@ -11,6 +11,7 @@ Factory skills are written against a degraded baseline that works on any Claude 
 | Artifact tool | tool present in tool list | Host the options page as an artifact → see references/artifact-hosting.md | Write HTML to `items/<id>/design/options.html` and tell the user to open it |
 | DesignSync | any `mcp__claude-design__*` tool present in tool list | Pull/push the linked Claude Design project → see references/designsync.md | Use `docs/factory/brain/design-system.md` tokens |
 | Scheduled agents | tool present in tool list | `loop` mode runs on a schedule → see references/scheduling.md | User runs `/factory:run loop` manually |
+| Browser read-back | a browser-automation tool that can read page DOM/console is present in the tool list | Open the options page in the controlled browser; after the human clicks "Record choice", read the finalized `#factory-choice` state (or the `FACTORY_CHOICE` console line) and run `factory choice <id> <opt> --notes "…"` on their behalf → see references/browser-read.md | Human copies the page's composed `factory choice` command (or the packet's verbatim CLI line) and runs it |
 
 Probe by attempting nothing: check the tool list. Never let a missing optional tool fail a stage — the degraded path is the contract, upgrades are opportunistic.
 

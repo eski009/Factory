@@ -74,7 +74,57 @@ class TestRecordChoice(unittest.TestCase):
         put(self.repo)
         with self.assertRaises(machine.GateError) as ctx:
             design.record_choice(self.repo, "0001-thing", "zzz")
-        self.assertIn("option must be one of a-d", str(ctx.exception))
+        self.assertIn("option must be one of a-d or none", str(ctx.exception))
+
+    def test_option_re_matches_exactly_the_five_options(self):
+        for opt in ("a", "b", "c", "d", "none"):
+            self.assertTrue(design.OPTION_RE.match(opt), opt)
+        for bad in ("e", "None", "NONE", "ab", "nonee", "anone",
+                    "no", "", " a", "a ", "a-d"):
+            self.assertFalse(design.OPTION_RE.match(bad), bad)
+
+    def test_none_at_design_stage(self):
+        put(self.repo)
+        path = design.record_choice(self.repo, "0001-thing", "none",
+                                    notes="[none] missing the timeline view")
+        text = path.read_text(encoding="utf-8")
+        self.assertIn("- option: none", text)
+        self.assertIn("[none] missing the timeline view", text)
+        events = logs.read_events(self.repo, "0001-thing")
+        self.assertEqual(events[-1]["event"], "design.choice")
+        self.assertEqual(events[-1]["data"], {"option": "none"})
+
+    def test_none_while_paused_from_design(self):
+        put(self.repo, stage="waiting-human", paused_from="design")
+        path = design.record_choice(self.repo, "0001-thing", "none")
+        self.assertIn("- option: none", path.read_text(encoding="utf-8"))
+
+    def test_none_backend_kind_refused(self):
+        put(self.repo, kind="backend", stage="plan")
+        with self.assertRaises(machine.GateError):
+            design.record_choice(self.repo, "0001-thing", "none")
+
+    def test_none_wrong_stage_refused(self):
+        put(self.repo, stage="implement")
+        with self.assertRaises(machine.GateError) as ctx:
+            design.record_choice(self.repo, "0001-thing", "none")
+        self.assertIn("implement", str(ctx.exception))
+
+    def test_pick_after_none_overwrites(self):
+        put(self.repo)
+        design.record_choice(self.repo, "0001-thing", "none",
+                             notes="[none] not these")
+        design.record_choice(self.repo, "0001-thing", "b")
+        text = (self.repo /
+                ".factory/items/0001-thing/design/choice.md").read_text()
+        self.assertIn("- option: b", text)
+        self.assertNotIn("- option: none", text)
+
+    def test_structured_notes_preserved_verbatim(self):
+        put(self.repo)
+        notes = "[b] like the header | [none] missing timeline"
+        path = design.record_choice(self.repo, "0001-thing", "b", notes=notes)
+        self.assertIn(notes, path.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

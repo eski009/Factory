@@ -99,7 +99,7 @@ class TestPluginStructure(unittest.TestCase):
 
     def test_capability_upgrade_references_exist_and_are_linked(self):
         skill_text = (ROOT / "skills/capabilities/SKILL.md").read_text()
-        for name in ("workflow-fanout", "artifact-hosting", "scheduling", "designsync", "orchestration-patterns", "model-tiering"):
+        for name in ("workflow-fanout", "artifact-hosting", "scheduling", "designsync", "orchestration-patterns", "model-tiering", "browser-read"):
             ref = ROOT / f"skills/capabilities/references/{name}.md"
             self.assertTrue(ref.exists(), str(ref))
             self.assertIn(f"references/{name}.md", skill_text, name)
@@ -317,6 +317,77 @@ class TestPluginStructure(unittest.TestCase):
         ref = (ROOT / "skills/capabilities/references/designsync.md").read_text()
         self.assertIn("replaces", ref)
         self.assertIn("fallback tokens", ref)
+
+    def test_factory_design_entry_check_three_way_branch(self):
+        text = (ROOT / "skills/factory-design/SKILL.md").read_text()
+        self.assertIn("Absent or empty", text)
+        self.assertIn("- option: none", text)
+        self.assertIn("design/feedback/round-<N+1>.md", text)
+        self.assertIn("then delete `design/choice.md`", text)
+        self.assertIn(
+            "every `items/<id>/design/feedback/round-*.md` file as required "
+            "input", text)
+        self.assertIn("the cap: 2 regeneration rounds", text)
+        self.assertIn("human-authored steer", text)
+        self.assertIn("amend `spec.md`'s UI acceptance criteria", text)
+
+    def test_factory_design_options_page_decision_block(self):
+        text = (ROOT / "skills/factory-design/SKILL.md").read_text()
+        self.assertIn('<button data-pick="none">', text)
+        self.assertIn('exactly one "None of these" block', text)
+        self.assertIn('maxlength="500"', text)
+        self.assertIn("before the first pick button", text)
+        self.assertIn("changed any time before the item resumes", text)
+        self.assertIn("'\\''", text)
+        self.assertIn('<output id="factory-choice" data-final="true">', text)
+        self.assertIn("FACTORY_CHOICE", text)
+        self.assertIn("<noscript>", text)
+        self.assertIn("viewport", text)
+        self.assertIn("never writes files and never makes a request", text)
+
+    def test_factory_design_packet_notes_convention_and_none_routing(self):
+        text = (ROOT / "skills/factory-design/SKILL.md").read_text()
+        self.assertIn('factory choice <id> <option> [--notes "..."]', text)
+        self.assertIn("[opt] text | …", text)
+        self.assertIn("back to design regeneration", text)
+        self.assertIn("never advances the item toward plan", text)
+        self.assertIn("what changed in answer to the round-N commentary", text)
+
+    def test_factory_design_never_authors_a_pick(self):
+        text = (ROOT / "skills/factory-design/SKILL.md").read_text()
+        self.assertIn("This skill never writes `design/choice.md`", text)
+        self.assertIn("never *authors a pick*", text)
+        self.assertIn("move-and-delete", text)
+
+    def test_dispatch_resume_never_routes_on_choice_content(self):
+        text = (ROOT / "skills/factory-dispatch/SKILL.md").read_text()
+        self.assertIn("regardless of which option `choice.md` records", text)
+        self.assertIn(
+            "never advances a design item toward `plan` based on "
+            "`choice.md` content", text)
+        self.assertIn("belongs exclusively to factory-design's entry check",
+                      text)
+
+    def test_dispatch_short_circuit_guarded_against_none(self):
+        text = (ROOT / "skills/factory-dispatch/SKILL.md").read_text()
+        self.assertIn("records an option a–d", text)
+        self.assertIn("`- option: none` is not a satisfied artifact", text)
+        self.assertIn("take the pause branch below for it instead", text)
+
+    def test_browser_read_capability_row_and_reference(self):
+        skill = (ROOT / "skills/capabilities/SKILL.md").read_text()
+        self.assertIn(
+            "| Browser read-back | a browser-automation tool that can read "
+            "page DOM/console is present in the tool list |", skill)
+        self.assertIn("references/browser-read.md", skill)
+        ref = (ROOT /
+               "skills/capabilities/references/browser-read.md").read_text()
+        self.assertIn("Session-live only", ref)
+        self.assertIn("the *session*, not the page, invokes the engine", ref)
+        self.assertIn("never required, never blocks", ref)
+        self.assertIn("no server, no daemon", ref)
+        self.assertIn(
+            "requires a judgement amending the zero-network rule first", ref)
 
 
 if __name__ == "__main__":
