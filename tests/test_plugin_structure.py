@@ -318,6 +318,47 @@ class TestPluginStructure(unittest.TestCase):
         self.assertIn("replaces", ref)
         self.assertIn("fallback tokens", ref)
 
+    def test_factory_design_entry_check_three_way_branch(self):
+        text = (ROOT / "skills/factory-design/SKILL.md").read_text()
+        self.assertIn("Absent or empty", text)
+        self.assertIn("- option: none", text)
+        self.assertIn("design/feedback/round-<N+1>.md", text)
+        self.assertIn("then delete `design/choice.md`", text)
+        self.assertIn(
+            "every `items/<id>/design/feedback/round-*.md` file as required "
+            "input", text)
+        self.assertIn("the cap: 2 regeneration rounds", text)
+        self.assertIn("human-authored steer", text)
+        self.assertIn("amend `spec.md`'s UI acceptance criteria", text)
+
+    def test_factory_design_options_page_decision_block(self):
+        text = (ROOT / "skills/factory-design/SKILL.md").read_text()
+        self.assertIn('<button data-pick="none">', text)
+        self.assertIn('exactly one "None of these" block', text)
+        self.assertIn('maxlength="500"', text)
+        self.assertIn("before the first pick button", text)
+        self.assertIn("changed any time before the item resumes", text)
+        self.assertIn("'\\''", text)
+        self.assertIn('<output id="factory-choice" data-final="true">', text)
+        self.assertIn("FACTORY_CHOICE", text)
+        self.assertIn("<noscript>", text)
+        self.assertIn("viewport", text)
+        self.assertIn("never writes files and never makes a request", text)
+
+    def test_factory_design_packet_notes_convention_and_none_routing(self):
+        text = (ROOT / "skills/factory-design/SKILL.md").read_text()
+        self.assertIn('factory choice <id> <option> [--notes "..."]', text)
+        self.assertIn("[opt] text | …", text)
+        self.assertIn("back to design regeneration", text)
+        self.assertIn("never advances the item toward plan", text)
+        self.assertIn("what changed in answer to the round-N commentary", text)
+
+    def test_factory_design_never_authors_a_pick(self):
+        text = (ROOT / "skills/factory-design/SKILL.md").read_text()
+        self.assertIn("This skill never writes `design/choice.md`", text)
+        self.assertIn("never *authors a pick*", text)
+        self.assertIn("move-and-delete", text)
+
 
 if __name__ == "__main__":
     unittest.main()
