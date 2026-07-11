@@ -10,11 +10,12 @@ import re
 from . import logs, paths
 
 FIELD_ORDER = (
-    "id", "title", "stage", "kind", "priority",
+    "id", "title", "stage", "kind", "bug", "priority",
     "created", "updated", "paused-from", "paused-reason",
 )
 REQUIRED_FIELDS = ("id", "title", "stage", "kind", "created", "updated")
 INT_FIELDS = ("priority",)
+BOOL_FIELDS = ("bug",)
 KINDS = ("ui", "backend", "mixed")
 
 
@@ -47,6 +48,13 @@ def parse_item(text):
                 value = int(value)
             except ValueError:
                 raise ItemError(f"{key} must be an integer, got {value!r}")
+        if key in BOOL_FIELDS:
+            if value == "true":
+                value = True
+            elif value == "false":
+                value = False
+            else:
+                raise ItemError(f"{key} must be true or false, got {value!r}")
         meta[key] = value
     missing = [f for f in REQUIRED_FIELDS if f not in meta]
     if missing:
@@ -55,11 +63,15 @@ def parse_item(text):
     return meta, body
 
 
+def _render_value(value):
+    return ("true" if value else "false") if isinstance(value, bool) else str(value)
+
+
 def render_item(meta, body):
     for key, value in meta.items():
         if key not in FIELD_ORDER:
             raise ItemError(f"unknown field: {key}")
-        text = str(value)
+        text = _render_value(value)
         if "\n" in text or "\r" in text:
             raise ItemError(f"{key} must be a single-line value")
         if isinstance(value, str) and value != value.strip():
@@ -67,7 +79,7 @@ def render_item(meta, body):
     out = ["---"]
     for key in FIELD_ORDER:
         if key in meta:
-            out.append(f"{key}: {meta[key]}")
+            out.append(f"{key}: {_render_value(meta[key])}")
     out.append("---")
     out.append("")
     out.append(body.rstrip("\n"))
