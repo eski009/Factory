@@ -68,7 +68,7 @@ class TestPacket(unittest.TestCase):
             f.write('{"event": "spend", "ts": \n')
         text = packet.render_packet(self.repo, "0001-thing")
         self.assertIn("## Spend", text)
-        self.assertIn(", 1 corrupt log lines skipped", text)
+        self.assertIn(", corrupt log lines skipped: 1", text)
         section = text.split("## Spend\n")[1].split("\n\n## Respond")[0]
         self.assertEqual(len(section.splitlines()), 3)
 

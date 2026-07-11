@@ -66,9 +66,21 @@ def cmd_status(args):
             m["spend"] = spend
         print(json.dumps(rows, indent=2, sort_keys=True))
     else:
+        corrupt_total = 0
+        corrupt_items = 0
         for m in rows:
             priority = m.get("priority", "-")
             print(f"{m['id']:<40} {m['stage']:<14} p{priority:<4} {m['kind']}")
+            _, skipped = logs.read_events_with_stats(args.repo, m["id"])
+            if skipped:
+                corrupt_total += skipped
+                corrupt_items += 1
+        if corrupt_total:
+            # One aggregated notice, count-after-label; per-item detail
+            # lives in factory cost. Exit code unchanged. Item spec 0009 §3.
+            print(f"corrupt log lines: {corrupt_total} across "
+                  f"{corrupt_items} items (skipped; run factory validate)",
+                  file=sys.stderr)
     for error in errors:
         print(error, file=sys.stderr)
     return 2 if errors else 0
@@ -144,7 +156,7 @@ def cmd_reputation(args):
     table = council.reputation_table(args.repo)
     _, skipped = council.read_ledger_with_stats(args.repo, "reputation")
     if skipped:
-        print(f"ledgers/reputation.jsonl: {skipped} corrupt lines skipped "
+        print(f"ledgers/reputation.jsonl: corrupt lines skipped: {skipped} "
               "(run factory validate)", file=sys.stderr)
     if args.json:
         print(json.dumps(table, indent=2, sort_keys=True))

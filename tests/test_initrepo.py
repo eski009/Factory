@@ -199,6 +199,78 @@ class InitTest(unittest.TestCase):
         self.assertTrue((self.repo / "docs/factory/brain/personas.md").exists())
         self.assertTrue((self.repo / "docs/factory/brain/market.md").exists())
 
+    def test_validate_flags_undecodable_config(self):
+        # Item spec 0009 §1: byte corruption lands in the existing
+        # invalid-JSON flag path — validate never tracebacks.
+        initrepo.init(self.repo)
+        (self.repo / ".factory/config.json").write_bytes(b"\xff\xfe{ not json")
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any("config.json: invalid JSON" in e for e in errors),
+                        errors)
+
+    def test_validate_flags_non_dict_config(self):
+        initrepo.init(self.repo)
+        (self.repo / ".factory/config.json").write_text(
+            '["not", "an", "object"]\n', encoding="utf-8")
+        errors = initrepo.validate_tree(self.repo)
+        self.assertIn("config.json: not an object", errors)
+
+    def test_validate_flags_undecodable_item_md(self):
+        initrepo.init(self.repo)
+        bad = paths.item_dir(self.repo, "0001-bad")
+        bad.mkdir(parents=True)
+        (bad / "item.md").write_bytes(b"\xff\xfe not utf-8 \x80")
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any("0001-bad/item.md" in e for e in errors), errors)
+
+    def test_validate_flags_item_with_missing_id_value(self):
+        # Item spec 0009 §1: the id-mismatch path must use the .get value
+        # in its message; an id-less/empty-id frontmatter is flagged
+        # "missing id", never crashed on.
+        initrepo.init(self.repo)
+        bad = paths.item_dir(self.repo, "0001-x")
+        bad.mkdir(parents=True)
+        (bad / "item.md").write_text(
+            "---\nid:\ntitle: X\nstage: idea\nkind: ui\n"
+            "created: 2026-07-03T10:00:00Z\nupdated: 2026-07-03T10:00:00Z\n"
+            "---\n\n# X\n", encoding="utf-8")
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any("missing id" in e for e in errors), errors)
+
+    def test_validate_flags_non_dict_json_log_line(self):
+        # Item spec 0009 rework (review round 1 blocking finding): a
+        # parseable-but-non-dict log line (list, string, ...) must be
+        # flagged, not fed to the stage-reconciliation loop below, which
+        # calls .get() assuming every entry is a dict.
+        initrepo.init(self.repo)
+        meta = {"id": "0001-x", "title": "X", "stage": "idea", "kind": "ui",
+                "created": "2026-07-03T10:00:00Z", "updated": "2026-07-03T10:00:00Z"}
+        items.save_item(self.repo, meta, "")
+        log_path = paths.item_dir(self.repo, "0001-x") / "log.jsonl"
+        with log_path.open("a", encoding="utf-8") as f:
+            f.write("[1, 2]\n")
+            f.write('"hello"\n')
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(
+            any("log.jsonl:1: invalid event" in e for e in errors), errors)
+        self.assertTrue(
+            any("log.jsonl:2: invalid event" in e for e in errors), errors)
+
+    def test_validate_flags_event_dict_missing_keys(self):
+        # A dict line missing the required "event"/"ts" keys (append_event
+        # writes both unconditionally) is corrupt at the same boundary
+        # logs.read_events_with_stats already treats as skipped.
+        initrepo.init(self.repo)
+        meta = {"id": "0001-x", "title": "X", "stage": "idea", "kind": "ui",
+                "created": "2026-07-03T10:00:00Z", "updated": "2026-07-03T10:00:00Z"}
+        items.save_item(self.repo, meta, "")
+        log_path = paths.item_dir(self.repo, "0001-x") / "log.jsonl"
+        with log_path.open("a", encoding="utf-8") as f:
+            f.write('{"foo": 1}\n')
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(
+            any("log.jsonl:1: invalid event" in e for e in errors), errors)
+
 
 class SpendValidateTest(unittest.TestCase):
     def setUp(self):

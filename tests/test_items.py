@@ -139,6 +139,32 @@ class TestStorage(unittest.TestCase):
         self.assertIn("0002-dark-mode-copy", errors[0])
         self.assertIn("does not match directory name", errors[0])
 
+    def test_load_undecodable_item_raises_item_error(self):
+        # Item spec 0009 §1: byte-corrupt item.md is a clean ItemError
+        # refusal naming the item — never a UnicodeDecodeError traceback.
+        meta, body = items.parse_item(VALID)
+        items.save_item(self.repo, meta, body)
+        item_md = paths.item_dir(self.repo, "0001-dark-mode") / "item.md"
+        item_md.write_bytes(b"\xff\xfe not utf-8 \x80")
+        with self.assertRaises(items.ItemError) as ctx:
+            items.load_item(self.repo, "0001-dark-mode")
+        self.assertIn("0001-dark-mode", str(ctx.exception))
+        self.assertIn("unreadable", str(ctx.exception))
+
+    def test_list_items_safe_reports_undecodable_item(self):
+        # Item spec 0009 §1: the undecodable item is omitted and reported,
+        # honoring the list_items_safe docstring.
+        meta, _ = items.parse_item(VALID)
+        items.save_item(self.repo, meta, "")
+        bad = paths.item_dir(self.repo, "0002-bad")
+        bad.mkdir(parents=True)
+        (bad / "item.md").write_bytes(b"\xff\xfe not utf-8 \x80")
+        metas, errors = items.list_items_safe(self.repo)
+        self.assertEqual([m["id"] for m in metas], ["0001-dark-mode"])
+        self.assertEqual(len(errors), 1)
+        self.assertIn("0002-bad", errors[0])
+        self.assertIn("unreadable", errors[0])
+
 
 if __name__ == "__main__":
     unittest.main()

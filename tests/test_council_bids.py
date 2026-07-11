@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.factory.lib import council, initrepo
+from scripts.factory.lib import council, health, initrepo
 
 
 class CouncilTest(unittest.TestCase):
@@ -127,6 +127,69 @@ class TestTolerantLedger(CouncilTest):
         self.assertEqual(skipped, 1)
         self.assertEqual(council.next_ledger_id(self.repo, "bids", "bid"),
                          "bid-0003")
+
+
+class TestRequiredKeyFilter(CouncilTest):
+    """Item spec 0009 §2: a parseable dict line missing one of that
+    ledger's required keys is filtered at the read boundary, counted in
+    skipped — downstream subscripts never KeyError."""
+
+    def append_raw(self, name, text):
+        path = self.repo / f".factory/ledgers/{name}.jsonl"
+        with path.open("a", encoding="utf-8") as f:
+            f.write(text + "\n")
+
+    def test_bids_line_missing_agent_filtered_and_counted(self):
+        self.bid()
+        self.append_raw("bids", '{"id": "bid-0002", "topic": "t", "claim": "c"}')
+        entries, skipped = council.read_ledger_with_stats(self.repo, "bids")
+        self.assertEqual([e["id"] for e in entries], ["bid-0001"])
+        self.assertEqual(skipped, 1)
+
+    def test_key_missing_line_still_bounds_floor(self):
+        # Pinned floor invariant (item spec 0009 §2 / AC 6): one valid
+        # bid-0001 plus one key-missing dict line gives entries=1,
+        # skipped=1, floor = 1 + 1 = 2, so the next id is bid-0003 —
+        # the filtered line still bounds the floor and no id under it
+        # is ever reissued.
+        self.bid()
+        self.append_raw(
+            "bids", '{"id": "bid-0002", "ts": "2026-07-03T12:00:00Z"}')
+        entries, skipped = council.read_ledger_with_stats(self.repo, "bids")
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(skipped, 1)
+        self.assertEqual(council.next_ledger_id(self.repo, "bids", "bid"),
+                         "bid-0003")
+
+    def test_reputation_table_survives_key_missing_line(self):
+        self.bid()
+        council.record_judgement(self.repo, "bid-0001", "accept", "ok",
+                                 surface="brain/design-system.md",
+                                 anchor="## Spacing")
+        self.append_raw(
+            "reputation", '{"agent": "ui-taste", "topic": "interaction"}')
+        table = council.reputation_table(self.repo)
+        self.assertEqual(table, {"ui-taste/interaction": 0.05})
+
+    def test_judge_lookup_paths_survive_key_missing_lines(self):
+        # _find_bid iterates bid["id"]; _judgement_for iterates
+        # jdg["bid"]. Key-missing lines in both ledgers must not crash
+        # record_judgement's lookups.
+        self.bid()
+        self.append_raw("bids", '{"agent": "product"}')
+        self.append_raw("judgements", '{"id": "jdg-0009"}')
+        jdg, rep = council.record_judgement(self.repo, "bid-0001",
+                                            "reject", "no")
+        self.assertEqual(jdg["bid"], "bid-0001")
+        self.assertEqual(rep["delta"], -0.10)
+
+    def test_compute_health_survives_key_missing_lines(self):
+        self.bid()
+        self.append_raw("bids", '{"topic": "t"}')
+        self.append_raw("judgements", '{"id": "jdg-0009"}')
+        report = health.compute_health(self.repo)
+        self.assertEqual(report["ledgers"]["bids"], 1)
+        self.assertEqual(report["ledgers"]["unjudged"], 1)
 
 
 if __name__ == "__main__":

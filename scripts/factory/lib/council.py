@@ -23,6 +23,18 @@ AUTHORIZING = ("accept", "merge")
 DECISION_DELTAS = {"accept": 0.05, "merge": 0.05, "defer": 0.0,
                    "downgrade": -0.05, "reject": -0.10}
 
+# Minimum keys each ledger's downstream consumers subscript without
+# .get(): _find_bid/record_judgement (bids), _judgement_for/
+# is_change_authorized/health (judgements), reputation_table
+# (reputation). A parseable dict line missing one is corrupt at the
+# read boundary. Deliberately narrower than the schemas — e.g.
+# reputation does NOT require "judgement". Item spec 0009 §2.
+REQUIRED_KEYS = {
+    "bids": ("id", "agent", "topic", "claim"),
+    "judgements": ("id", "bid", "decision"),
+    "reputation": ("agent", "topic", "delta"),
+}
+
 
 class CouncilError(Exception):
     """Business-rule refusal: the ledger stays untouched."""
@@ -34,8 +46,9 @@ def _ledger_path(repo, name):
 
 def read_ledger_with_stats(repo, name):
     """Tolerant read: returns (entries, skipped); a line is corrupt when
-    it fails json.loads or parses to a non-dict. Corrupt lines are never
-    repaired or removed here — factory validate flags them for the
+    it fails json.loads, parses to a non-dict, or is a dict missing one
+    of the ledger's REQUIRED_KEYS (item spec 0009 §2). Corrupt lines are
+    never repaired or removed here — factory validate flags them for the
     human. Item spec 0007 §4."""
     path = _ledger_path(repo, name)
     if not path.exists():
@@ -51,6 +64,9 @@ def read_ledger_with_stats(repo, name):
             skipped += 1
             continue
         if not isinstance(entry, dict):
+            skipped += 1
+            continue
+        if any(key not in entry for key in REQUIRED_KEYS.get(name, ())):
             skipped += 1
             continue
         entries.append(entry)
@@ -81,7 +97,9 @@ def next_ledger_id(repo, name, prefix):
     # Corruption-safe floor (item spec 0007 §4): append_ledger writes
     # exactly one line per issued sequential id, so the raw non-blank
     # line count (parsed + skipped) bounds the highest id ever issued.
-    # A corrupt line must never cause its id to be reissued.
+    # A corrupt line must never cause its id to be reissued. Required-
+    # key-filtered lines (item spec 0009 §2) count in skipped, so the
+    # invariant floor = len(entries) + skipped is preserved.
     floor = len(entries) + skipped
     return f"{prefix}-{max(max(nums, default=0), floor) + 1:04d}"
 

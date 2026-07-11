@@ -224,7 +224,7 @@ def render_receipt(summary):
              f"{summary['dispatches']} dispatches, "
              f"{summary['retries']} retries")
     if summary["corrupt_log_lines"]:
-        proxy += f", {summary['corrupt_log_lines']} corrupt log lines skipped"
+        proxy += f", corrupt log lines skipped: {summary['corrupt_log_lines']}"
     measured = summary["measured"]
     segments = _token_segments(measured)
     if not segments:

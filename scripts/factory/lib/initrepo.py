@@ -88,8 +88,15 @@ def validate_tree(repo):
     if not config_path.exists():
         return [f"{config_path.relative_to(repo)}: missing (run init)"]
     try:
-        config = json.loads(config_path.read_text(encoding="utf-8"))
-        errors.extend(validate(config, load_schema("config"), "config"))
+        # errors="replace" (matching the log/ledger reads below): byte
+        # corruption lands in the JSONDecodeError flag path, never a
+        # UnicodeDecodeError traceback. Item spec 0009 §1.
+        config = json.loads(
+            config_path.read_text(encoding="utf-8", errors="replace"))
+        if not isinstance(config, dict):
+            errors.append("config.json: not an object")
+        else:
+            errors.extend(validate(config, load_schema("config"), "config"))
     except json.JSONDecodeError as exc:
         errors.append(f"config.json: invalid JSON ({exc})")
     schema = load_schema("work-item")
@@ -101,10 +108,17 @@ def validate_tree(repo):
             schema_errors = []
             if item_md.exists():
                 try:
-                    meta, _ = items.parse_item(item_md.read_text(encoding="utf-8"))
-                    if meta.get("id") != sub.name:
+                    meta, _ = items.parse_item(
+                        item_md.read_text(encoding="utf-8", errors="replace"))
+                    item_id = meta.get("id")
+                    if not item_id:
+                        # Use the .get value throughout — an id-less or
+                        # empty-id frontmatter is flagged, never crashed
+                        # on. Item spec 0009 §1.
+                        errors.append(f"{sub.name}/item.md: missing id")
+                    elif item_id != sub.name:
                         errors.append(
-                            f"{sub.name}: id {meta['id']!r} does not match "
+                            f"{sub.name}: id {item_id!r} does not match "
                             "directory name")
                     schema_errors = validate(meta, schema, sub.name)
                     errors.extend(schema_errors)
@@ -124,8 +138,19 @@ def validate_tree(repo):
                         errors.append(f"{sub.name}/log.jsonl:{lineno}: invalid JSON")
                         log_valid = False
                         continue
+                    # Mirror logs.read_events_with_stats' well-formed-event
+                    # rule (a parseable line is still corrupt when it is
+                    # not a dict, or lacks "event"/"ts" — append_event
+                    # writes both unconditionally) so the stage-
+                    # reconciliation loop below only ever sees well-formed
+                    # events. Item spec 0009 rework (review round 1).
+                    if not isinstance(event, dict) or "event" not in event \
+                            or "ts" not in event:
+                        errors.append(f"{sub.name}/log.jsonl:{lineno}: invalid event")
+                        log_valid = False
+                        continue
                     log_events.append(event)
-                    if isinstance(event, dict) and event.get("event") == "spend":
+                    if event.get("event") == "spend":
                         errors.extend(spend_event_errors(
                             event.get("data"), f"{sub.name}/log.jsonl:{lineno}"))
             if meta is not None and not schema_errors and log_valid:

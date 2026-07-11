@@ -96,7 +96,7 @@ class CouncilCliTest(unittest.TestCase):
         self.assertIn("+0.05", out)
         self.assertEqual(
             err.strip(),
-            "ledgers/reputation.jsonl: 1 corrupt lines skipped "
+            "ledgers/reputation.jsonl: corrupt lines skipped: 1 "
             "(run factory validate)")
 
     def test_reputation_clean_ledger_empty_stderr(self):

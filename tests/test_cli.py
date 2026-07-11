@@ -251,6 +251,64 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(out)["corrupt_log_lines"], 1)
 
+    def test_cost_and_advance_refuse_undecodable_item_cleanly(self):
+        # Item spec 0009 §1 / AC 1: cost exits 1, advance exits 2, both
+        # with the ItemError message on stderr — no traceback.
+        self.run_cli("init")
+        self.run_cli("add", "Thing")
+        item_md = Path(self.repo, ".factory/items/0001-thing/item.md")
+        item_md.write_bytes(b"\xff\xfe not utf-8 \x80")
+        code, _, err = self.run_cli("cost", "0001-thing")
+        self.assertEqual(code, 1)
+        self.assertIn("0001-thing", err)
+        self.assertIn("unreadable", err)
+        code, _, err = self.run_cli("advance", "0001-thing", "triage")
+        self.assertEqual(code, 2)
+        self.assertIn("refused:", err)
+        self.assertIn("unreadable", err)
+
+    def test_status_survives_undecodable_item(self):
+        # Item spec 0009 §1 / AC 2: the fleet still prints; the broken
+        # item is reported on stderr and status exits 2.
+        self.run_cli("init")
+        self.run_cli("add", "Good one")
+        self.run_cli("add", "Bad one")
+        bad_path = Path(self.repo, ".factory/items/0002-bad-one/item.md")
+        bad_path.write_bytes(b"\xff\xfe not utf-8 \x80")
+        code, out, err = self.run_cli("status")
+        self.assertEqual(code, 2)
+        self.assertIn("0002-bad-one", err)
+        self.assertIn("unreadable", err)
+        self.assertIn("0001-good-one", out)
+        self.assertNotIn("0002-bad-one", out)
+
+    def test_status_text_prints_single_corrupt_log_notice(self):
+        # Item spec 0009 §3 / AC 7: one aggregated stderr line,
+        # count-after-label, table printed normally, exit code unchanged.
+        self.run_cli("init")
+        self.run_cli("add", "Thing")
+        self.run_cli("add", "Other")
+        for item in ("0001-thing", "0002-other"):
+            log = Path(self.repo, f".factory/items/{item}/log.jsonl")
+            with log.open("a", encoding="utf-8") as f:
+                f.write('{"event": "spend", "ts": \n')
+        code, out, err = self.run_cli("status")
+        self.assertEqual(code, 0)
+        self.assertIn("0001-thing", out)
+        self.assertIn("0002-other", out)
+        self.assertEqual(
+            err.strip(),
+            "corrupt log lines: 2 across 2 items "
+            "(skipped; run factory validate)")
+
+    def test_status_text_clean_repo_prints_no_notice(self):
+        self.run_cli("init")
+        self.run_cli("add", "Thing")
+        code, out, err = self.run_cli("status")
+        self.assertEqual(code, 0)
+        self.assertIn("0001-thing", out)
+        self.assertEqual(err, "")
+
 
 if __name__ == "__main__":
     unittest.main()
