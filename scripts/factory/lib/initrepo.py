@@ -138,8 +138,19 @@ def validate_tree(repo):
                         errors.append(f"{sub.name}/log.jsonl:{lineno}: invalid JSON")
                         log_valid = False
                         continue
+                    # Mirror logs.read_events_with_stats' well-formed-event
+                    # rule (a parseable line is still corrupt when it is
+                    # not a dict, or lacks "event"/"ts" — append_event
+                    # writes both unconditionally) so the stage-
+                    # reconciliation loop below only ever sees well-formed
+                    # events. Item spec 0009 rework (review round 1).
+                    if not isinstance(event, dict) or "event" not in event \
+                            or "ts" not in event:
+                        errors.append(f"{sub.name}/log.jsonl:{lineno}: invalid event")
+                        log_valid = False
+                        continue
                     log_events.append(event)
-                    if isinstance(event, dict) and event.get("event") == "spend":
+                    if event.get("event") == "spend":
                         errors.extend(spend_event_errors(
                             event.get("data"), f"{sub.name}/log.jsonl:{lineno}"))
             if meta is not None and not schema_errors and log_valid:
