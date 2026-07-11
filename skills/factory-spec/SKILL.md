@@ -45,7 +45,7 @@ Write `items/<id>/spec.md` with these sections, in order:
 - `## Behavior` — what the system does, described concretely enough to build from.
 - `## Non-goals` — what this item explicitly does not cover.
 - `## Assumptions (brain gaps)` — one entry per brain gap from the loop above (omit the section only if there were none).
-- `## Acceptance criteria` — a numbered list, each criterion testable (a later stage can check it mechanically or by inspection, not by opinion).
+- `## Acceptance criteria` — a numbered list, each criterion testable (a later stage can check it mechanically or by inspection, not by opinion). If the item body contains a section titled `## Acceptance criteria (seeded at bug intake — carry into spec.md verbatim)`, its criteria MUST appear verbatim in this list — they may be joined by further criteria, never replaced or reworded.
 
 ## Exit
 

@@ -77,6 +77,34 @@ class TestParseRender(unittest.TestCase):
         with self.assertRaises(items.ItemError):
             items.render_item(meta, body)
 
+    def test_bug_true_parsed_as_bool(self):
+        text = VALID.replace("kind: ui", "kind: ui\nbug: true")
+        meta, _ = items.parse_item(text)
+        self.assertIs(meta["bug"], True)
+
+    def test_bug_false_parsed_as_bool(self):
+        text = VALID.replace("kind: ui", "kind: ui\nbug: false")
+        meta, _ = items.parse_item(text)
+        self.assertIs(meta["bug"], False)
+
+    def test_bug_non_boolean_value_rejected(self):
+        for bad in ("yes", "True", "1", ""):
+            text = VALID.replace("kind: ui", f"kind: ui\nbug: {bad}")
+            with self.assertRaises(items.ItemError):
+                items.parse_item(text)
+
+    def test_bug_render_parse_roundtrip_lowercase(self):
+        text = VALID.replace("kind: ui", "kind: ui\nbug: true")
+        meta, body = items.parse_item(text)
+        out = items.render_item(meta, body)
+        self.assertIn("\nbug: true\n", out)
+        again, _ = items.parse_item(out)
+        self.assertIs(again["bug"], True)
+
+    def test_item_without_bug_field_has_no_bug_key(self):
+        meta, _ = items.parse_item(VALID)
+        self.assertNotIn("bug", meta)
+
 
 class TestStorage(unittest.TestCase):
     def setUp(self):

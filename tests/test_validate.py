@@ -58,6 +58,12 @@ class TestWorkItemSchema(unittest.TestCase):
         self.assertTrue(validate(dict(GOOD_ITEM, priority=0), load("work-item")))
         self.assertEqual(validate(dict(GOOD_ITEM, priority=1), load("work-item")), [])
 
+    def test_bug_field_optional_boolean(self):
+        schema = load("work-item")
+        self.assertEqual(validate(dict(GOOD_ITEM, bug=True), schema), [])
+        self.assertEqual(validate(GOOD_ITEM, schema), [])
+        self.assertTrue(validate(dict(GOOD_ITEM, bug="yes"), schema))
+
 
 class TestConfigSchema(unittest.TestCase):
     def test_default_config_valid(self):

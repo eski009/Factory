@@ -8,13 +8,15 @@ from pathlib import Path
 from scripts.factory.lib import items, logs, machine, paths
 
 
-def make_item(repo, kind="ui", stage="idea", priority=None):
+def make_item(repo, kind="ui", stage="idea", priority=None, bug=False):
     meta = {
         "id": "0001-thing", "title": "Thing", "stage": stage, "kind": kind,
         "created": "2026-07-03T10:00:00Z", "updated": "2026-07-03T10:00:00Z",
     }
     if priority:
         meta["priority"] = priority
+    if bug:
+        meta["bug"] = True
     items.save_item(repo, meta, "# Thing\n")
     return meta
 
@@ -124,6 +126,40 @@ class TestGates(MachineTest):
         write(self.repo, "design/choice.md", "choice: option-b\n")
         meta = machine.advance(self.repo, "0001-thing", "plan")
         self.assertEqual(meta["stage"], "plan")
+
+    def test_plan_requires_repro_for_bug(self):
+        make_item(self.repo, kind="backend", stage="spec", priority=1, bug=True)
+        write(self.repo, "spec.md")
+        with self.assertRaises(machine.GateError):
+            machine.advance(self.repo, "0001-thing", "plan")
+        write(self.repo, "repro.md", "# Repro\n## Command\nfoo\n")
+        with self.assertRaises(machine.GateError):
+            machine.advance(self.repo, "0001-thing", "plan")
+        logs.append_event(self.repo, "0001-thing", "repro.confirmed",
+                          {"command": "foo", "exit": 1, "mode": "command"})
+        self.assertEqual(machine.advance(self.repo, "0001-thing", "plan")["stage"], "plan")
+
+    def test_plan_requires_repro_event_even_with_file(self):
+        make_item(self.repo, kind="backend", stage="spec", priority=1, bug=True)
+        write(self.repo, "spec.md")
+        write(self.repo, "repro.md", "")  # empty file also refused
+        with self.assertRaises(machine.GateError):
+            machine.advance(self.repo, "0001-thing", "plan")
+
+    def test_plan_without_bug_flag_needs_no_repro(self):
+        make_item(self.repo, kind="backend", stage="spec", priority=1)
+        write(self.repo, "spec.md")
+        self.assertEqual(machine.advance(self.repo, "0001-thing", "plan")["stage"], "plan")
+
+    def test_plan_bug_ui_item_needs_both_choice_and_repro(self):
+        make_item(self.repo, kind="ui", stage="design", priority=1, bug=True)
+        write(self.repo, "spec.md")
+        write(self.repo, "design/choice.md", "choice: option-b\n")
+        with self.assertRaises(machine.GateError):
+            machine.advance(self.repo, "0001-thing", "plan")
+        write(self.repo, "repro.md", "# Repro\n")
+        logs.append_event(self.repo, "0001-thing", "repro.confirmed")
+        self.assertEqual(machine.advance(self.repo, "0001-thing", "plan")["stage"], "plan")
 
     def test_implement_requires_plan_with_task(self):
         make_item(self.repo, stage="plan", priority=1)

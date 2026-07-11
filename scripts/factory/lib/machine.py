@@ -77,6 +77,11 @@ def _gate_plan(repo, meta):
     _require_file(repo, meta, "spec.md", "spec required before planning")
     if meta["kind"] in ("ui", "mixed"):
         _require_file(repo, meta, "design/choice.md", "recorded design choice required")
+    if meta.get("bug"):
+        _require_file(repo, meta, "repro.md",
+                      "confirmed repro required before planning a bug fix")
+        _require_event(repo, meta, "repro.confirmed",
+                       "replication must be confirmed before planning a bug fix")
 
 
 def _gate_implement(repo, meta):
