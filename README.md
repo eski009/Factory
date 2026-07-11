@@ -125,6 +125,7 @@ In the repo you want Factory to work on:
 ```
 /factory:init your-product   # scaffold state + seed the product "brain" from real sources
 /factory:add "Dark mode"     # add a work item
+/factory:bug "Save button crashes on empty title"   # report a bug — replicated before any fix, proven fixed before merge
 /factory:run                 # run the pipeline — one item, stage by stage
 /factory:status              # what's in flight, what's waiting on you, memory health
 /factory:autopilot           # drain the whole backlog unattended (still won't answer your gates)

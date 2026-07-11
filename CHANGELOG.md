@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.4.0] - 2026-07-11
+
+### Added
+
+- **`/factory:bug` — replicate-first bug intake** (item 0010). A ninth
+  command + `factory-bug` skill: understand the report (at most one
+  synchronous clarification round), replicate the bug BEFORE any fix work
+  (`items/<id>/repro.md` with the exact command and verbatim failing output,
+  plus a `repro.confirmed` evidence event), and hard-stop to waiting-human
+  when replication fails — never fix an unreplicated bug. Intake seeds two
+  mandatory acceptance criteria ("the recorded repro now passes", "a
+  regression test failed on pre-fix code") that the verify stage's Iron Law
+  enforces with fresh evidence. Work items gain an optional `bug: boolean`
+  frontmatter/schema field (absent = falsy; zero migration), and the engine's
+  plan gate refuses a bug item without both the repro file and the event —
+  the discipline is engine-enforced, not prose. factory-spec now carries
+  intake-seeded acceptance criteria into `spec.md` verbatim. ui/mixed bugs
+  route through the existing design gate via kind; restore-to-spec visual
+  bugs stay backend. Suite: 322 → 332 tests.
+
 ## [0.3.0] - 2026-07-11
 
 ### Fixed
