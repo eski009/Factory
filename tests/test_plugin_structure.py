@@ -28,7 +28,7 @@ class TestPluginStructure(unittest.TestCase):
     def test_commands_have_frontmatter(self):
         commands = sorted((ROOT / "commands").glob("*.md"))
         self.assertEqual([p.stem for p in commands],
-                         ["add", "autopilot", "init", "packet", "research", "roadmap", "run", "status"])
+                         ["add", "autopilot", "bug", "init", "packet", "research", "roadmap", "run", "status"])
         for path in commands:
             self.assertRegex(path.read_text(), FRONTMATTER, path.name)
 

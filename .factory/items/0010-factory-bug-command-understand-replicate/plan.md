@@ -345,6 +345,23 @@ git add commands/bug.md skills/factory-bug/SKILL.md
 git commit -m "feat(0010): /factory:bug command + factory-bug intake skill (replicate-first)"
 ```
 
+- [ ] **Step 5 (amendment, orchestrator-authorized): register the ninth command in the structure test**
+
+`tests/test_plugin_structure.py:30-31` (`test_commands_have_frontmatter`) hardcodes the expected command stems; add `"bug"` to the sorted list:
+
+```python
+        self.assertEqual([p.stem for p in commands],
+                         ["add", "autopilot", "bug", "init", "packet", "research", "roadmap", "run", "status"])
+```
+
+Run: `python3 -m unittest discover -s tests 2>&1 | tail -3`
+Expected: `OK` (332 tests).
+
+```bash
+git add tests/test_plugin_structure.py
+git commit -m "test(0010): expect bug in the command list (plan amendment)"
+```
+
 ---
 
 ### Task 4: Seeded-criteria carry rule in factory-spec + full verification pass
