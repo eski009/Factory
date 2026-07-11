@@ -154,7 +154,7 @@ git commit -m "feat(0010): optional bug boolean on work items - schema, parse, l
 
 Satisfies spec acceptance criteria **8** (and contributes to **9**).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `tests/test_machine.py`, extend the `make_item` helper (lines 11–19) with a `bug` parameter — replace the function with:
 
@@ -210,12 +210,12 @@ Add to the `TestGates` class, directly after `test_plan_requires_design_choice_f
         self.assertEqual(machine.advance(self.repo, "0001-thing", "plan")["stage"], "plan")
 ```
 
-- [ ] **Step 2: Run the new tests to verify they fail**
+- [x] **Step 2: Run the new tests to verify they fail**
 
 Run: `python3 -m unittest tests.test_machine.TestGates -v 2>&1 | tail -12`
 Expected: `test_plan_requires_repro_for_bug`, `test_plan_requires_repro_event_even_with_file`, and `test_plan_bug_ui_item_needs_both_choice_and_repro` FAIL (the advance succeeds where a `GateError` is expected); `test_plan_without_bug_flag_needs_no_repro` passes (current behavior).
 
-- [ ] **Step 3: Implement the gate**
+- [x] **Step 3: Implement the gate**
 
 In `scripts/factory/lib/machine.py`, replace `_gate_plan` (lines 76–79) with:
 
@@ -231,12 +231,12 @@ def _gate_plan(repo, meta):
                        "replication must be confirmed before planning a bug fix")
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `python3 -m unittest tests.test_machine -v 2>&1 | tail -5`
 Expected: `OK` — all machine tests pass including the four new ones.
 
-- [ ] **Step 5: Run the full suite (regression) and commit**
+- [x] **Step 5: Run the full suite (regression) and commit**
 
 Run: `python3 -m unittest discover -s tests 2>&1 | tail -3`
 Expected: `OK`.
