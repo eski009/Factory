@@ -261,7 +261,7 @@ git commit -m "feat(0010): _gate_plan requires repro.md + repro.confirmed for bu
 
 Satisfies spec acceptance criteria **1**, **2**, **3**, **4**, **11**, **12** (and the SKILL.md half of **5**).
 
-- [ ] **Step 1: Create `commands/bug.md`** with exactly this content:
+- [x] **Step 1: Create `commands/bug.md`** with exactly this content:
 
 ```markdown
 ---
@@ -271,7 +271,7 @@ Pass $ARGUMENTS verbatim to the factory-bug skill as the bug report and follow
 it exactly; it owns understanding, replication, and filing the bug work item.
 ```
 
-- [ ] **Step 2: Create `skills/factory-bug/SKILL.md`** with exactly this content:
+- [x] **Step 2: Create `skills/factory-bug/SKILL.md`** with exactly this content:
 
 ````markdown
 ---
@@ -333,19 +333,19 @@ The core promise: **we never claim a bug is fixed when it isn't.** The recorded 
 The clarification / cannot-replicate `waiting-human` stops are natural consumers of item 0005's generalized interactive decisions when it unblocks; this skill builds no new interactive page — plain house-style markdown packets only.
 ````
 
-- [ ] **Step 3: Run the coherence tests**
+- [x] **Step 3: Run the coherence tests**
 
 Run: `python3 -m unittest tests.test_plugin_coherence -v 2>&1 | tail -12`
 Expected: `OK` — `test_every_command_names_a_real_skill_or_cli` sees `factory-bug` in `commands/bug.md`; no `agents/` or capabilities-`references/` strings were introduced, so those checks stay green.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add commands/bug.md skills/factory-bug/SKILL.md
 git commit -m "feat(0010): /factory:bug command + factory-bug intake skill (replicate-first)"
 ```
 
-- [ ] **Step 5 (amendment, orchestrator-authorized): register the ninth command in the structure test**
+- [x] **Step 5 (amendment, orchestrator-authorized): register the ninth command in the structure test**
 
 `tests/test_plugin_structure.py:30-31` (`test_commands_have_frontmatter`) hardcodes the expected command stems; add `"bug"` to the sorted list:
 
