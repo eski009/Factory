@@ -1,7 +1,7 @@
 """Work-item storage: .factory/items/<id>/item.md = frontmatter + body.
 
 Frontmatter is a strict scalar subset of YAML: `key: value` lines between
-`---` fences. `priority` is an integer; everything else is a string.
+`---` fences. `priority` is an integer and `bug` a boolean; everything else is a string.
 Writes are deterministic: fixed field order, LF endings, trailing newline.
 """
 
