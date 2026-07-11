@@ -376,7 +376,7 @@ git commit -m "test(0010): expect bug in the command list (plan amendment)"
 
 Satisfies spec acceptance criteria **5** (spec-side half), **6**, **9**, **10**.
 
-- [ ] **Step 1: Edit `skills/factory-spec/SKILL.md`**
+- [x] **Step 1: Edit `skills/factory-spec/SKILL.md`**
 
 In the `## Spec structure` section, the `## Acceptance criteria` bullet currently reads:
 
@@ -390,26 +390,29 @@ Replace it with:
 - `## Acceptance criteria` — a numbered list, each criterion testable (a later stage can check it mechanically or by inspection, not by opinion). If the item body contains a section titled `## Acceptance criteria (seeded at bug intake — carry into spec.md verbatim)`, its criteria MUST appear verbatim in this list — they may be joined by further criteria, never replaced or reworded.
 ```
 
-- [ ] **Step 2: Verify factory-verify is untouched**
+- [x] **Step 2: Verify factory-verify is untouched**
 
 Run: `git status --porcelain skills/factory-verify/`
 Expected: no output (spec AC 10 — zero modifications under `skills/factory-verify/`).
 
-- [ ] **Step 3: Run the full suite**
+- [x] **Step 3: Run the full suite**
 
 Run: `python3 -m unittest discover -s tests 2>&1 | tail -3`
 Expected: `OK`, total ≥ 331 tests (322 baseline + ~9 new), zero failures/errors.
 
-- [ ] **Step 4: Live validate on the real tree (zero migration proof)**
+- [x] **Step 4: Live validate on the real tree (zero migration proof)**
 
 Run: `python3 scripts/factory/factory.py --repo . validate && echo VALIDATE-OK`
 Expected: `VALIDATE-OK` with no errors — existing items (none carrying `bug`) validate unchanged against the extended schema.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add skills/factory-spec/SKILL.md
 git commit -m "feat(0010): factory-spec carries bug-intake seeded acceptance criteria verbatim"
+# Amendment (orchestrator-authorized): commit 9fbd037 also carries the one-sentence
+# items.py docstring touch-up flagged low by Task 1 review ("priority is an integer
+# and bug a boolean") — included in the same git add.
 ```
 
 ---
