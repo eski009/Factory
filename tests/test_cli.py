@@ -282,6 +282,33 @@ class CliTest(unittest.TestCase):
         self.assertIn("0001-good-one", out)
         self.assertNotIn("0002-bad-one", out)
 
+    def test_status_text_prints_single_corrupt_log_notice(self):
+        # Item spec 0009 §3 / AC 7: one aggregated stderr line,
+        # count-after-label, table printed normally, exit code unchanged.
+        self.run_cli("init")
+        self.run_cli("add", "Thing")
+        self.run_cli("add", "Other")
+        for item in ("0001-thing", "0002-other"):
+            log = Path(self.repo, f".factory/items/{item}/log.jsonl")
+            with log.open("a", encoding="utf-8") as f:
+                f.write('{"event": "spend", "ts": \n')
+        code, out, err = self.run_cli("status")
+        self.assertEqual(code, 0)
+        self.assertIn("0001-thing", out)
+        self.assertIn("0002-other", out)
+        self.assertEqual(
+            err.strip(),
+            "corrupt log lines: 2 across 2 items "
+            "(skipped; run factory validate)")
+
+    def test_status_text_clean_repo_prints_no_notice(self):
+        self.run_cli("init")
+        self.run_cli("add", "Thing")
+        code, out, err = self.run_cli("status")
+        self.assertEqual(code, 0)
+        self.assertIn("0001-thing", out)
+        self.assertEqual(err, "")
+
 
 if __name__ == "__main__":
     unittest.main()

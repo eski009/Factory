@@ -333,7 +333,7 @@ class CorruptLogSurfacingTest(CostTestCase):
         self.assertEqual(len(lines), 3)
         self.assertTrue(lines[0].startswith("- [proxy] active "))
         self.assertTrue(
-            lines[0].endswith(", 1 corrupt log lines skipped"), lines[0])
+            lines[0].endswith(", corrupt log lines skipped: 1"), lines[0])
 
     def test_receipt_byte_identical_when_zero(self):
         self.log_at("2026-07-03T10:00:00Z", "item.created")
