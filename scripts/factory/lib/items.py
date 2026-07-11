@@ -78,7 +78,15 @@ def load_item(repo, item_id):
     path = paths.item_dir(repo, item_id) / "item.md"
     if not path.exists():
         raise ItemError(f"no such item: {item_id}")
-    meta, body = parse_item(path.read_text(encoding="utf-8"))
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, OSError) as exc:
+        # Item spec 0009 §1: byte corruption is a refusal, not a crash.
+        # ItemError is the module's existing contract; no tolerant
+        # metadata guessing.
+        raise ItemError(
+            f"{item_id}: item.md is unreadable (invalid encoding)") from exc
+    meta, body = parse_item(text)
     if meta["id"] != item_id:
         raise ItemError(
             f"item dir {item_id!r} contains id {meta['id']!r} - "
@@ -121,7 +129,14 @@ def list_items_safe(repo):
         if not item_md.exists():
             continue
         try:
-            meta, _ = parse_item(item_md.read_text(encoding="utf-8"))
+            text = item_md.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            # Item spec 0009 §1: undecodable item.md is omitted + reported,
+            # honoring this function's docstring.
+            errors.append(f"{sub.name}: item.md is unreadable (invalid encoding)")
+            continue
+        try:
+            meta, _ = parse_item(text)
             if meta["id"] != sub.name:
                 errors.append(f"{sub.name}: id {meta['id']!r} does not match directory name")
             else:

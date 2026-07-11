@@ -42,9 +42,19 @@ def _artifact(repo, meta, rel):
     return paths.item_dir(repo, meta["id"]) / rel
 
 
+def _read_text_or_empty(path):
+    """Undecodable or unreadable evidence reads as empty, so gates treat
+    byte-corrupt files exactly like missing ones and fail closed.
+    Item spec 0009 §1."""
+    try:
+        return path.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, OSError):
+        return ""
+
+
 def _require_file(repo, meta, rel, why):
     path = _artifact(repo, meta, rel)
-    if not path.exists() or not path.read_text(encoding="utf-8").strip():
+    if not path.exists() or not _read_text_or_empty(path).strip():
         raise GateError(f"{rel} missing or empty ({why})")
 
 
@@ -71,7 +81,7 @@ def _gate_plan(repo, meta):
 
 def _gate_implement(repo, meta):
     path = _artifact(repo, meta, "plan.md")
-    if not path.exists() or "- [ ]" not in path.read_text(encoding="utf-8"):
+    if not path.exists() or "- [ ]" not in _read_text_or_empty(path):
         raise GateError("plan.md with at least one '- [ ]' task required")
 
 

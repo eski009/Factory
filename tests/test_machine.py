@@ -218,6 +218,24 @@ class TestGateCorruption(MachineTest):
         meta = machine.advance(self.repo, "0001-thing", "implement")
         self.assertEqual(meta["stage"], "implement")
 
+    def test_undecodable_evidence_file_fails_closed(self):
+        # Item spec 0009 §1: an undecodable required evidence file is
+        # treated exactly like a missing one — GateError, fail closed.
+        make_item(self.repo, stage="spec", priority=1)
+        spec_md = paths.item_dir(self.repo, "0001-thing") / "spec.md"
+        spec_md.write_bytes(b"\xff\xfe binary spec \x80")
+        with self.assertRaises(machine.GateError):
+            machine.advance(self.repo, "0001-thing", "design")
+
+    def test_undecodable_plan_md_fails_closed(self):
+        # Same read boundary in _gate_implement: a byte-corrupt plan.md
+        # cannot satisfy the '- [ ]' task requirement.
+        make_item(self.repo, stage="plan", priority=1)
+        plan_md = paths.item_dir(self.repo, "0001-thing") / "plan.md"
+        plan_md.write_bytes(b"\xff\xfe- [ ] Task 1\n")
+        with self.assertRaises(machine.GateError):
+            machine.advance(self.repo, "0001-thing", "implement")
+
 
 if __name__ == "__main__":
     unittest.main()
