@@ -100,6 +100,35 @@ class CodexBackendTest(unittest.TestCase):
         parsed = work._codex_parse(raw)
         self.assertEqual(parsed["status"], "failed")
 
+    def test_argv_includes_model_when_given(self):
+        argv = work._codex_argv("do it", "/wt", "gpt-x", "off", "workspace-write")
+        self.assertIn("-m", argv)
+        self.assertIn("gpt-x", argv)
+
+    def test_argv_omits_model_when_none(self):
+        argv = work._codex_argv("do it", "/wt", None, "on", "workspace-write")
+        self.assertNotIn("-m", argv)
+
+    def test_parse_turn_failed_reason_crash(self):
+        raw = {"exit_code": 1, "timed_out": False, "stderr": "", "stdout": "\n".join([
+            '{"type": "turn.completed", "usage": {"input_tokens": 10, "output_tokens": 2}}',
+            '{"type": "turn.failed"}',
+        ])}
+        parsed = work._codex_parse(raw)
+        self.assertEqual(parsed["status"], "failed")
+        self.assertEqual(parsed["reason"], "crash")
+
+    def test_parse_rate_limit_reason(self):
+        raw = {"exit_code": 1, "timed_out": False, "stderr": "Error: 429 overloaded", "stdout": ""}
+        parsed = work._codex_parse(raw)
+        self.assertEqual(parsed["reason"], "rate_limited")
+
+    def test_parse_timeout_reason(self):
+        raw = {"exit_code": 124, "timed_out": True, "stderr": "", "stdout": ""}
+        parsed = work._codex_parse(raw)
+        self.assertEqual(parsed["status"], "failed")
+        self.assertEqual(parsed["reason"], "timeout")
+
 
 if __name__ == "__main__":
     unittest.main()
