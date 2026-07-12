@@ -179,6 +179,75 @@ def _stub_parse(raw):
 BACKENDS = {"stub": _stub_run}
 
 
+# Spec open-question 1: the exact non-interactive permission mode is confirmed
+# against the installed CLI at execution time (see references/headless-workers
+# .md). `acceptEdits` auto-applies edits without the one-time TTY accept dialog
+# that `--dangerously-skip-permissions` shows (which would park a headless run).
+CLAUDE_PERMISSION_MODE = "acceptEdits"
+
+
+def _looks_rate_limited(obj, raw):
+    blob = (json.dumps(obj) + " " + (raw.get("stderr") or "")).lower()
+    return any(term in blob for term in
+               ("rate limit", "rate_limit", "overloaded", "429", "529"))
+
+
+def _claude_argv(brief, worktree, model, network):
+    argv = ["claude", "-p", brief, "--output-format", "json",
+            "--add-dir", str(worktree),
+            "--permission-mode", CLAUDE_PERMISSION_MODE]
+    if model:
+        argv += ["--model", model]
+    if network == "off":
+        # Best-effort: Claude has no OS sandbox, so this is a tool allowlist,
+        # not enforced isolation (design spec §7 asymmetry).
+        argv += ["--disallowedTools", "WebFetch,WebSearch"]
+    return argv
+
+
+def _claude_parse(raw):
+    if raw.get("timed_out"):
+        return {"status": "failed", "reason": "timeout", "usage": {},
+                "summary": "", "cost_usd": None}
+    try:
+        obj = json.loads(raw.get("stdout") or "{}")
+    except json.JSONDecodeError:
+        obj = {}
+    usage = obj.get("usage") or {}
+    tokens = {
+        "input": usage.get("input_tokens", usage.get("input", 0)),
+        "output": usage.get("output_tokens", usage.get("output", 0)),
+    }
+    tokens["total"] = tokens["input"] + tokens["output"]
+    summary = (obj.get("result") or "")[:2000]
+    cost = obj.get("total_cost_usd")
+    if obj.get("subtype") == "success" and raw["exit_code"] == 0:
+        return {"status": "done", "reason": None, "usage": tokens,
+                "summary": summary, "cost_usd": cost}
+    reason = "rate_limited" if _looks_rate_limited(obj, raw) else "crash"
+    return {"status": "failed", "reason": reason, "usage": tokens,
+            "summary": summary, "cost_usd": cost}
+
+
+def _claude_run(brief, worktree, model, timeout, network, sandbox, env):
+    return _real_run(_claude_argv(brief, worktree, model, network),
+                     worktree, timeout, env)
+
+
+def _real_run(argv, worktree, timeout, env):
+    try:
+        proc = subprocess.run(argv, cwd=worktree, capture_output=True,
+                              text=True, timeout=timeout, env=env)
+        return {"exit_code": proc.returncode, "stdout": proc.stdout,
+                "stderr": proc.stderr, "timed_out": False}
+    except subprocess.TimeoutExpired as exc:
+        return {"exit_code": 124, "stdout": exc.stdout or "",
+                "stderr": exc.stderr or "", "timed_out": True}
+
+
+BACKENDS["claude"] = _claude_run
+
+
 def _parse_output(backend, raw):
     if backend == "claude":
         return _claude_parse(raw)
