@@ -85,6 +85,17 @@ class TestPluginCoherence(unittest.TestCase):
         self.assertIn("market", text)
         self.assertIn("research mode", text.lower())
 
+    def test_headless_worker_wiring_present(self):
+        # the headless-worker capability row, its factory-implement dispatch
+        # branch, and its reference doc must all exist together.
+        caps = read(ROOT / "skills/capabilities/SKILL.md")
+        self.assertIn("Headless worker", caps)
+        impl = read(ROOT / "skills/factory-implement/SKILL.md")
+        self.assertIn("factory work", impl)
+        self.assertTrue(
+            (ROOT / "skills/capabilities/references/"
+             "headless-workers.md").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
