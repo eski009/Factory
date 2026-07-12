@@ -61,5 +61,45 @@ class ClaudeBackendTest(unittest.TestCase):
         self.assertEqual(parsed["reason"], "timeout")
 
 
+class CodexBackendTest(unittest.TestCase):
+    def test_argv_workspace_write_when_network_off(self):
+        argv = work._codex_argv("do it", "/wt", "gpt-x", "off",
+                                "workspace-write")
+        self.assertEqual(argv[:2], ["codex", "exec"])
+        self.assertIn("--json", argv)
+        self.assertIn("-C", argv)
+        self.assertIn("/wt", argv)
+        self.assertIn("-a", argv)
+        self.assertIn("never", argv)
+        i = argv.index("--sandbox")
+        self.assertEqual(argv[i + 1], "workspace-write")
+
+    def test_argv_full_access_when_network_on(self):
+        argv = work._codex_argv("do it", "/wt", None, "on", "workspace-write")
+        i = argv.index("--sandbox")
+        self.assertEqual(argv[i + 1], "danger-full-access")
+
+    def test_parse_sums_usage_and_reads_message(self):
+        raw = {"exit_code": 0, "timed_out": False, "stderr": "", "stdout": "\n".join([
+            '{"type": "thread.started"}',
+            '{"type": "turn.completed", "usage": {"input_tokens": 400, "output_tokens": 60}}',
+            '{"type": "turn.completed", "usage": {"input_tokens": 100, "output_tokens": 20}}',
+            '{"type": "item.completed", "item": {"type": "agent_message", "text": "all done"}}',
+        ])}
+        parsed = work._codex_parse(raw)
+        self.assertEqual(parsed["status"], "done")
+        self.assertEqual(parsed["usage"]["input"], 500)
+        self.assertEqual(parsed["usage"]["output"], 80)
+        self.assertEqual(parsed["summary"], "all done")
+
+    def test_parse_turn_failed_is_failure(self):
+        raw = {"exit_code": 1, "timed_out": False, "stderr": "", "stdout": "\n".join([
+            '{"type": "turn.completed", "usage": {"input_tokens": 10, "output_tokens": 2}}',
+            '{"type": "turn.failed"}',
+        ])}
+        parsed = work._codex_parse(raw)
+        self.assertEqual(parsed["status"], "failed")
+
+
 if __name__ == "__main__":
     unittest.main()

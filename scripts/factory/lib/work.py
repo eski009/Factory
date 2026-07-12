@@ -248,6 +248,58 @@ def _real_run(argv, worktree, timeout, env):
 BACKENDS["claude"] = _claude_run
 
 
+def _codex_argv(brief, worktree, model, network, sandbox):
+    sbox = "danger-full-access" if network == "on" else sandbox
+    argv = ["codex", "exec", brief, "--json", "-C", str(worktree),
+            "-a", "never", "--sandbox", sbox]
+    if model:
+        argv += ["-m", model]
+    return argv
+
+
+def _codex_parse(raw):
+    if raw.get("timed_out"):
+        return {"status": "failed", "reason": "timeout", "usage": {},
+                "summary": "", "cost_usd": None}
+    inp = out = 0
+    summary = ""
+    failed = False
+    for line in (raw.get("stdout") or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        etype = event.get("type")
+        if etype == "turn.completed":
+            usage = event.get("usage") or {}
+            inp += usage.get("input_tokens", 0)
+            out += usage.get("output_tokens", 0)
+        elif etype in ("turn.failed", "error"):
+            failed = True
+        elif etype == "item.completed":
+            item = event.get("item") or {}
+            if item.get("type") == "agent_message":
+                summary = (item.get("text") or "")[:2000]
+    tokens = {"input": inp, "output": out, "total": inp + out}
+    if failed or raw["exit_code"] != 0:
+        reason = "rate_limited" if _looks_rate_limited({}, raw) else "crash"
+        return {"status": "failed", "reason": reason, "usage": tokens,
+                "summary": summary, "cost_usd": None}
+    return {"status": "done", "reason": None, "usage": tokens,
+            "summary": summary, "cost_usd": None}
+
+
+def _codex_run(brief, worktree, model, timeout, network, sandbox, env):
+    return _real_run(_codex_argv(brief, worktree, model, network, sandbox),
+                     worktree, timeout, env)
+
+
+BACKENDS["codex"] = _codex_run
+
+
 def _parse_output(backend, raw):
     if backend == "claude":
         return _claude_parse(raw)
