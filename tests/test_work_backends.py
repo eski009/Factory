@@ -17,6 +17,17 @@ class ClaudeBackendTest(unittest.TestCase):
         self.assertIn("--permission-mode", argv)
         self.assertIn(work.CLAUDE_PERMISSION_MODE, argv)
 
+    def test_argv_network_off_disallows_web_tools(self):
+        argv = work._claude_argv("do it", "/wt", None, "off")
+        self.assertIn("--disallowedTools", argv)
+        i = argv.index("--disallowedTools")
+        self.assertIn("WebFetch", argv[i + 1])
+        self.assertIn("WebSearch", argv[i + 1])
+
+    def test_argv_network_on_has_no_disallowed_tools(self):
+        argv = work._claude_argv("do it", "/wt", None, "on")
+        self.assertNotIn("--disallowedTools", argv)
+
     def test_parse_success(self):
         raw = {"exit_code": 0, "timed_out": False, "stderr": "",
                "stdout": ('{"subtype": "success", "result": "done it", '
@@ -42,6 +53,12 @@ class ClaudeBackendTest(unittest.TestCase):
                "stdout": "{}"}
         parsed = work._claude_parse(raw)
         self.assertEqual(parsed["reason"], "rate_limited")
+
+    def test_parse_timeout_reason(self):
+        raw = {"exit_code": 124, "timed_out": True, "stderr": "", "stdout": ""}
+        parsed = work._claude_parse(raw)
+        self.assertEqual(parsed["status"], "failed")
+        self.assertEqual(parsed["reason"], "timeout")
 
 
 if __name__ == "__main__":
