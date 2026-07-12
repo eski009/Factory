@@ -61,5 +61,40 @@ class WorkerConfigTest(unittest.TestCase):
         self.assertTrue(any("backend" in e for e in errors), errors)
 
 
+class BriefTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp, self.repo = _init_repo()
+        meta = {"id": "0001-thing", "title": "Thing", "stage": "implement",
+                "kind": "backend", "created": "2026-07-03T00:00:00Z",
+                "updated": "2026-07-03T00:00:00Z"}
+        items.save_item(self.repo, meta, "")
+        d = self.repo / ".factory" / "items" / "0001-thing"
+        (d / "plan.md").write_text(
+            "# Plan\n- [ ] Add the widget\n- [x] Already done\n- [ ] Wire it up\n",
+            encoding="utf-8")
+        (d / "spec.md").write_text("Acceptance: widget renders.\n",
+                                   encoding="utf-8")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_unticked_tasks_extracts_only_open(self):
+        text = "- [ ] one\n- [x] two\n  - [ ] three\nnot a task\n"
+        self.assertEqual(work.unticked_tasks(text), ["one", "three"])
+
+    def test_build_brief_includes_open_tasks_and_spec(self):
+        brief = work.build_brief(self.repo, "0001-thing", "/tmp/wt")
+        self.assertIn("Add the widget", brief)
+        self.assertIn("Wire it up", brief)
+        self.assertNotIn("Already done", brief)
+        self.assertIn("Acceptance: widget renders.", brief)
+        self.assertIn("/tmp/wt", brief)
+
+    def test_build_brief_missing_plan_raises(self):
+        (self.repo / ".factory/items/0001-thing/plan.md").unlink()
+        with self.assertRaises(work.WorkError):
+            work.build_brief(self.repo, "0001-thing", "/tmp/wt")
+
+
 if __name__ == "__main__":
     unittest.main()

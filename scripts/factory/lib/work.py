@@ -60,3 +60,43 @@ def worker_config(repo):
         else:
             merged[key] = value
     return merged
+
+
+_TASK_RE = re.compile(r"^\s*-\s*\[ \]\s*(.+?)\s*$")
+
+
+def unticked_tasks(plan_text):
+    """Text of each unchecked `- [ ]` task line in a plan (in order)."""
+    out = []
+    for line in plan_text.splitlines():
+        match = _TASK_RE.match(line)
+        if match:
+            out.append(match.group(1))
+    return out
+
+
+def build_brief(repo, item_id, worktree):
+    """Compose the worker prompt from the item's plan.md + spec.md."""
+    item_path = paths.item_dir(repo, item_id)
+    plan_path = item_path / "plan.md"
+    if not plan_path.exists():
+        raise WorkError(f"{item_id}: plan.md missing")
+    tasks = unticked_tasks(plan_path.read_text(encoding="utf-8"))
+    spec_path = item_path / "spec.md"
+    spec_text = (spec_path.read_text(encoding="utf-8")
+                 if spec_path.exists() else "")
+    lines = [
+        f"You are a headless implementer for work item {item_id}.",
+        f"Working directory (git worktree on branch factory/{item_id}): "
+        f"{worktree}",
+        "Implement every task below. Follow TDD, run the tests named in the "
+        "plan, and commit your work to the current branch as you go. Do not "
+        "modify files outside this working directory.",
+        "",
+        "## Tasks (from plan.md)",
+    ]
+    for i, task in enumerate(tasks, 1):
+        lines.append(f"{i}. {task}")
+    if spec_text.strip():
+        lines += ["", "## Spec (acceptance criteria)", spec_text.strip()]
+    return "\n".join(lines) + "\n"
