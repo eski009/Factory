@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.factory.lib import initrepo, items, logs, work
+from scripts.factory.lib import initrepo, items, logs, validate, work
 
 
 def _init_repo():
@@ -139,6 +139,62 @@ class GitStateTest(unittest.TestCase):
         state = work.git_state(self.repo, base)
         self.assertFalse(state["clean"])
         self.assertEqual(state["commits"], [])
+
+
+class NormalizeTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        _init_git_repo(self.repo)
+
+    def tearDown(self):
+        os.environ.pop("FACTORY_WORK_STUB", None)
+        self.tmp.cleanup()
+
+    def test_stub_success_normalizes_to_done(self):
+        base = work.git_head(self.repo)
+        raw = work.BACKENDS["stub"]("brief", self.repo, None, 60, "off",
+                                    "workspace-write", dict(os.environ))
+        parsed = work._parse_output("stub", raw)
+        gstate = work.git_state(self.repo, base)
+        result = work.normalize("0001-thing", "stub", None,
+                                "factory/0001-thing", gstate, parsed, None,
+                                "items/0001-thing/worker/worker.log")
+        self.assertEqual(result["status"], "done")
+        self.assertEqual(len(result["commits"]), 1)
+        self.assertEqual(result["usage"]["provenance"], "measured")
+        # produced result must validate against the schema
+        errors = validate.validate(result, initrepo.load_schema("result"),
+                                   "result")
+        self.assertEqual(errors, [])
+
+    def test_stub_failure_normalizes_to_failed(self):
+        os.environ["FACTORY_WORK_STUB"] = json.dumps(
+            {"exit_code": 1, "commit": False, "reason": "crash"})
+        base = work.git_head(self.repo)
+        raw = work.BACKENDS["stub"]("brief", self.repo, None, 60, "off",
+                                    "workspace-write", dict(os.environ))
+        parsed = work._parse_output("stub", raw)
+        gstate = work.git_state(self.repo, base)
+        result = work.normalize("0001-thing", "stub", None,
+                                "factory/0001-thing", gstate, parsed, None,
+                                "items/0001-thing/worker/worker.log")
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["reason"], "crash")
+
+    def test_done_without_commit_becomes_no_changes(self):
+        os.environ["FACTORY_WORK_STUB"] = json.dumps(
+            {"exit_code": 0, "commit": False})
+        base = work.git_head(self.repo)
+        raw = work.BACKENDS["stub"]("brief", self.repo, None, 60, "off",
+                                    "workspace-write", dict(os.environ))
+        parsed = work._parse_output("stub", raw)
+        gstate = work.git_state(self.repo, base)
+        result = work.normalize("0001-thing", "stub", None,
+                                "factory/0001-thing", gstate, parsed, None,
+                                "items/0001-thing/worker/worker.log")
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["reason"], "no_changes")
 
 
 if __name__ == "__main__":

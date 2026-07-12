@@ -129,3 +129,97 @@ def git_state(worktree, base_sha):
     status = _git(worktree, "status", "--porcelain")
     clean = status.returncode == 0 and status.stdout.strip() == ""
     return {"commits": commits, "files_changed": files, "clean": clean}
+
+
+# ---- backends: a backend is fn(brief, worktree, model, timeout, network,
+#      sandbox, env) -> RawRun {exit_code, stdout, stderr, timed_out} ----
+
+def _stub_run(brief, worktree, model, timeout, network, sandbox, env):
+    """Test-only in-process backend. Simulates an agent: optionally writes a
+    file and commits it, then returns a canned RawRun. Controlled by the
+    FACTORY_WORK_STUB env var (JSON); defaults to one successful commit."""
+    spec = {}
+    if env.get("FACTORY_WORK_STUB"):
+        spec = json.loads(env["FACTORY_WORK_STUB"])
+    exit_code = spec.get("exit_code", 0)
+    if spec.get("commit", exit_code == 0):
+        fname = spec.get("file", "worker-change.txt")
+        (Path(worktree) / fname).write_text(
+            spec.get("content", "stub change\n"), encoding="utf-8")
+        _git(worktree, "add", fname)
+        _git(worktree, "commit", "-q", "-m",
+             spec.get("message", "stub: implement"))
+    payload = spec.get("payload", {
+        "status": spec.get("status", "done" if exit_code == 0 else "failed"),
+        "reason": spec.get("reason"),
+        "message": spec.get("message", "stub done"),
+        "usage": spec.get("usage", {"input": 100, "output": 50, "total": 150}),
+    })
+    return {"exit_code": exit_code, "stdout": json.dumps(payload),
+            "stderr": spec.get("stderr", ""), "timed_out": False}
+
+
+def _stub_parse(raw):
+    try:
+        obj = json.loads(raw.get("stdout") or "{}")
+    except json.JSONDecodeError:
+        obj = {}
+    if raw.get("timed_out"):
+        return {"status": "failed", "reason": "timeout", "usage": {},
+                "summary": "", "cost_usd": None}
+    if raw["exit_code"] != 0:
+        return {"status": "failed", "reason": obj.get("reason", "crash"),
+                "usage": obj.get("usage", {}),
+                "summary": obj.get("message", ""), "cost_usd": None}
+    return {"status": obj.get("status", "done"), "reason": obj.get("reason"),
+            "usage": obj.get("usage", {}), "summary": obj.get("message", ""),
+            "cost_usd": obj.get("cost_usd")}
+
+
+BACKENDS = {"stub": _stub_run}
+
+
+def _parse_output(backend, raw):
+    if backend == "claude":
+        return _claude_parse(raw)
+    if backend == "codex":
+        return _codex_parse(raw)
+    return _stub_parse(raw)
+
+
+def normalize(item_id, backend, model, branch, gstate, parsed, test_result,
+              worker_log):
+    """Backend-independent result packet. Git-first correctness (commits +
+    tests) overrides a backend's optimistic self-report."""
+    status = parsed["status"]
+    reason = parsed.get("reason")
+    if status == "done":
+        if not gstate["commits"]:
+            status, reason = "failed", "no_changes"
+        elif test_result is not None and not test_result["passed"]:
+            status, reason = "failed", "red_tests"
+    usage = parsed.get("usage") or {}
+    measured = any(usage.get(k) for k in ("input", "output", "total"))
+    result = {
+        "id": item_id,
+        "status": status,
+        "backend": backend,
+        "branch": branch,
+        "commits": gstate["commits"],
+        "files_changed": gstate["files_changed"],
+        "summary": (parsed.get("summary") or "")[:2000],
+        "worker_log": worker_log,
+    }
+    if model:
+        result["model"] = model
+    if reason:
+        result["reason"] = reason
+    if measured:
+        result["usage"] = {k: int(usage.get(k, 0))
+                           for k in ("input", "output", "total")}
+        result["usage"]["provenance"] = "measured"
+    if test_result is not None:
+        result["test"] = test_result
+    if parsed.get("cost_usd") is not None:
+        result["cost_usd_estimate"] = parsed["cost_usd"]
+    return result
