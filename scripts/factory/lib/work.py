@@ -223,3 +223,121 @@ def normalize(item_id, backend, model, branch, gstate, parsed, test_result,
     if parsed.get("cost_usd") is not None:
         result["cost_usd_estimate"] = parsed["cost_usd"]
     return result
+
+
+def resolve_worktree(repo, item_id):
+    """The filesystem path of the worktree checked out on factory/<id>,
+    else the repo root if that branch exists there, else None."""
+    branch = f"factory/{item_id}"
+    listing = _git(repo, "worktree", "list", "--porcelain")
+    if listing.returncode == 0:
+        current = None
+        for line in listing.stdout.splitlines():
+            if line.startswith("worktree "):
+                current = line[len("worktree "):]
+            elif line.strip() == f"branch refs/heads/{branch}" and current:
+                return current
+    check = _git(repo, "rev-parse", "--verify", "--quiet",
+                 "refs/heads/" + branch)
+    return str(repo) if check.returncode == 0 else None
+
+
+def _tick_plan(repo, item_id):
+    plan = paths.item_dir(repo, item_id) / "plan.md"
+    plan.write_text(plan.read_text(encoding="utf-8").replace("- [ ]", "- [x]"),
+                    encoding="utf-8")
+
+
+def _test_summary(test_result):
+    if test_result is None:
+        return "no test_command configured"
+    head = "green: " if test_result["passed"] else "RED: "
+    return head + (test_result.get("summary") or "")[:120]
+
+
+def _log_spend(repo, item_id, backend, model, usage):
+    data = {"provenance": "proxy", "stage": "implement",
+            "source": "factory-work", "dispatches": 1}
+    if usage and any(usage.get(k) for k in ("input", "output", "total")):
+        data["provenance"] = "measured"
+        data["tokens"] = {k: int(usage.get(k, 0))
+                          for k in ("input", "output", "total")}
+    if model:
+        data["model"] = model
+    logs.append_event(repo, item_id, "spend", data)
+
+
+def run_work(repo, item_id, backend=None, model=None, timeout=None,
+             network=None, worktree=None):
+    cfg = worker_config(repo)
+    backend = backend or cfg["backend"]
+    timeout = timeout or cfg["timeout_seconds"]
+    network = network or cfg["network"]
+    if backend not in BACKENDS:
+        return 1, {"error": f"unknown or unavailable backend: {backend}"}
+    try:
+        meta, _ = items.load_item(repo, item_id)
+    except items.ItemError as exc:
+        return 1, {"error": str(exc)}
+    if meta.get("stage") != "implement":
+        return 2, {"error": f"{item_id} is at stage "
+                            f"{meta.get('stage')!r}, not implement"}
+    plan_path = paths.item_dir(repo, item_id) / "plan.md"
+    if not plan_path.exists():
+        return 1, {"error": f"{item_id}: plan.md missing"}
+    tasks = unticked_tasks(plan_path.read_text(encoding="utf-8"))
+    if not tasks:
+        return 2, {"error": f"{item_id}: no unticked plan tasks"}
+    work_tree = worktree or resolve_worktree(repo, item_id)
+    if work_tree is None:
+        return 1, {"error": f"cannot resolve worktree for factory/{item_id}"}
+    brief = build_brief(repo, item_id, work_tree)
+    if backend in ("claude", "codex") and shutil.which(backend) is None:
+        return 1, {"error": f"backend CLI not found on PATH: {backend}"}
+
+    worker_dir = paths.item_dir(repo, item_id) / "worker"
+    worker_dir.mkdir(parents=True, exist_ok=True)
+    (worker_dir / "brief.md").write_text(brief, encoding="utf-8")
+
+    env = dict(os.environ)
+    model = model or (cfg.get("models") or {}).get(backend)
+    sandbox = (cfg.get("codex") or {}).get("sandbox", "workspace-write")
+    base_sha = git_head(work_tree)
+    raw = BACKENDS[backend](brief, work_tree, model, timeout, network,
+                            sandbox, env)
+    (worker_dir / "worker.log").write_text(raw.get("stderr") or "",
+                                           encoding="utf-8")
+    parsed = _parse_output(backend, raw)
+
+    test_result = None
+    test_command = cfg.get("test_command")
+    if test_command and parsed["status"] == "done":
+        proc = subprocess.run(test_command, cwd=work_tree, shell=True,
+                              capture_output=True, text=True)
+        test_result = {"command": test_command,
+                       "passed": proc.returncode == 0,
+                       "summary": (proc.stdout or proc.stderr)[-500:].strip()}
+
+    gstate = git_state(work_tree, base_sha)
+    result = normalize(item_id, backend, model, f"factory/{item_id}", gstate,
+                       parsed, test_result,
+                       f"items/{item_id}/worker/worker.log")
+    errors = validate.validate(result, initrepo.load_schema("result"),
+                               "result")
+    if errors:
+        return 1, {"error": "internal: result failed schema validation",
+                   "detail": errors, "result": result}
+    (worker_dir / "result.json").write_text(
+        json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    _log_spend(repo, item_id, backend, model, result.get("usage"))
+    if result["status"] == "done":
+        _tick_plan(repo, item_id)
+        logs.append_event(repo, item_id, "implement.completed",
+                          {"tasks": len(tasks),
+                           "tests": _test_summary(test_result),
+                           "backend": backend})
+        return 0, result
+    logs.append_event(repo, item_id, "implement.failed",
+                      {"reason": result.get("reason"), "backend": backend})
+    return 3, result

@@ -197,5 +197,72 @@ class NormalizeTest(unittest.TestCase):
         self.assertEqual(result["reason"], "no_changes")
 
 
+class RunWorkTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        _init_git_repo(self.repo)
+        initrepo.init(self.repo)
+        _git(self.repo, "checkout", "-q", "-b", "factory/0001-thing")
+        meta = {"id": "0001-thing", "title": "Thing", "stage": "implement",
+                "kind": "backend", "created": "2026-07-03T00:00:00Z",
+                "updated": "2026-07-03T00:00:00Z"}
+        items.save_item(self.repo, meta, "")
+        d = self.repo / ".factory/items/0001-thing"
+        (d / "plan.md").write_text("- [ ] Do the thing\n", encoding="utf-8")
+        os.environ["FACTORY_NOW"] = "2026-07-03T12:00:00Z"
+
+    def tearDown(self):
+        os.environ.pop("FACTORY_NOW", None)
+        os.environ.pop("FACTORY_WORK_STUB", None)
+        self.tmp.cleanup()
+
+    def _events(self):
+        return [e["event"] for e in logs.read_events(self.repo, "0001-thing")]
+
+    def test_success_logs_completion_and_measured_spend(self):
+        code, result = work.run_work(self.repo, "0001-thing", backend="stub",
+                                     worktree=str(self.repo))
+        self.assertEqual(code, 0)
+        self.assertEqual(result["status"], "done")
+        self.assertTrue((self.repo / ".factory/items/0001-thing/worker/"
+                         "result.json").exists())
+        self.assertIn("implement.completed", self._events())
+        self.assertIn("spend", self._events())
+        # plan checkbox ticked
+        plan = (self.repo / ".factory/items/0001-thing/plan.md").read_text()
+        self.assertIn("- [x] Do the thing", plan)
+        # the spend event is measured and rolls up in cost.summarize
+        from scripts.factory.lib import cost
+        summary = cost.summarize(self.repo, "0001-thing")
+        self.assertEqual(summary["measured"]["events"], 1)
+
+    def test_wrong_stage_refused(self):
+        d = self.repo / ".factory/items/0001-thing"
+        item_md = d / "item.md"
+        item_md.write_text(item_md.read_text().replace(
+            "stage: implement", "stage: plan"), encoding="utf-8")
+        code, result = work.run_work(self.repo, "0001-thing", backend="stub",
+                                     worktree=str(self.repo))
+        self.assertEqual(code, 2)
+        self.assertNotIn("implement.completed", self._events())
+
+    def test_worker_failure_logs_failed_not_completed(self):
+        os.environ["FACTORY_WORK_STUB"] = json.dumps(
+            {"exit_code": 1, "commit": False, "reason": "crash"})
+        code, result = work.run_work(self.repo, "0001-thing", backend="stub",
+                                     worktree=str(self.repo))
+        self.assertEqual(code, 3)
+        self.assertIn("implement.failed", self._events())
+        self.assertNotIn("implement.completed", self._events())
+
+    def test_no_unticked_tasks_refused(self):
+        (self.repo / ".factory/items/0001-thing/plan.md").write_text(
+            "- [x] done already\n", encoding="utf-8")
+        code, result = work.run_work(self.repo, "0001-thing", backend="stub",
+                                     worktree=str(self.repo))
+        self.assertEqual(code, 2)
+
+
 if __name__ == "__main__":
     unittest.main()
