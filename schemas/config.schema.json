@@ -21,6 +21,43 @@
       "properties": {
         "depth": {"type": "string", "enum": ["inputs-only", "web", "deep"]}
       }
+    },
+    "workers": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "backend": {"type": "string", "enum": ["claude", "codex"]},
+        "max_parallel": {"type": "integer", "minimum": 1},
+        "timeout_seconds": {"type": "integer", "minimum": 1},
+        "network": {"type": "string", "enum": ["on", "off"]},
+        "prep": {"type": "string", "minLength": 1},
+        "test_command": {"type": "string", "minLength": 1},
+        "models": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "claude": {"type": "string", "minLength": 1},
+            "codex": {"type": "string", "minLength": 1}
+          }
+        },
+        "codex": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "sandbox": {"type": "string",
+                        "enum": ["workspace-write", "danger-full-access"]}
+          }
+        },
+        "retry": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "max_attempts": {"type": "integer", "minimum": 1},
+            "base_delay_seconds": {"type": "integer", "minimum": 0}
+          }
+        }
+      }
     }
   }
 }
