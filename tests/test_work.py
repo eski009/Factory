@@ -96,5 +96,50 @@ class BriefTest(unittest.TestCase):
             work.build_brief(self.repo, "0001-thing", "/tmp/wt")
 
 
+def _git(repo, *args):
+    subprocess.run(["git", *args], cwd=repo, check=True,
+                   capture_output=True, text=True)
+
+
+def _init_git_repo(repo):
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    (repo / "seed.txt").write_text("seed\n", encoding="utf-8")
+    _git(repo, "add", "seed.txt")
+    _git(repo, "commit", "-q", "-m", "seed")
+
+
+class GitStateTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        _init_git_repo(self.repo)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_head_returns_sha(self):
+        self.assertRegex(work.git_head(self.repo), r"^[0-9a-f]{7,40}$")
+
+    def test_state_reports_new_commit_and_files(self):
+        base = work.git_head(self.repo)
+        (self.repo / "new.txt").write_text("x\n", encoding="utf-8")
+        _git(self.repo, "add", "new.txt")
+        _git(self.repo, "commit", "-q", "-m", "add new")
+        state = work.git_state(self.repo, base)
+        self.assertEqual(len(state["commits"]), 1)
+        self.assertIn({"path": "new.txt", "change": "A"},
+                      state["files_changed"])
+        self.assertTrue(state["clean"])
+
+    def test_state_detects_dirty_tree(self):
+        base = work.git_head(self.repo)
+        (self.repo / "seed.txt").write_text("changed\n", encoding="utf-8")
+        state = work.git_state(self.repo, base)
+        self.assertFalse(state["clean"])
+        self.assertEqual(state["commits"], [])
+
+
 if __name__ == "__main__":
     unittest.main()

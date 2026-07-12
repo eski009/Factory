@@ -100,3 +100,32 @@ def build_brief(repo, item_id, worktree):
     if spec_text.strip():
         lines += ["", "## Spec (acceptance criteria)", spec_text.strip()]
     return "\n".join(lines) + "\n"
+
+
+def _git(worktree, *args):
+    return subprocess.run(["git", *args], cwd=worktree,
+                          capture_output=True, text=True)
+
+
+def git_head(worktree):
+    result = _git(worktree, "rev-parse", "HEAD")
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def git_state(worktree, base_sha):
+    """Commits + changed files on the worktree since base_sha, plus whether
+    the working tree is clean."""
+    commits, files = [], []
+    if base_sha:
+        rev = _git(worktree, "rev-list", f"{base_sha}..HEAD")
+        if rev.returncode == 0:
+            commits = [c for c in rev.stdout.split() if c]
+        diff = _git(worktree, "diff", "--name-status", base_sha, "HEAD")
+        if diff.returncode == 0:
+            for line in diff.stdout.splitlines():
+                parts = line.split("\t")
+                if len(parts) >= 2:
+                    files.append({"change": parts[0][:1], "path": parts[-1]})
+    status = _git(worktree, "status", "--porcelain")
+    clean = status.returncode == 0 and status.stdout.strip() == ""
+    return {"commits": commits, "files_changed": files, "clean": clean}
