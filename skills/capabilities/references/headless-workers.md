@@ -15,7 +15,10 @@ factory work <id> [--backend claude|codex|stub] [--model M]
 Exit codes: `0` succeeded (result `done`, `implement.completed` logged);
 `1` usage/internal; `2` precondition refusal (not at `implement`, or no
 unticked plan tasks); `3` worker attempted but failed — read `result.json`'s
-typed `reason` (`crash|timeout|no_changes|red_tests|rate_limited|auth|blocked`).
+typed `reason`. Phase A actually emits
+`crash|timeout|no_changes|red_tests|rate_limited`; `auth` and `prep_failed`
+are reserved for a later phase (auth-failure classification and the
+dependency-prep step are not wired up yet).
 
 ## Config (`.factory/config.json` → `workers`)
 
@@ -43,7 +46,11 @@ run time (design spec open-question 1).
 
 Worker output is untrusted until it clears Factory's existing review +
 verify + green-tests gates. `factory work` only fills the `implement`
-station; nothing about the gates changes.
+station; nothing about the gates changes. Set `workers.test_command` so the
+implement station has a real green-check: without it, a worker's plan-tick
+happens with no independent test gate at this stage, and partial or broken
+work is only caught later at the review/verify gates — `verify.green`
+remains authoritative.
 
 ## `stub` backend
 

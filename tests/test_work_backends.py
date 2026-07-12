@@ -60,6 +60,10 @@ class ClaudeBackendTest(unittest.TestCase):
         self.assertEqual(parsed["status"], "failed")
         self.assertEqual(parsed["reason"], "timeout")
 
+    def test_parse_non_object_stdout_does_not_crash(self):
+        parsed = work._claude_parse({"exit_code": 0, "timed_out": False, "stderr": "", "stdout": "[]"})
+        self.assertEqual(parsed["status"], "failed")
+
 
 class CodexBackendTest(unittest.TestCase):
     def test_argv_workspace_write_when_network_off(self):
@@ -128,6 +132,18 @@ class CodexBackendTest(unittest.TestCase):
         parsed = work._codex_parse(raw)
         self.assertEqual(parsed["status"], "failed")
         self.assertEqual(parsed["reason"], "timeout")
+
+    def test_parse_skips_non_object_lines(self):
+        raw = {"exit_code": 0, "timed_out": False, "stderr": "", "stdout": "\n".join([
+            '42',
+            '[]',
+            '{"type": "turn.completed", "usage": {"input_tokens": 5, "output_tokens": 1}}',
+            '{"type": "item.completed", "item": {"type": "agent_message", "text": "ok"}}',
+        ])}
+        parsed = work._codex_parse(raw)
+        self.assertEqual(parsed["status"], "done")
+        self.assertEqual(parsed["usage"]["input"], 5)
+        self.assertEqual(parsed["summary"], "ok")
 
 
 if __name__ == "__main__":

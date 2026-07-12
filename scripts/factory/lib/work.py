@@ -164,6 +164,8 @@ def _stub_parse(raw):
         obj = json.loads(raw.get("stdout") or "{}")
     except json.JSONDecodeError:
         obj = {}
+    if not isinstance(obj, dict):
+        obj = {}
     if raw.get("timed_out"):
         return {"status": "failed", "reason": "timeout", "usage": {},
                 "summary": "", "cost_usd": None}
@@ -212,6 +214,8 @@ def _claude_parse(raw):
     try:
         obj = json.loads(raw.get("stdout") or "{}")
     except json.JSONDecodeError:
+        obj = {}
+    if not isinstance(obj, dict):
         obj = {}
     usage = obj.get("usage") or {}
     tokens = {
@@ -271,6 +275,8 @@ def _codex_parse(raw):
         try:
             event = json.loads(line)
         except json.JSONDecodeError:
+            continue
+        if not isinstance(event, dict):
             continue
         etype = event.get("type")
         if etype == "turn.completed":
