@@ -197,6 +197,30 @@ class NormalizeTest(unittest.TestCase):
         self.assertEqual(result["reason"], "no_changes")
 
 
+class ResolveWorktreeTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name).resolve()
+        _init_git_repo(self.repo)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_head_on_branch_returns_repo_path(self):
+        _git(self.repo, "checkout", "-q", "-b", "factory/0001-thing")
+        self.assertEqual(work.resolve_worktree(self.repo, "0001-thing"),
+                         str(self.repo))
+
+    def test_branch_exists_but_head_elsewhere_returns_none(self):
+        # branch created but never checked out; HEAD stays on the repo's
+        # initial default branch
+        _git(self.repo, "branch", "factory/0001-thing")
+        self.assertIsNone(work.resolve_worktree(self.repo, "0001-thing"))
+
+    def test_no_such_branch_returns_none(self):
+        self.assertIsNone(work.resolve_worktree(self.repo, "0001-thing"))
+
+
 class RunWorkTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

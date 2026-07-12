@@ -237,9 +237,9 @@ def resolve_worktree(repo, item_id):
                 current = line[len("worktree "):]
             elif line.strip() == f"branch refs/heads/{branch}" and current:
                 return current
-    check = _git(repo, "rev-parse", "--verify", "--quiet",
-                 "refs/heads/" + branch)
-    return str(repo) if check.returncode == 0 else None
+    head = _git(repo, "rev-parse", "--abbrev-ref", "HEAD")
+    return (str(repo) if head.returncode == 0 and head.stdout.strip() == branch
+            else None)
 
 
 def _tick_plan(repo, item_id):
