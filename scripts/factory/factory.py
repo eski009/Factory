@@ -9,9 +9,9 @@ import sys
 if __package__ in (None, ""):
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost
+    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work
 else:
-    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost
+    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work
 
 
 def _require_factory_repo(repo):
@@ -97,6 +97,24 @@ def cmd_cost(args):
     else:
         print(cost.render_text(summary))
     return 0
+
+
+def cmd_work(args):
+    if not _require_factory_repo(args.repo):
+        return 2
+    code, result = work.run_work(
+        args.repo, args.item, backend=args.backend, model=args.model,
+        timeout=args.timeout, network=args.network, worktree=args.worktree)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    elif code == 0:
+        print(f"{args.item} done ({result.get('backend')}): "
+              f"{len(result.get('commits', []))} commit(s)")
+    else:
+        print(result.get("error")
+              or f"{args.item} {result.get('status', 'failed')}: "
+                 f"{result.get('reason')}", file=sys.stderr)
+    return code
 
 
 def cmd_advance(args):
@@ -317,6 +335,17 @@ def main(argv=None):
     p = sub.add_parser("next", help="get the next actionable work item")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_next)
+
+    p = sub.add_parser("work",
+                       help="run one headless worker for an item at implement")
+    p.add_argument("item")
+    p.add_argument("--backend", choices=["claude", "codex", "stub"])
+    p.add_argument("--model")
+    p.add_argument("--timeout", type=int)
+    p.add_argument("--network", choices=["on", "off"])
+    p.add_argument("--worktree")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_work)
 
     p = sub.add_parser("packet", help="write a review packet for an item")
     p.add_argument("item")
