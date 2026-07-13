@@ -16,7 +16,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from . import items, logs, paths, work
+from . import logs, paths, work
 
 
 class PoolError(Exception):

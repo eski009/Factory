@@ -192,20 +192,31 @@ BACKENDS = {"stub": _stub_run}
 CLAUDE_PERMISSION_MODE = "acceptEdits"
 
 
-def _looks_auth(obj, raw):
-    # Narrow, high-signal auth markers only (avoid matching the bare word
-    # "auth" which appears in unrelated messages). 401/403 + invalid-key +
-    # unauthorized + authentication error are the vendor failure strings.
-    blob = (json.dumps(obj) + " " + (raw.get("stderr") or "")).lower()
-    return any(term in blob for term in
-               ("401", "403", "invalid api key", "invalid_api_key",
-                "unauthorized", "authentication"))
-
-
 def _looks_rate_limited(obj, raw):
-    blob = (json.dumps(obj) + " " + (raw.get("stderr") or "")).lower()
+    # Numeric HTTP codes are matched with word boundaries and ONLY against
+    # stderr (the error stream) — never the JSON blob, whose session_id UUIDs
+    # / duration_ms / cost fields would substring-collide (a crash whose
+    # session_id contains "429" must not read as rate-limited).
+    stderr = (raw.get("stderr") or "").lower()
+    if re.search(r"\b(429|529)\b", stderr):
+        return True
+    blob = (json.dumps(obj) + " " + stderr).lower()
     return any(term in blob for term in
-               ("rate limit", "rate_limit", "overloaded", "429", "529"))
+               ("rate limit", "rate_limit", "overloaded"))
+
+
+def _looks_auth(obj, raw):
+    # Narrow, high-signal auth markers only. Numeric HTTP codes (401/403) are
+    # matched with word boundaries and ONLY against stderr — never the JSON
+    # blob. A false positive here exits 1 and (via the factory-workers auth-
+    # stop) spuriously halts the whole pool, so precision matters.
+    stderr = (raw.get("stderr") or "").lower()
+    if re.search(r"\b(401|403)\b", stderr):
+        return True
+    blob = (json.dumps(obj) + " " + stderr).lower()
+    return any(term in blob for term in
+               ("invalid api key", "invalid_api_key", "unauthorized",
+                "authentication"))
 
 
 def _claude_argv(brief, worktree, model, network):

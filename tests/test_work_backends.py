@@ -170,6 +170,21 @@ class AuthReasonTest(unittest.TestCase):
                "stderr": "TypeError: undefined is not a function", "stdout": "{}"}
         self.assertEqual(work._claude_parse(raw)["reason"], "crash")
 
+    def test_claude_json_field_with_401_is_not_auth(self):
+        # a session_id/number field carrying "401" (no auth text, no 401 in
+        # stderr) must read as crash, not auth — else an ordinary crash would
+        # exit 1 and halt the whole pool.
+        raw = {"exit_code": 1, "timed_out": False, "stderr": "TypeError: boom",
+               "stdout": ('{"subtype": "error_during_execution", '
+                          '"session_id": "b3d4013a-1111-4011-8401-000000000000"}')}
+        self.assertEqual(work._claude_parse(raw)["reason"], "crash")
+
+    def test_claude_json_field_with_429_is_not_rate_limited(self):
+        raw = {"exit_code": 1, "timed_out": False, "stderr": "TypeError: boom",
+               "stdout": ('{"subtype": "error_during_execution", '
+                          '"session_id": "42911111-0000-4000-8000-000000000000"}')}
+        self.assertEqual(work._claude_parse(raw)["reason"], "crash")
+
 
 if __name__ == "__main__":
     unittest.main()
