@@ -56,3 +56,44 @@ remains authoritative.
 
 `--backend stub` is a test-only in-process backend (writes a file, commits,
 returns a canned result); it never spawns a CLI. Used by the engine tests.
+
+## Scheduler (Layer 2 / parallel pool)
+
+The `factory-workers` skill runs a bounded pool of workers across independent
+items — the "high-level orchestration above" `factory work`. It uses three
+engine primitives plus `factory work`:
+
+```
+factory next -n K --json        # top-K actionable items (a JSON array)
+factory provision <id> [--backend claude|codex|stub] [--json]
+factory cleanup <id> [--json]
+```
+
+- **`factory provision <id>`** prepares one item's worktree (design spec §7
+  prep phase): create/reuse the `factory/<id>` worktree under
+  `.factory/worktrees/<id>`, copy `.worktreeinclude` files, run the
+  `workers.prep` command (network on), and seed an isolated
+  `CLAUDE_CONFIG_DIR`/`CODEX_HOME` with pre-accepted trust. It prints
+  `{worktree, config_env, prepared, reason?}`. Set each `config_env` key in
+  the environment of the `factory work` process you launch for that item.
+  `prepared: false` (reason `prep_failed`) means block the item — a worker
+  cannot fix a broken prep offline.
+- **`factory cleanup <id>`** removes the worktree (`git worktree remove
+  --force` + `prune`) and the per-worker config dir. The **branch is kept**,
+  so `review`/`verify`/`ship` still operate on `factory/<id>`.
+
+**Isolation invariant:** one branch ↔ one worktree ↔ one worker ↔ one config
+dir. `factory provision` guarantees it.
+
+**Pacing (design spec §3, §8):** all workers drain one shared org rate-limit
+bucket, so keep `max_parallel` small (default 2), stagger launches (ramp, not
+burst), and back off on rate-limit/overload — `retry.base_delay_seconds ·
+2^attempt`, capped, up to `retry.max_attempts`. `factory doctor --json` →
+`workers` reports `max_parallel` and `retry`.
+
+**Auth is a hard stop:** a worker exit code 1 with `reason: auth` means a
+bad/expired key — stop the whole pool and surface `factory doctor`; do not
+retry or burn the other slots on it.
+
+`.factory/` must be gitignored in the target repo (the standard convention) so
+the nested `.factory/worktrees/<id>` checkouts stay out of the main index.

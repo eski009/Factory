@@ -96,6 +96,16 @@ class TestPluginCoherence(unittest.TestCase):
             (ROOT / "skills/capabilities/references/"
              "headless-workers.md").exists())
 
+    def test_headless_scheduler_wiring_present(self):
+        # the Layer-2 pool skill exists, the dispatcher cites it, and the
+        # reference doc documents the provisioning verbs.
+        self.assertIn("factory-workers", skill_names())
+        disp = read(ROOT / "skills/factory-dispatch/SKILL.md")
+        self.assertIn("factory-workers", disp)
+        ref = read(ROOT / "skills/capabilities/references/headless-workers.md")
+        self.assertIn("factory provision", ref)
+        self.assertIn("factory cleanup", ref)
+
 
 if __name__ == "__main__":
     unittest.main()
