@@ -40,9 +40,6 @@ def cmd_add(args):
     if not args.title.strip():
         print("error: title must not be empty", file=sys.stderr)
         return 1
-    if getattr(args, "tier", None) and args.tier not in items.TIERS:
-        print(f"error: tier must be one of {', '.join(items.TIERS)}", file=sys.stderr)
-        return 1
     item_id = items.new_item_id(args.repo, args.title)
     now = logs.now_stamp()
     meta = {"id": item_id, "title": args.title, "stage": "idea",
@@ -343,7 +340,7 @@ def main(argv=None):
     p = sub.add_parser("add", help="create a work item at stage idea")
     p.add_argument("title")
     p.add_argument("--kind", choices=items.KINDS, default="mixed")
-    p.add_argument("--tier")
+    p.add_argument("--tier", choices=list(items.TIERS))
     p.set_defaults(func=cmd_add)
 
     p = sub.add_parser("status", help="list items by priority")

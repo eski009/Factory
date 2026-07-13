@@ -46,6 +46,14 @@ class CliTierTest(unittest.TestCase):
         self.assertEqual(code, 0, err)
         self.assertIn("epic", out)
 
+    def test_add_bad_tier_rejected(self):
+        code, out, err = self.run_cli("add", "X", "--tier", "mega")
+        self.assertEqual(code, 1)   # argparse choices -> SystemExit -> exit 1
+
+    def test_add_empty_tier_rejected(self):
+        code, out, err = self.run_cli("add", "X", "--tier", "")
+        self.assertEqual(code, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
