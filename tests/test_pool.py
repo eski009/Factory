@@ -156,5 +156,49 @@ class WorktreeIncludeTest(unittest.TestCase):
         self.assertEqual((wt / "vendor" / "lib.txt").read_text(), "x\n")
 
 
+class ProvisionTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        _init_git_repo(self.repo)
+        initrepo.init(self.repo)
+        _make_item(self.repo)
+
+    def tearDown(self):
+        pool._git(self.repo, "worktree", "prune")
+        self.tmp.cleanup()
+
+    def _events(self):
+        return [e["event"] for e in logs.read_events(self.repo, "0001-thing")]
+
+    def test_success_prepares_worktree_config_and_logs(self):
+        result = pool.provision(self.repo, "0001-thing", backend="claude")
+        self.assertTrue(result["prepared"], result)
+        self.assertTrue(Path(result["worktree"]).is_dir())
+        self.assertIn("CLAUDE_CONFIG_DIR", result["config_env"])
+        self.assertIn("prep.completed", self._events())
+
+    def test_worktreeinclude_copied_into_worktree(self):
+        (self.repo / ".worktreeinclude").write_text(".env\n", encoding="utf-8")
+        (self.repo / ".env").write_text("K=v\n", encoding="utf-8")
+        result = pool.provision(self.repo, "0001-thing", backend="claude")
+        self.assertIn(".env", result["includes"])
+        self.assertTrue((Path(result["worktree"]) / ".env").exists())
+
+    def test_prep_command_runs(self):
+        _set_workers(self.repo, {"prep": "echo hi > prepped.txt"})
+        result = pool.provision(self.repo, "0001-thing", backend="claude")
+        self.assertTrue(result["prepared"])
+        self.assertTrue((Path(result["worktree"]) / "prepped.txt").exists())
+
+    def test_prep_failure_reports_prep_failed_and_logs(self):
+        _set_workers(self.repo, {"prep": "exit 7"})
+        result = pool.provision(self.repo, "0001-thing", backend="claude")
+        self.assertFalse(result["prepared"])
+        self.assertEqual(result["reason"], "prep_failed")
+        self.assertIn("prep.failed", self._events())
+        self.assertNotIn("prep.completed", self._events())
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -143,3 +143,55 @@ def copy_worktree_includes(repo, worktree):
             shutil.copy2(src, dst)
             copied.append(entry)
     return copied
+
+
+def run_prep(worktree, prep):
+    """Run the deterministic prep command (deps install, etc.) in the
+    worktree. Network is intentionally NOT restricted here — prep is a fixed
+    command, not model-driven (design spec §7). Returns (ok, detail-tail)."""
+    proc = subprocess.run(prep, cwd=worktree, shell=True,
+                          capture_output=True, text=True)
+    ok = proc.returncode == 0
+    tail = (proc.stdout if ok else (proc.stderr or proc.stdout)) or ""
+    return ok, tail[-500:].strip()
+
+
+def provision(repo, item_id, backend=None, cfg=None):
+    """Prepare an item's worktree for a headless worker (design spec §7 prep
+    phase): create/reuse the factory/<id> worktree, copy .worktreeinclude
+    files, run the configured prep command, and seed an isolated config dir.
+    Returns a provisioning report; on failure prepared=False with
+    reason='prep_failed'. Does NOT advance the item — the caller blocks it."""
+    cfg = cfg or work.worker_config(repo)
+    backend = backend or cfg.get("backend") or "claude"
+    result = {"item": item_id, "backend": backend, "prepared": False,
+              "worktree": None, "created": False, "config_env": {},
+              "includes": []}
+    try:
+        wt, created = ensure_worktree(repo, item_id)
+    except PoolError as exc:
+        result["reason"] = "prep_failed"
+        result["detail"] = str(exc)
+        logs.append_event(repo, item_id, "prep.failed",
+                          {"reason": "prep_failed", "stage": "implement",
+                           "detail": str(exc)[:500]})
+        return result
+    result["worktree"] = wt
+    result["created"] = created
+    result["includes"] = copy_worktree_includes(repo, wt)
+    prep = cfg.get("prep")
+    if prep:
+        ok, detail = run_prep(wt, prep)
+        if not ok:
+            result["reason"] = "prep_failed"
+            result["detail"] = detail
+            logs.append_event(repo, item_id, "prep.failed",
+                              {"reason": "prep_failed", "stage": "implement",
+                               "detail": detail[:500]})
+            return result
+    result["config_env"] = seed_config_dir(repo, item_id, backend, wt)
+    result["prepared"] = True
+    logs.append_event(repo, item_id, "prep.completed",
+                      {"worktree": wt, "prep": prep,
+                       "includes": result["includes"]})
+    return result
