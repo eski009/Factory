@@ -40,10 +40,15 @@ def cmd_add(args):
     if not args.title.strip():
         print("error: title must not be empty", file=sys.stderr)
         return 1
+    if getattr(args, "tier", None) and args.tier not in items.TIERS:
+        print(f"error: tier must be one of {', '.join(items.TIERS)}", file=sys.stderr)
+        return 1
     item_id = items.new_item_id(args.repo, args.title)
     now = logs.now_stamp()
     meta = {"id": item_id, "title": args.title, "stage": "idea",
             "kind": args.kind, "created": now, "updated": now}
+    if getattr(args, "tier", None):
+        meta["tier"] = args.tier
     try:
         items.save_item(args.repo, meta, f"# {args.title}\n")
     except items.ItemError as exc:
@@ -70,7 +75,8 @@ def cmd_status(args):
         corrupt_items = 0
         for m in rows:
             priority = m.get("priority", "-")
-            print(f"{m['id']:<40} {m['stage']:<14} p{priority:<4} {m['kind']}")
+            print(f"{m['id']:<40} {m['stage']:<14} p{priority:<4} "
+                  f"{items.item_tier(m)}/{m['kind']}")
             _, skipped = logs.read_events_with_stats(args.repo, m["id"])
             if skipped:
                 corrupt_total += skipped
@@ -301,6 +307,18 @@ def cmd_priority(args):
     return 0
 
 
+def cmd_tier(args):
+    if not _require_factory_repo(args.repo):
+        return 2
+    try:
+        items.set_tier(args.repo, args.item, args.tier)
+    except items.ItemError as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    print(f"{args.item} tier {args.tier}")
+    return 0
+
+
 def cmd_doctor(args):
     report = doctor_mod.report(args.repo)
     if args.json:
@@ -325,6 +343,7 @@ def main(argv=None):
     p = sub.add_parser("add", help="create a work item at stage idea")
     p.add_argument("title")
     p.add_argument("--kind", choices=items.KINDS, default="mixed")
+    p.add_argument("--tier")
     p.set_defaults(func=cmd_add)
 
     p = sub.add_parser("status", help="list items by priority")
@@ -422,6 +441,11 @@ def main(argv=None):
     p.add_argument("item")
     p.add_argument("priority", type=int)
     p.set_defaults(func=cmd_priority)
+
+    p = sub.add_parser("tier", help="set an item's materiality tier")
+    p.add_argument("item")
+    p.add_argument("tier")
+    p.set_defaults(func=cmd_tier)
 
     p = sub.add_parser("doctor", help="readout of repo integration state")
     p.add_argument("--json", action="store_true")
