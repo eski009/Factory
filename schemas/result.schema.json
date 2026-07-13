@@ -22,7 +22,7 @@
         "properties": {
           "path": {"type": "string"},
           "change": {"type": "string",
-                     "enum": ["A", "M", "D", "R", "C", "T"]}
+                     "enum": ["A", "M", "D", "R", "C", "T", "U", "X", "B"]}
         }
       }
     },

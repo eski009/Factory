@@ -288,5 +288,22 @@ class RunWorkTest(unittest.TestCase):
         self.assertEqual(code, 2)
 
 
+class ChangeEnumTest(unittest.TestCase):
+    def test_unusual_git_status_chars_validate(self):
+        gstate = {"commits": ["abc123"], "clean": True,
+                  "files_changed": [{"path": "a.txt", "change": "U"},
+                                    {"path": "b.txt", "change": "X"},
+                                    {"path": "c.txt", "change": "B"}]}
+        parsed = {"status": "done", "reason": None,
+                  "usage": {"input": 1, "output": 1, "total": 2},
+                  "summary": "s", "cost_usd": None}
+        result = work.normalize("0001-thing", "stub", None,
+                                "factory/0001-thing", gstate, parsed, None,
+                                "items/0001-thing/worker/worker.log")
+        errors = validate.validate(result, initrepo.load_schema("result"),
+                                   "result")
+        self.assertEqual(errors, [])
+
+
 if __name__ == "__main__":
     unittest.main()
