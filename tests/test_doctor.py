@@ -75,6 +75,13 @@ class TestDoctor(unittest.TestCase):
         self.assertEqual(workers["max_parallel"], 2)
         self.assertEqual(workers["retry"]["max_attempts"], 3)
 
+    def test_reports_tier_profiles(self):
+        r = doctor.report(self.repo)
+        self.assertIn("tiers", r)
+        self.assertEqual(r["tiers"]["bug"]["review"], "light")
+        self.assertEqual(r["tiers"]["epic"]["research"], "deep")
+        self.assertEqual(r["tiers"]["feature"]["review"], "full")
+
 
 if __name__ == "__main__":
     unittest.main()

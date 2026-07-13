@@ -11,7 +11,7 @@ import json
 import os
 import shutil
 
-from . import dispatch, initrepo, items, paths, work
+from . import dispatch, initrepo, items, paths, tiers, work
 
 REPORT_KEYS = ("tree_valid", "design_system_present", "designsync_project",
                "schedule_configured", "merge_policy", "gates",
@@ -43,6 +43,10 @@ def worker_readiness(repo):
     }
 
 
+def tier_profiles(repo):
+    return {tier: tiers.profile(repo, tier) for tier in items.TIERS}
+
+
 def report(repo):
     config = _config(repo)
     ds_path = paths.docs_root(repo) / "brain" / "design-system.md"
@@ -55,6 +59,7 @@ def report(repo):
         "schedule_configured": bool(config.get("autopilot", {}).get("schedule")),
         "merge_policy": config.get("merge", "auto"),
         "workers": worker_readiness(repo),
+        "tiers": tier_profiles(repo),
         "gates": config.get("gates", []),
         "open_items": sum(1 for m in metas if m["stage"] not in ("done", "blocked")),
         "pending_human": len(dispatch.pending_human(repo)),
