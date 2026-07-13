@@ -85,6 +85,21 @@ class TestPluginCoherence(unittest.TestCase):
         self.assertIn("market", text)
         self.assertIn("research mode", text.lower())
 
+    def test_factory_design_decision_block_is_surface_adaptive(self):
+        # item 0012: the decision block must adapt to the viewing surface — one
+        # canonical page branching on window.location.protocol, dropping the inert
+        # Record-choice affordance on a hosted Artifact and leading with a
+        # reply-to-record path, while the file:// surface keeps the full flow.
+        text = read(ROOT / "skills/factory-design/SKILL.md")
+        self.assertIn("window.location.protocol", text,
+                      "decision block must branch on window.location.protocol")
+        self.assertIn("never two HTML variants", text,
+                      "must forbid emitting two separately-authored HTML variants")
+        self.assertIn("reply with your pick", text.lower(),
+                      "hosted surface must lead with a reply-to-record affordance")
+        self.assertIn("for terminal use", text.lower(),
+                      "hosted surface must demote (not remove) the composed CLI command")
+
 
 if __name__ == "__main__":
     unittest.main()
