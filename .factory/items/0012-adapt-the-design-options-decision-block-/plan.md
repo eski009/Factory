@@ -97,7 +97,7 @@ git commit -m "feat(0012): surface-adaptive decision block in factory-design"
 
 **Covers acceptance criteria:** 9.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add this method inside `class TestPluginCoherence` in `tests/test_plugin_coherence.py` (directly after the Task 1 method):
 
@@ -113,12 +113,12 @@ Add this method inside `class TestPluginCoherence` in `tests/test_plugin_coheren
                       "artifact-hosting must state Record-choice is dropped on the hosted surface")
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `python3 -m unittest tests.test_plugin_coherence.TestPluginCoherence.test_artifact_hosting_reference_describes_hosted_affordance -v`
 Expected: FAIL — `AssertionError: artifact-hosting must describe the hosted reply-to-record affordance`.
 
-- [ ] **Step 3: Implement — add a consistency paragraph to artifact-hosting.md**
+- [x] **Step 3: Implement — add a consistency paragraph to artifact-hosting.md**
 
 In `skills/capabilities/references/artifact-hosting.md`, under the `## Design options` heading, append this paragraph immediately after the "Publishing mechanics" subsection (i.e. at the end of the Design options section, before `## Status dashboard`):
 
@@ -128,7 +128,7 @@ In `skills/capabilities/references/artifact-hosting.md`, under the `## Design op
 An Artifact is sandboxed and view-only: nothing in-session reads its console and no terminal runs its composed command, so the decision block's Record-choice control is genuinely inert there. Per factory-design's surface-adaptive requirement, the page branches on `window.location.protocol` and, on the hosted surface, **drops the Record-choice control** and leads with "reply with your pick and I'll record it" (the reply-in-session capture path, which the orchestrator relays to `factory choice`). The local `file://` page keeps the full clickable flow. This is one canonical page with a runtime branch — never a second authored HTML variant.
 ```
 
-- [ ] **Step 4: Reinforce the file://-only read-back note in browser-read.md**
+- [x] **Step 4: Reinforce the file://-only read-back note in browser-read.md**
 
 In `skills/capabilities/references/browser-read.md`, in the `## Session-live only` section, append this sentence to the end of that paragraph:
 
@@ -136,17 +136,17 @@ In `skills/capabilities/references/browser-read.md`, in the `## Session-live onl
 Browser read-back therefore targets the local `file://` page only; the hosted Artifact drops the Record-choice control entirely (factory-design's surface-adaptive requirement), so there is no inert read-back affordance to mislead a phone viewer — they use the reply-in-session path instead.
 ```
 
-- [ ] **Step 5: Run the test to verify it passes**
+- [x] **Step 5: Run the test to verify it passes**
 
 Run: `python3 -m unittest tests.test_plugin_coherence.TestPluginCoherence.test_artifact_hosting_reference_describes_hosted_affordance -v`
 Expected: PASS (OK).
 
-- [ ] **Step 6: Run the full suite to confirm no regression**
+- [x] **Step 6: Run the full suite to confirm no regression**
 
 Run: `python3 -m unittest discover -s tests -v`
 Expected: OK — all tests pass, including both methods added in Tasks 1 and 2.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add skills/capabilities/references/artifact-hosting.md skills/capabilities/references/browser-read.md tests/test_plugin_coherence.py
