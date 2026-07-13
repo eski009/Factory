@@ -146,5 +146,30 @@ class CodexBackendTest(unittest.TestCase):
         self.assertEqual(parsed["summary"], "ok")
 
 
+class AuthReasonTest(unittest.TestCase):
+    def test_claude_401_is_auth(self):
+        raw = {"exit_code": 1, "timed_out": False,
+               "stderr": "API Error: 401 authentication_error invalid x-api-key",
+               "stdout": "{}"}
+        self.assertEqual(work._claude_parse(raw)["reason"], "auth")
+
+    def test_codex_invalid_api_key_is_auth(self):
+        raw = {"exit_code": 1, "timed_out": False,
+               "stderr": "stream error: 401 Unauthorized (invalid_api_key)",
+               "stdout": ""}
+        self.assertEqual(work._codex_parse(raw)["reason"], "auth")
+
+    def test_auth_beats_rate_limited_when_both_absent_conflict(self):
+        # a plain 401 with no rate-limit tokens is auth, not crash
+        raw = {"exit_code": 1, "timed_out": False,
+               "stderr": "403 Forbidden", "stdout": "{}"}
+        self.assertEqual(work._claude_parse(raw)["reason"], "auth")
+
+    def test_ordinary_crash_is_not_auth(self):
+        raw = {"exit_code": 1, "timed_out": False,
+               "stderr": "TypeError: undefined is not a function", "stdout": "{}"}
+        self.assertEqual(work._claude_parse(raw)["reason"], "crash")
+
+
 if __name__ == "__main__":
     unittest.main()

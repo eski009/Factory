@@ -192,6 +192,16 @@ BACKENDS = {"stub": _stub_run}
 CLAUDE_PERMISSION_MODE = "acceptEdits"
 
 
+def _looks_auth(obj, raw):
+    # Narrow, high-signal auth markers only (avoid matching the bare word
+    # "auth" which appears in unrelated messages). 401/403 + invalid-key +
+    # unauthorized + authentication error are the vendor failure strings.
+    blob = (json.dumps(obj) + " " + (raw.get("stderr") or "")).lower()
+    return any(term in blob for term in
+               ("401", "403", "invalid api key", "invalid_api_key",
+                "unauthorized", "authentication"))
+
+
 def _looks_rate_limited(obj, raw):
     blob = (json.dumps(obj) + " " + (raw.get("stderr") or "")).lower()
     return any(term in blob for term in
@@ -232,7 +242,12 @@ def _claude_parse(raw):
     if obj.get("subtype") == "success" and raw["exit_code"] == 0:
         return {"status": "done", "reason": None, "usage": tokens,
                 "summary": summary, "cost_usd": cost}
-    reason = "rate_limited" if _looks_rate_limited(obj, raw) else "crash"
+    if _looks_auth(obj, raw):
+        reason = "auth"
+    elif _looks_rate_limited(obj, raw):
+        reason = "rate_limited"
+    else:
+        reason = "crash"
     return {"status": "failed", "reason": reason, "usage": tokens,
             "summary": summary, "cost_usd": cost}
 
@@ -295,7 +310,12 @@ def _codex_parse(raw):
                 summary = (item.get("text") or "")[:2000]
     tokens = {"input": inp, "output": out, "total": inp + out}
     if failed or raw["exit_code"] != 0:
-        reason = "rate_limited" if _looks_rate_limited({}, raw) else "crash"
+        if _looks_auth({}, raw):
+            reason = "auth"
+        elif _looks_rate_limited({}, raw):
+            reason = "rate_limited"
+        else:
+            reason = "crash"
         return {"status": "failed", "reason": reason, "usage": tokens,
                 "summary": summary, "cost_usd": None}
     return {"status": "done", "reason": None, "usage": tokens,
@@ -475,4 +495,8 @@ def run_work(repo, item_id, backend=None, model=None, timeout=None,
         return 0, result
     logs.append_event(repo, item_id, "implement.failed",
                       {"reason": result.get("reason"), "backend": backend})
+    if result.get("reason") == "auth":
+        # A bad/expired key is a setup error, not a retryable worker attempt:
+        # exit 1 so the scheduler surfaces it (and never burns the pool on it).
+        return 1, result
     return 3, result

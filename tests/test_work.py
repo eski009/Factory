@@ -302,6 +302,16 @@ class RunWorkTest(unittest.TestCase):
         self.assertIsInstance(result["duration_s"], int)
         self.assertGreaterEqual(result["duration_s"], 0)
 
+    def test_auth_failure_exits_one_and_logs_failed(self):
+        os.environ["FACTORY_WORK_STUB"] = json.dumps(
+            {"exit_code": 1, "commit": False, "reason": "auth"})
+        code, result = work.run_work(self.repo, "0001-thing", backend="stub",
+                                     worktree=str(self.repo))
+        self.assertEqual(code, 1)
+        self.assertEqual(result["reason"], "auth")
+        self.assertIn("implement.failed", self._events())
+        self.assertNotIn("implement.completed", self._events())
+
 
 class ChangeEnumTest(unittest.TestCase):
     def test_unusual_git_status_chars_validate(self):
