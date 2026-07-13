@@ -16,6 +16,7 @@ import os
 import re
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 from . import initrepo, items, logs, paths, validate
@@ -318,7 +319,7 @@ def _parse_output(backend, raw):
 
 
 def normalize(item_id, backend, model, branch, gstate, parsed, test_result,
-              worker_log):
+              worker_log, duration_s=0):
     """Backend-independent result packet. Git-first correctness (commits +
     tests) overrides a backend's optimistic self-report."""
     status = parsed["status"]
@@ -337,6 +338,7 @@ def normalize(item_id, backend, model, branch, gstate, parsed, test_result,
         "branch": branch,
         "commits": gstate["commits"],
         "files_changed": gstate["files_changed"],
+        "duration_s": int(max(0, duration_s)),
         "summary": (parsed.get("summary") or "")[:2000],
         "worker_log": worker_log,
     }
@@ -433,8 +435,10 @@ def run_work(repo, item_id, backend=None, model=None, timeout=None,
     model = model or (cfg.get("models") or {}).get(backend)
     sandbox = (cfg.get("codex") or {}).get("sandbox", "workspace-write")
     base_sha = git_head(work_tree)
+    started = time.monotonic()
     raw = BACKENDS[backend](brief, work_tree, model, timeout, network,
                             sandbox, env)
+    duration_s = int(time.monotonic() - started)
     (worker_dir / "worker.log").write_text(raw.get("stderr") or "",
                                            encoding="utf-8")
     parsed = _parse_output(backend, raw)
@@ -451,7 +455,8 @@ def run_work(repo, item_id, backend=None, model=None, timeout=None,
     gstate = git_state(work_tree, base_sha)
     result = normalize(item_id, backend, model, f"factory/{item_id}", gstate,
                        parsed, test_result,
-                       f"items/{item_id}/worker/worker.log")
+                       f"items/{item_id}/worker/worker.log",
+                       duration_s=duration_s)
     errors = validate.validate(result, initrepo.load_schema("result"),
                                "result")
     if errors:
