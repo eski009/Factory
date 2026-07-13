@@ -212,6 +212,16 @@ def cmd_next(args):
         for error in errors:
             print(error, file=sys.stderr)
         return 2
+    if args.count is not None:
+        rows = dispatch.next_items(args.repo, args.count)
+        if args.json:
+            print(json.dumps(rows, indent=2, sort_keys=True))
+        elif not rows:
+            print("nothing actionable")
+        else:
+            for m in rows:
+                print(f"{m['id']} {m['stage']}")
+        return 0
     meta = dispatch.next_item(args.repo)
     if args.json:
         print(json.dumps(meta, indent=2, sort_keys=True))
@@ -332,8 +342,10 @@ def main(argv=None):
     p.add_argument("--apply", action="store_true")
     p.set_defaults(func=cmd_prune)
 
-    p = sub.add_parser("next", help="get the next actionable work item")
+    p = sub.add_parser("next", help="get the next actionable work item(s)")
     p.add_argument("--json", action="store_true")
+    p.add_argument("--count", "-n", type=int,
+                   help="return up to N top actionable items (as a list)")
     p.set_defaults(func=cmd_next)
 
     p = sub.add_parser("work",

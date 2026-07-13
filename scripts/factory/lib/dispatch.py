@@ -13,11 +13,22 @@ def _by_priority(metas):
     return sorted(metas, key=lambda m: (m.get("priority", 9999), m["id"]))
 
 
-def next_item(repo):
+def next_items(repo, n):
+    """Top-N actionable items by (priority, id). n <= 0 → []. Fewer than n
+    are returned when the backlog is smaller. Actionability matches
+    next_item: everything except done/blocked/waiting-human. D1 assumes the
+    top-N are independent; worktree isolation makes a wrong guess a merge
+    conflict at ship, not corruption."""
+    if n <= 0:
+        return []
     metas, _errors = items.list_items_safe(repo)
     actionable = [m for m in metas if m["stage"] not in NOT_ACTIONABLE]
-    ordered = _by_priority(actionable)
-    return ordered[0] if ordered else None
+    return _by_priority(actionable)[:n]
+
+
+def next_item(repo):
+    got = next_items(repo, 1)
+    return got[0] if got else None
 
 
 def pending_human(repo):
