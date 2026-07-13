@@ -79,5 +79,62 @@ class EnsureWorktreeTest(unittest.TestCase):
         self.assertEqual(status.stdout.strip(), "")
 
 
+class SeedConfigDirTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        _init_git_repo(self.repo)
+        initrepo.init(self.repo)
+        _make_item(self.repo)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_claude_seed_writes_trust_state(self):
+        wt = str(self.repo / "wt")
+        env = pool.seed_config_dir(self.repo, "0001-thing", "claude", wt)
+        self.assertIn("CLAUDE_CONFIG_DIR", env)
+        cfg = json.loads((Path(env["CLAUDE_CONFIG_DIR"]) / ".claude.json")
+                         .read_text())
+        self.assertTrue(cfg["hasCompletedOnboarding"])
+        key = str(Path(wt).resolve())
+        self.assertTrue(cfg["projects"][key]["hasTrustDialogAccepted"])
+
+    def test_codex_seed_sets_codex_home(self):
+        env = pool.seed_config_dir(self.repo, "0001-thing", "codex", "/wt")
+        self.assertIn("CODEX_HOME", env)
+        self.assertTrue(Path(env["CODEX_HOME"]).is_dir())
+
+    def test_stub_backend_has_no_config_env(self):
+        self.assertEqual(
+            pool.seed_config_dir(self.repo, "0001-thing", "stub", "/wt"), {})
+
+
+class WorktreeIncludeTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        _init_git_repo(self.repo)
+        initrepo.init(self.repo)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_copies_listed_files_skips_missing(self):
+        (self.repo / ".worktreeinclude").write_text(
+            "# secrets\n.env\nmissing.txt\n", encoding="utf-8")
+        (self.repo / ".env").write_text("TOKEN=abc\n", encoding="utf-8")
+        wt = self.repo / "wt"
+        wt.mkdir()
+        copied = pool.copy_worktree_includes(self.repo, str(wt))
+        self.assertEqual(copied, [".env"])
+        self.assertEqual((wt / ".env").read_text(), "TOKEN=abc\n")
+
+    def test_no_include_file_returns_empty(self):
+        wt = self.repo / "wt"
+        wt.mkdir()
+        self.assertEqual(pool.copy_worktree_includes(self.repo, str(wt)), [])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -81,3 +81,59 @@ def ensure_worktree(repo, item_id):
         raise PoolError(
             f"git worktree add failed for {branch}: {added.stderr.strip()}")
     return target_str, True
+
+
+def _worker_home(repo, item_id):
+    return paths.item_dir(repo, item_id) / "worker" / "home"
+
+
+def seed_config_dir(repo, item_id, backend, worktree):
+    """Create an isolated per-worker config/home dir and return the env var
+    that points a backend CLI at it. This avoids the ~/.claude.json 5+-
+    concurrent corruption race and the Codex single-use-refresh-token fleet
+    race (design spec §3). For claude, pre-accept onboarding + the worktree
+    path's trust dialog so a headless run is never parked by a TTY prompt."""
+    home = _worker_home(repo, item_id)
+    home.mkdir(parents=True, exist_ok=True)
+    if backend == "claude":
+        cfg = {
+            "hasCompletedOnboarding": True,
+            "projects": {
+                str(Path(worktree).resolve()): {
+                    "hasTrustDialogAccepted": True,
+                    "hasCompletedProjectOnboarding": True,
+                }
+            },
+        }
+        (home / ".claude.json").write_text(
+            json.dumps(cfg, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        return {"CLAUDE_CONFIG_DIR": str(home)}
+    if backend == "codex":
+        return {"CODEX_HOME": str(home)}
+    return {}
+
+
+def copy_worktree_includes(repo, worktree):
+    """Copy gitignored files a worktree needs (e.g. .env) from the repo into
+    the worktree, per the .worktreeinclude convention (design spec §7). Blank
+    and #-comment lines are skipped; a listed path that does not exist in the
+    repo is silently skipped. Returns the entries actually copied."""
+    include = Path(repo) / ".worktreeinclude"
+    copied = []
+    if not include.exists():
+        return copied
+    for line in include.read_text(encoding="utf-8",
+                                  errors="replace").splitlines():
+        entry = line.strip()
+        if not entry or entry.startswith("#"):
+            continue
+        src = Path(repo) / entry
+        dst = Path(worktree) / entry
+        if src.is_dir():
+            shutil.copytree(src, dst, dirs_exist_ok=True)
+            copied.append(entry)
+        elif src.exists():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+            copied.append(entry)
+    return copied
