@@ -19,7 +19,7 @@ Read `research.depth` from `.factory/config.json` (`inputs-only | web | deep`, d
 
 - `inputs-only` — reason only from the PRD/repo already on hand; no web.
 - `web` (default) — research the open web (competitors, category conventions, real user voice in reviews/forums), citing URLs; produce one primary persona + a market read.
-- `deep` — `web` plus a persona set (primary + secondaries) and a fuller competitive teardown; fan out the gather step per competitor/segment (see the `capabilities` skill). Depth `deep` also runs the focus-group step (§3b); a `--focus-group` argument forces it at any depth, `--no-focus-group` suppresses it at `deep`.
+- `deep` — `web` plus a persona set (primary + secondaries) and a fuller competitive teardown; fan out the gather step per competitor/segment (see the `capabilities` skill). Depth `deep` also runs the focus-group step (§3b) for material (`tier: epic`) work — see its Trigger; a `--focus-group` argument forces it at any depth, `--no-focus-group` suppresses it at `deep`.
 
 When this research run is scoped to a specific work item or roadmap candidate, cap the effective depth at that item's tier `research` profile (`factory doctor --json` → `tiers`): a `feature` caps at `web` (no focus group), a `bug` at `off` (no research), an `epic` may go to `deep`. The `research.depth` config is the global ceiling; the tier caps it further for non-material work.
 
@@ -81,7 +81,7 @@ All artifacts live under `.factory/runs/research/focus-group/<YYYY-MM-DD>/`
    proxies). Quote its summary in the Exit report.
 
 **Autopilot:** never silent — under autopilot the focus group runs only if
-the human pre-configured `research.depth: "deep"`; autopilot never adds
+the human pre-configured `research.depth: "deep"` **and** the research is for a material (`tier: epic`) context (per the §3b Trigger); autopilot never adds
 `--focus-group` on its own, and the packet must name that a simulation ran,
 its run directory, and its spend summary.
 
