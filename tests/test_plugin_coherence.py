@@ -85,6 +85,31 @@ class TestPluginCoherence(unittest.TestCase):
         self.assertIn("market", text)
         self.assertIn("research mode", text.lower())
 
+    def test_factory_design_decision_block_is_surface_adaptive(self):
+        # item 0012: the decision block must adapt to the viewing surface — one
+        # canonical page branching on window.location.protocol, dropping the inert
+        # Record-choice affordance on a hosted Artifact and leading with a
+        # reply-to-record path, while the file:// surface keeps the full flow.
+        text = read(ROOT / "skills/factory-design/SKILL.md")
+        self.assertIn("window.location.protocol", text,
+                      "decision block must branch on window.location.protocol")
+        self.assertIn("never two HTML variants", text,
+                      "must forbid emitting two separately-authored HTML variants")
+        self.assertIn("reply with your pick", text.lower(),
+                      "hosted surface must lead with a reply-to-record affordance")
+        self.assertIn("for terminal use", text.lower(),
+                      "hosted surface must demote (not remove) the composed CLI command")
+
+    def test_artifact_hosting_reference_describes_hosted_affordance(self):
+        # item 0012: the artifact-hosting reference must state that the hosted
+        # surface drops the inert Record-choice control and leads with the
+        # reply-to-record affordance, matching factory-design's requirement.
+        text = read(ROOT / "skills/capabilities/references/artifact-hosting.md")
+        self.assertIn("reply with your pick", text.lower(),
+                      "artifact-hosting must describe the hosted reply-to-record affordance")
+        self.assertIn("drops the record-choice", text.lower(),
+                      "artifact-hosting must state Record-choice is DROPPED on the hosted surface")
+
 
 if __name__ == "__main__":
     unittest.main()

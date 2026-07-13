@@ -8,7 +8,7 @@ In an interactive session where a browser-read tool is live and the human review
 
 ## Session-live only
 
-Page state lives in a browser tab and dies with it. Nothing polls, nothing persists, nothing listens in the background. If the session ends, or the human reviews later or from another device, the answer arrives via the CLI line exactly as before — the page's composed command or the packet's verbatim `factory choice` line.
+Page state lives in a browser tab and dies with it. Nothing polls, nothing persists, nothing listens in the background. If the session ends, or the human reviews later or from another device, the answer arrives via the CLI line exactly as before — the page's composed command or the packet's verbatim `factory choice` line. Browser read-back therefore targets the local `file://` page only; the hosted Artifact drops the Record-choice control entirely (factory-design's surface-adaptive requirement), so there is no inert read-back affordance to mislead a phone viewer — they use the reply-in-session path instead.
 
 ## Degradation
 
