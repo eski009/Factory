@@ -100,6 +100,16 @@ class TestPluginCoherence(unittest.TestCase):
         self.assertIn("for terminal use", text.lower(),
                       "hosted surface must demote (not remove) the composed CLI command")
 
+    def test_artifact_hosting_reference_describes_hosted_affordance(self):
+        # item 0012: the artifact-hosting reference must state that the hosted
+        # surface drops the inert Record-choice control and leads with the
+        # reply-to-record affordance, matching factory-design's requirement.
+        text = read(ROOT / "skills/capabilities/references/artifact-hosting.md")
+        self.assertIn("reply with your pick", text.lower(),
+                      "artifact-hosting must describe the hosted reply-to-record affordance")
+        self.assertIn("record-choice", text.lower(),
+                      "artifact-hosting must state Record-choice is dropped on the hosted surface")
+
 
 if __name__ == "__main__":
     unittest.main()
