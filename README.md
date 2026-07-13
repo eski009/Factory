@@ -91,6 +91,7 @@ flowchart LR
 
 - **Autonomous where it can be, human where it should be.** One default stop (design) — and you can dial that up or down.
 - **Evidence, not vibes.** Every stage transition is gate-checked by a deterministic engine; "done" requires proof — a spec on disk, a plan with tasks, green tests.
+- **Effort scales to how much the work matters.** Every item is a *bug*, a *feature*, or an *epic*, and Factory sizes the process to match — a bug gets a fast, correctness-only review; a material epic gets the full council and a market focus group. No epic-weight ceremony for a one-line fix.
 - **Portable.** Works on any Claude model; faster-model features are bonuses, never requirements.
 
 ## Three ways to start
@@ -136,8 +137,9 @@ Full walkthrough — the design gate, the autonomy dial, where state lives — i
 ## Under the hood
 
 - A **deterministic, zero-dependency engine** (Python) owns all state and the gate checks. The AI skills drive it but can't bypass a gate. State splits into `.factory/` (machine-owned: work items, council ledgers) and `docs/factory/` (human-readable: the brain, the roadmap, review packets awaiting a decision).
+- **Optional parallel execution.** Turn on *headless workers* and Factory builds independent items concurrently — each in its own isolated git worktree, driven by a headless `claude` or `codex` process — while the orchestrator only collects the results and advances them through the same gates. Off by default; absent, it degrades to in-process building. Both this and the materiality *tiers* are config knobs in `.factory/config.json`.
 - **Full design spec:** [docs/superpowers/specs/2026-07-03-software-factory-design.md](docs/superpowers/specs/2026-07-03-software-factory-design.md)
-- **Tests:** `python3 -m unittest discover -s tests -v` (200+, all green)
+- **Tests:** `python3 -m unittest discover -s tests -v` (430+, all green)
 
 ## Status
 
