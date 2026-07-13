@@ -70,8 +70,8 @@ def ensure_worktree(repo, item_id):
     target.parent.mkdir(parents=True, exist_ok=True)
     branch_exists = _git(repo, "rev-parse", "--verify", "--quiet",
                          "refs/heads/" + branch).returncode == 0
-    # Resolve symlinks to match what git worktree list returns
-    target_str = str(target.resolve())
+    # target is already resolved (paths.worktrees_dir resolves); str() only.
+    target_str = str(target)
     if branch_exists:
         added = _git(repo, "worktree", "add", target_str, branch)
     else:
