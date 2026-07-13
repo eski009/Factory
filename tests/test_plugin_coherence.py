@@ -107,8 +107,8 @@ class TestPluginCoherence(unittest.TestCase):
         text = read(ROOT / "skills/capabilities/references/artifact-hosting.md")
         self.assertIn("reply with your pick", text.lower(),
                       "artifact-hosting must describe the hosted reply-to-record affordance")
-        self.assertIn("record-choice", text.lower(),
-                      "artifact-hosting must state Record-choice is dropped on the hosted surface")
+        self.assertIn("drops the record-choice", text.lower(),
+                      "artifact-hosting must state Record-choice is DROPPED on the hosted surface")
 
 
 if __name__ == "__main__":
