@@ -123,7 +123,11 @@ def cmd_provision(args):
     try:
         items.load_item(args.repo, args.item)
     except items.ItemError as exc:
-        print(str(exc), file=sys.stderr)
+        if args.json:
+            print(json.dumps({"item": args.item, "prepared": False,
+                              "error": str(exc)}, indent=2, sort_keys=True))
+        else:
+            print(str(exc), file=sys.stderr)
         return 1
     result = pool.provision(args.repo, args.item, backend=args.backend)
     if args.json:

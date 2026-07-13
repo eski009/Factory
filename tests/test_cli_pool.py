@@ -104,6 +104,9 @@ class CliProvisionCleanupTest(unittest.TestCase):
     def test_provision_missing_item_exits_one(self):
         code, out, err = self.run_cli("provision", "9999-nope", "--json")
         self.assertEqual(code, 1)
+        report = json.loads(out)
+        self.assertFalse(report["prepared"])
+        self.assertEqual(report["item"], "9999-nope")
 
 
 if __name__ == "__main__":
