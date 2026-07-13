@@ -106,6 +106,14 @@ class TestPluginCoherence(unittest.TestCase):
         self.assertIn("factory provision", ref)
         self.assertIn("factory cleanup", ref)
 
+    def test_tier_set_wiring_present(self):
+        triage = read(ROOT / "skills/factory-triage/SKILL.md")
+        self.assertIn("factory tier", triage)
+        bug = read(ROOT / "skills/factory-bug/SKILL.md")
+        self.assertIn("factory tier", bug)
+        roadmap = read(ROOT / "skills/factory-roadmap/SKILL.md")
+        self.assertIn("tier", roadmap)
+
 
 if __name__ == "__main__":
     unittest.main()

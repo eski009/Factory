@@ -20,7 +20,7 @@ The core promise: **we never claim a bug is fixed when it isn't.** The recorded 
 
 2. **Decide kind.** `ui` or `mixed` **only when the fix changes the intended design**; restore-to-spec visual bugs stay `backend` — a padding nit must not become a human design-gate stop. `kind` stays the design-routing axis; bug-ness is the separate `bug` flag.
 
-3. **File the item.** `factory add "<short bug title>" --kind <kind>`. Then edit `items/<id>/item.md` directly: set the body to the verbatim bug report (plus any clarification answers, marked as such), and add `bug: true` to the frontmatter — a plain frontmatter field, not CLI-settable, same convention as triage's `kind` correction.
+3. **File the item.** `factory add "<short bug title>" --kind <kind>`. Then edit `items/<id>/item.md` directly: set the body to the verbatim bug report (plus any clarification answers, marked as such), and add `bug: true` to the frontmatter — a plain frontmatter field, not CLI-settable, same convention as triage's `kind` correction. Also set the item's tier to bug: `factory tier ITEM bug` (a defect gets the light correctness-only review and skips market research — see the tier profiles in the capabilities/`factory doctor` readout). `tier: bug` is the materiality axis; the separate `bug: true` flag still drives the repro gate.
 
 4. **Replicate — before any fix work.** Actually run the failing path. **A prose description is not a repro.**
    - On success, write `items/<id>/repro.md`:
