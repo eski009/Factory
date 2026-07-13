@@ -114,6 +114,14 @@ class TestPluginCoherence(unittest.TestCase):
         roadmap = read(ROOT / "skills/factory-roadmap/SKILL.md")
         self.assertIn("tier", roadmap)
 
+    def test_tier_consume_wiring_present(self):
+        review = read(ROOT / "skills/factory-review/SKILL.md")
+        self.assertIn("tier", review)
+        council = read(ROOT / "skills/council-review/SKILL.md")
+        self.assertIn("light", council)
+        research = read(ROOT / "skills/factory-research/SKILL.md")
+        self.assertIn("epic", research)
+
 
 if __name__ == "__main__":
     unittest.main()
