@@ -60,5 +60,51 @@ class CliNextCountTest(unittest.TestCase):
         self.assertEqual(data["id"], "0001-a")
 
 
+class CliProvisionCleanupTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        _git(self.repo, "init", "-q")
+        _git(self.repo, "config", "user.email", "t@t")
+        _git(self.repo, "config", "user.name", "t")
+        (self.repo / "seed.txt").write_text("seed\n", encoding="utf-8")
+        _git(self.repo, "add", "seed.txt")
+        _git(self.repo, "commit", "-q", "-m", "seed")
+        self.run_cli("init")
+        meta = {"id": "0001-thing", "title": "Thing", "stage": "implement",
+                "kind": "backend", "created": "2026-07-03T00:00:00Z",
+                "updated": "2026-07-03T00:00:00Z"}
+        items.save_item(self.repo, meta, "")
+
+    def tearDown(self):
+        subprocess.run(["git", "worktree", "prune"], cwd=self.repo,
+                       capture_output=True, text=True)
+        self.tmp.cleanup()
+
+    def run_cli(self, *args):
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = factory.main(["--repo", str(self.repo), *args])
+        return code, out.getvalue(), err.getvalue()
+
+    def test_provision_then_cleanup(self):
+        code, out, err = self.run_cli("provision", "0001-thing",
+                                      "--backend", "claude", "--json")
+        self.assertEqual(code, 0, err)
+        report = json.loads(out)
+        self.assertTrue(report["prepared"])
+        self.assertIn("CLAUDE_CONFIG_DIR", report["config_env"])
+
+        code, out, err = self.run_cli("cleanup", "0001-thing", "--json")
+        self.assertEqual(code, 0, err)
+        report = json.loads(out)
+        self.assertTrue(report["removed"])
+        self.assertTrue(report["branch_kept"])
+
+    def test_provision_missing_item_exits_one(self):
+        code, out, err = self.run_cli("provision", "9999-nope", "--json")
+        self.assertEqual(code, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

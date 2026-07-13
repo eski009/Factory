@@ -9,9 +9,9 @@ import sys
 if __package__ in (None, ""):
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work
+    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool
 else:
-    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work
+    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool
 
 
 def _require_factory_repo(repo):
@@ -115,6 +115,38 @@ def cmd_work(args):
               or f"{args.item} {result.get('status', 'failed')}: "
                  f"{result.get('reason')}", file=sys.stderr)
     return code
+
+
+def cmd_provision(args):
+    if not _require_factory_repo(args.repo):
+        return 2
+    try:
+        items.load_item(args.repo, args.item)
+    except items.ItemError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    result = pool.provision(args.repo, args.item, backend=args.backend)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    elif result.get("prepared"):
+        print(f"{args.item} provisioned: {result['worktree']}")
+    else:
+        print(f"{args.item} prep failed: {result.get('detail', '')}",
+              file=sys.stderr)
+    return 0 if result.get("prepared") else 1
+
+
+def cmd_cleanup(args):
+    if not _require_factory_repo(args.repo):
+        return 2
+    result = pool.cleanup(args.repo, args.item)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        state = "cleaned" if result["removed"] else "nothing to remove"
+        kept = " (branch kept)" if result["branch_kept"] else ""
+        print(f"{args.item} {state}{kept}")
+    return 0
 
 
 def cmd_advance(args):
@@ -358,6 +390,19 @@ def main(argv=None):
     p.add_argument("--worktree")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_work)
+
+    p = sub.add_parser("provision",
+                       help="prepare an item's worktree for a headless worker")
+    p.add_argument("item")
+    p.add_argument("--backend", choices=["claude", "codex", "stub"])
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_provision)
+
+    p = sub.add_parser("cleanup",
+                       help="remove an item's worker worktree (branch kept)")
+    p.add_argument("item")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_cleanup)
 
     p = sub.add_parser("packet", help="write a review packet for an item")
     p.add_argument("item")
