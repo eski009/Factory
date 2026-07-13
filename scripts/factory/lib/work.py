@@ -55,8 +55,11 @@ def worker_config(repo):
     merged["retry"] = dict(DEFAULTS["retry"])
     merged["codex"] = dict(DEFAULTS["codex"])
     for key, value in block.items():
-        if key in ("retry", "codex") and isinstance(value, dict):
-            merged[key].update(value)
+        if key in ("retry", "codex"):
+            # Malformed nested config (non-dict) is ignored so the merged
+            # defaults survive — Phase B dereferences retry.* for backoff.
+            if isinstance(value, dict):
+                merged[key].update(value)
         else:
             merged[key] = value
     return merged

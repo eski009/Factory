@@ -60,6 +60,13 @@ class WorkerConfigTest(unittest.TestCase):
         errors = initrepo.validate_tree(self.repo)
         self.assertTrue(any("backend" in e for e in errors), errors)
 
+    def test_non_dict_retry_is_ignored_keeps_defaults(self):
+        _set_workers(self.repo, {"retry": "oops", "codex": 5})
+        cfg = work.worker_config(self.repo)
+        self.assertEqual(cfg["retry"]["max_attempts"], 3)
+        self.assertEqual(cfg["retry"]["base_delay_seconds"], 20)
+        self.assertEqual(cfg["codex"]["sandbox"], "workspace-write")
+
 
 class BriefTest(unittest.TestCase):
     def setUp(self):
