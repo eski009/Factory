@@ -22,6 +22,39 @@
         "depth": {"type": "string", "enum": ["inputs-only", "web", "deep"]}
       }
     },
+    "tiers": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "epic": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "research": {"type": "string",
+                         "enum": ["off", "inputs-only", "web", "deep"]},
+            "review": {"type": "string", "enum": ["light", "full"]}
+          }
+        },
+        "feature": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "research": {"type": "string",
+                         "enum": ["off", "inputs-only", "web", "deep"]},
+            "review": {"type": "string", "enum": ["light", "full"]}
+          }
+        },
+        "bug": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "research": {"type": "string",
+                         "enum": ["off", "inputs-only", "web", "deep"]},
+            "review": {"type": "string", "enum": ["light", "full"]}
+          }
+        }
+      }
+    },
     "workers": {
       "type": "object",
       "additionalProperties": false,
