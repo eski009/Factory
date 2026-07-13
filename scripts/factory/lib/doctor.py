@@ -34,6 +34,8 @@ def worker_readiness(repo):
     return {
         "enabled": bool(cfg.get("enabled")),
         "backend": cfg.get("backend"),
+        "max_parallel": cfg.get("max_parallel"),
+        "retry": cfg.get("retry"),
         "claude_cli": shutil.which("claude") is not None,
         "codex_cli": shutil.which("codex") is not None,
         "anthropic_key": bool(os.environ.get("ANTHROPIC_API_KEY")),

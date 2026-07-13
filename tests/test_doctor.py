@@ -70,6 +70,10 @@ class TestDoctor(unittest.TestCase):
         # dependent and only checked for presence/type above).
         self.assertFalse(workers["enabled"])
         self.assertEqual(workers["backend"], "claude")
+        self.assertIn("max_parallel", workers)
+        self.assertIn("retry", workers)
+        self.assertEqual(workers["max_parallel"], 2)
+        self.assertEqual(workers["retry"]["max_attempts"], 3)
 
 
 if __name__ == "__main__":

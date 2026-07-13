@@ -195,3 +195,35 @@ def provision(repo, item_id, backend=None, cfg=None):
                       {"worktree": wt, "prep": prep,
                        "includes": result["includes"]})
     return result
+
+
+def cleanup(repo, item_id):
+    """Remove an item's headless-worker worktree and per-worker config home.
+    The branch ref factory/<id> is KEPT (review/verify/ship operate on it).
+    Best-effort + idempotent: a missing/locked worktree yields removed=False
+    with the git message in detail, so the caller can decide (design spec
+    §14). Never deletes the branch — ship owns that."""
+    branch = f"factory/{item_id}"
+    target = _registered_worktree(repo, branch) \
+        or str(paths.worktree_dir(repo, item_id))
+    detail = []
+    removed = False
+    rm = _git(repo, "worktree", "remove", "--force", target)
+    if rm.returncode == 0:
+        removed = True
+    elif rm.stderr.strip():
+        detail.append(rm.stderr.strip())
+    _git(repo, "worktree", "prune")
+    home = _worker_home(repo, item_id)
+    if home.exists():
+        shutil.rmtree(home, ignore_errors=True)
+    branch_kept = _git(repo, "rev-parse", "--verify", "--quiet",
+                       "refs/heads/" + branch).returncode == 0
+    return {"item": item_id, "removed": removed, "branch_kept": branch_kept,
+            "detail": " ".join(detail)}
+
+
+def backoff_delay(attempt, base_delay, cap=300):
+    """Capped exponential backoff for rate-limit/overload retries (design
+    spec §8.4). attempt is 0-indexed: 0→base, 1→2·base, 2→4·base, … ≤ cap."""
+    return min(int(base_delay) * (2 ** max(0, int(attempt))), int(cap))

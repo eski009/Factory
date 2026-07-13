@@ -200,5 +200,44 @@ class ProvisionTest(unittest.TestCase):
         self.assertNotIn("prep.completed", self._events())
 
 
+class CleanupBackoffTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        _init_git_repo(self.repo)
+        initrepo.init(self.repo)
+        _make_item(self.repo)
+
+    def tearDown(self):
+        pool._git(self.repo, "worktree", "prune")
+        self.tmp.cleanup()
+
+    def test_cleanup_removes_worktree_keeps_branch(self):
+        result = pool.provision(self.repo, "0001-thing", backend="claude")
+        wt = Path(result["worktree"])
+        home = Path(result["config_env"]["CLAUDE_CONFIG_DIR"])
+        out = pool.cleanup(self.repo, "0001-thing")
+        self.assertTrue(out["removed"])
+        self.assertFalse(wt.exists())
+        self.assertFalse(home.exists())
+        self.assertTrue(out["branch_kept"])
+        branch = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet",
+             "refs/heads/factory/0001-thing"],
+            cwd=self.repo, capture_output=True, text=True)
+        self.assertEqual(branch.returncode, 0)
+
+    def test_cleanup_idempotent_when_nothing_to_remove(self):
+        out = pool.cleanup(self.repo, "0001-thing")
+        self.assertFalse(out["removed"])
+
+    def test_backoff_delay_exponential_and_capped(self):
+        self.assertEqual(pool.backoff_delay(0, 20), 20)
+        self.assertEqual(pool.backoff_delay(1, 20), 40)
+        self.assertEqual(pool.backoff_delay(2, 20), 80)
+        self.assertEqual(pool.backoff_delay(10, 20), 300)   # capped
+        self.assertEqual(pool.backoff_delay(3, 10, cap=50), 50)
+
+
 if __name__ == "__main__":
     unittest.main()
