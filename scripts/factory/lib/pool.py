@@ -127,6 +127,12 @@ def copy_worktree_includes(repo, worktree):
         entry = line.strip()
         if not entry or entry.startswith("#"):
             continue
+        # gitignore-style root anchor: treat "/path" as repo-relative "path"
+        # (a leading slash would otherwise make Path(worktree)/entry absolute
+        # and collapse src==dst -> SameFileError).
+        entry = entry.lstrip("/")
+        if not entry:
+            continue
         src = Path(repo) / entry
         dst = Path(worktree) / entry
         if src.is_dir():

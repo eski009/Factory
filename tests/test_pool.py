@@ -99,6 +99,7 @@ class SeedConfigDirTest(unittest.TestCase):
         self.assertTrue(cfg["hasCompletedOnboarding"])
         key = str(Path(wt).resolve())
         self.assertTrue(cfg["projects"][key]["hasTrustDialogAccepted"])
+        self.assertTrue(cfg["projects"][key]["hasCompletedProjectOnboarding"])
 
     def test_codex_seed_sets_codex_home(self):
         env = pool.seed_config_dir(self.repo, "0001-thing", "codex", "/wt")
@@ -134,6 +135,25 @@ class WorktreeIncludeTest(unittest.TestCase):
         wt = self.repo / "wt"
         wt.mkdir()
         self.assertEqual(pool.copy_worktree_includes(self.repo, str(wt)), [])
+
+    def test_root_anchored_entry_copied_as_relative(self):
+        (self.repo / ".worktreeinclude").write_text("/.env\n", encoding="utf-8")
+        (self.repo / ".env").write_text("K=v\n", encoding="utf-8")
+        wt = self.repo / "wt"
+        wt.mkdir()
+        copied = pool.copy_worktree_includes(self.repo, str(wt))
+        self.assertEqual(copied, [".env"])
+        self.assertEqual((wt / ".env").read_text(), "K=v\n")
+
+    def test_copies_directory_entry(self):
+        (self.repo / ".worktreeinclude").write_text("vendor\n", encoding="utf-8")
+        (self.repo / "vendor").mkdir()
+        (self.repo / "vendor" / "lib.txt").write_text("x\n", encoding="utf-8")
+        wt = self.repo / "wt"
+        wt.mkdir()
+        copied = pool.copy_worktree_includes(self.repo, str(wt))
+        self.assertEqual(copied, ["vendor"])
+        self.assertEqual((wt / "vendor" / "lib.txt").read_text(), "x\n")
 
 
 if __name__ == "__main__":
