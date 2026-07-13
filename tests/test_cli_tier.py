@@ -1,4 +1,5 @@
 import io
+import json
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -53,6 +54,15 @@ class CliTierTest(unittest.TestCase):
     def test_add_empty_tier_rejected(self):
         code, out, err = self.run_cli("add", "X", "--tier", "")
         self.assertEqual(code, 1)
+
+    def test_status_json_normalizes_absent_tier(self):
+        # the setUp item is untiered; --json must emit the resolved default so
+        # a skill reading tier from `factory status --json` always sees one
+        code, out, err = self.run_cli("status", "--json")
+        self.assertEqual(code, 0, err)
+        rows = json.loads(out)
+        self.assertTrue(rows and all(r.get("tier") == "feature" for r in rows),
+                        rows)
 
 
 if __name__ == "__main__":

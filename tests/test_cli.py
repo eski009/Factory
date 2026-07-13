@@ -204,7 +204,7 @@ class CliTest(unittest.TestCase):
         self.assertNotIn("stages", rows[0]["spend"])
         self.assertEqual(rows[0]["spend"]["item"], "0001-thing")
 
-    def test_status_table_output_unchanged(self):
+    def test_status_table_shows_tier_and_kind(self):
         self.run_cli("init")
         self.run_cli("add", "Thing")
         code, out, _ = self.run_cli("status")

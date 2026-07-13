@@ -63,6 +63,7 @@ def cmd_status(args):
     rows = sorted(metas, key=lambda m: (m.get("priority", 9999), m["id"]))
     if args.json:
         for m in rows:
+            m["tier"] = items.item_tier(m)
             spend = cost.summarize(args.repo, m["id"])
             spend.pop("stages", None)
             m["spend"] = spend
