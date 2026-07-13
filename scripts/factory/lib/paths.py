@@ -15,6 +15,14 @@ def item_dir(repo, item_id):
     return items_dir(repo) / item_id
 
 
+def worktrees_dir(repo):
+    return (factory_root(repo) / "worktrees").resolve()
+
+
+def worktree_dir(repo, item_id):
+    return worktrees_dir(repo) / item_id
+
+
 def ledgers_dir(repo):
     return factory_root(repo) / "ledgers"
 
