@@ -10,13 +10,15 @@ import re
 from . import logs, paths
 
 FIELD_ORDER = (
-    "id", "title", "stage", "kind", "bug", "priority",
+    "id", "title", "stage", "kind", "tier", "bug", "priority",
     "created", "updated", "paused-from", "paused-reason",
 )
 REQUIRED_FIELDS = ("id", "title", "stage", "kind", "created", "updated")
 INT_FIELDS = ("priority",)
 BOOL_FIELDS = ("bug",)
 KINDS = ("ui", "backend", "mixed")
+TIERS = ("epic", "feature", "bug")
+DEFAULT_TIER = "feature"
 
 
 class ItemError(ValueError):
@@ -184,4 +186,22 @@ def set_priority(repo, item_id, priority):
     meta["updated"] = logs.now_stamp()
     save_item(repo, meta, body)
     logs.append_event(repo, item_id, "priority.set", {"priority": priority})
+    return meta
+
+
+def item_tier(meta):
+    """The item's materiality tier, defaulting to feature when unset.
+    Orthogonal to kind (ui/backend/mixed) — tier scales research/review
+    depth; kind drives the design gate."""
+    return meta.get("tier") or DEFAULT_TIER
+
+
+def set_tier(repo, item_id, tier):
+    if tier not in TIERS:
+        raise ItemError("tier must be one of " + ", ".join(TIERS))
+    meta, body = load_item(repo, item_id)
+    meta["tier"] = tier
+    meta["updated"] = logs.now_stamp()
+    save_item(repo, meta, body)
+    logs.append_event(repo, item_id, "tier.set", {"tier": tier})
     return meta
