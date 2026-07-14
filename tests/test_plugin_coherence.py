@@ -114,6 +114,21 @@ class TestPluginCoherence(unittest.TestCase):
         roadmap = read(ROOT / "skills/factory-roadmap/SKILL.md")
         self.assertIn("tier", roadmap)
 
+    def test_interview_reachable_only_from_init(self):
+        # the interview must be reachable only through the human-invoked
+        # /factory:init flow — never from autopilot, the dispatcher, or any
+        # other skill or command that can run unattended.
+        self.assertIn("factory-interview", skill_names())
+        self.assertIn("factory-interview", read(ROOT / "commands/init.md"))
+        for skill in (ROOT / "skills").glob("*/SKILL.md"):
+            if skill.parent.name != "factory-interview":
+                self.assertNotIn("factory-interview", read(skill),
+                                 f"{skill.parent.name} must not invoke the interview")
+        for cmd in (ROOT / "commands").glob("*.md"):
+            if cmd.name != "init.md":
+                self.assertNotIn("factory-interview", read(cmd),
+                                 f"{cmd.name} must not invoke the interview")
+
     def test_tier_consume_wiring_present(self):
         review = read(ROOT / "skills/factory-review/SKILL.md")
         self.assertIn("Review depth by tier", review)

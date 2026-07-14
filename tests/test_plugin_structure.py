@@ -128,6 +128,29 @@ class TestPluginStructure(unittest.TestCase):
         text = (ROOT / "commands/init.md").read_text()
         self.assertIn("factory-research", text)
 
+    def test_init_command_invokes_interview_after_research(self):
+        text = (ROOT / "commands/init.md").read_text()
+        self.assertIn("factory-interview", text)
+        self.assertLess(text.index("factory-research"),
+                        text.index("factory-interview"))
+        flat = " ".join(text.split())
+        self.assertIn("once after the interview rather than repeating it", flat)
+        self.assertIn("never runs unattended", flat)
+
+    def test_interview_skill_guards_unattended_and_folds_cited_answers(self):
+        skill = ROOT / "skills/factory-interview/SKILL.md"
+        self.assertTrue(skill.exists())
+        text = skill.read_text()
+        self.assertRegex(text, FRONTMATTER, str(skill))
+        self.assertIn("only from the human-invoked `/factory:init` flow", text)
+        self.assertIn("(source: intake interview, <YYYY-MM-DD>)", text)
+        self.assertIn("## Resolved", text)
+        self.assertIn("park the rest", text)
+        self.assertIn('never mark "Persona validation" resolved', text)
+        self.assertIn(
+            "A human reviews the seeded brain before the first council run "
+            "treats it as ground truth", text)
+
     def test_spec_and_design_reason_against_persona(self):
         self.assertIn("personas.md", (ROOT / "skills/factory-spec/SKILL.md").read_text())
         self.assertIn("personas.md", (ROOT / "skills/factory-design/SKILL.md").read_text())
