@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [0.6.0] - 2026-07-14
+## [0.7.0] - 2026-07-14
 
 ### Added
 
@@ -20,6 +20,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   (fixing the literal `<id>`/`<option>` placeholders). `factory-dispatch`
   surfaces the HTML link at every pause; see
   `skills/capabilities/references/decision-pages.md`.
+
+## [0.6.0] - 2026-07-14
+
+### Added
+
+- **Interactive intake interview at `/factory:init`.** A new
+  `factory-interview` skill runs as init's final seeding step: because a
+  human is present at `/factory:init`, the outstanding questions that
+  intake and research park in files — `open-questions.md` entries,
+  `(assumption)` claims in `personas.md`/`market.md`, brain surfaces still
+  on their `_Not yet written.` placeholder, and the brownfield taste
+  packet — are asked
+  right there, one at a time in the native question UI, highest-impact
+  first (vision → users → hard constraints). Research's guesses become
+  one-tap confirmations (the assumption is the lead option), every
+  question is skippable, and "park the rest" stops the interview with
+  everything remaining filed exactly as before. Answers land in the
+  correct brain surface cited `(source: intake interview, <date>)`,
+  confirmed assumptions get their tag upgraded, and the matching
+  open-questions entry moves to a `## Resolved` section — an audit trail,
+  not a deletion. Operational notes are never asked, validation-required
+  entries (the focus group's "Persona validation") are never resolved by
+  the interview, and the brain hard gate still fires — once, after the
+  interview. The skill is reachable only through the human-invoked
+  `/factory:init` flow; autopilot and dispatch never run it (a coherence
+  test guards this), so unattended runs keep the parked-files path
+  unchanged. Suite: 431 → 434 tests.
 
 ## [0.5.0] - 2026-07-13
 

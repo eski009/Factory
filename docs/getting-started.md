@@ -51,9 +51,17 @@ existing file, and never touches your product code or `CLAUDE.md`):
 real sources in your repo (README, package metadata, git log, a linked issue
 tracker) and fills the brain surfaces with claims cited back to those
 sources — never invented product lore. Anything unanswerable from a real
-source goes into `open-questions.md` instead of being guessed.
+source goes into `open-questions.md` instead of being guessed. Next,
+**factory-research** seeds `personas.md` and `market.md` the same
+evidence-only way. Finally, because you're sitting at the init,
+**factory-interview** walks the outstanding questions — open questions,
+`(assumption)` claims, placeholder surfaces, the brownfield taste packet —
+one at a time in the native question UI: every question is skippable, "park
+the rest" stops it, and each answer lands in the brain cited
+`(source: intake interview, <date>)`. (Unattended runs never interview;
+anything unasked stays parked in files, exactly as before.)
 
-**Hard gate:** intake always closes with this, verbatim — "A human reviews
+**Hard gate:** init always closes with this, verbatim — "A human reviews
 the seeded brain before the first council run treats it as ground truth —
 say so when you finish." Read `docs/factory/brain/*.md` before you add any
 work items; the council reasons from whatever is there, thin or not.

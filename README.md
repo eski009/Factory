@@ -73,7 +73,7 @@ Two things compound over time:
 - **Each reviewer carries its own notes forward.** Next round, the UI seat already knows your design conventions and the architecture seat already knows your constraints — they judge against *your* standards, not generic ones.
 - **Being right earns attention.** Every judgement nudges a per-topic reputation score, so voices that have been right get read and weighed first next time. A low score never silences a claim, though — reputation ranks attention, it doesn't censor.
 
-You can seed this on day one — point Factory at an existing codebase and it mines your conventions, or answer a short "taste" questionnaire (products you admire, your non-negotiables, what "done" means to you). But the real sharpening happens on your own diffs, review after review.
+You can seed this on day one — point Factory at an existing codebase and it mines your conventions, or answer a short "taste" questionnaire (products you admire, your non-negotiables, what "done" means to you). And because you're sitting at `/factory:init`, it closes with a short interview: whatever intake and research couldn't answer from a real source, asked one question at a time — every one skippable, "park the rest" stops it, and each answer lands in the brain as a cited claim. (Unattended runs never interview; skipped questions just stay filed.) But the real sharpening happens on your own diffs, review after review.
 
 ```mermaid
 flowchart LR
@@ -100,7 +100,7 @@ flowchart LR
 |---|---|
 | **One idea** | `/factory:add "Dark mode"` → `/factory:run` |
 | **A whole PRD** | `/factory:roadmap prd.md` — turns it into a triaged, prioritized backlog |
-| **An existing codebase** | `/factory:init` mines your repo — routes, tests, conventions, git history — to seed Factory's understanding before it touches anything |
+| **An existing codebase** | `/factory:init` mines your repo — routes, tests, conventions, git history — to seed Factory's understanding before it touches anything, then interviews you on whatever it couldn't find out |
 
 ## Install
 
@@ -124,7 +124,7 @@ claude --plugin-dir /path/to/Factory
 In the repo you want Factory to work on:
 
 ```
-/factory:init your-product   # scaffold state + seed the product "brain" from real sources
+/factory:init your-product   # scaffold state + seed the product "brain" from real sources, then interview you on the gaps
 /factory:add "Dark mode"     # add a work item
 /factory:bug "Save button crashes on empty title"   # report a bug — replicated before any fix, proven fixed before merge
 /factory:run                 # run the pipeline — one item, stage by stage
