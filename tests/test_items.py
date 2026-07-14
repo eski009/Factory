@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.factory.lib import items, paths
+from scripts.factory.lib import items, paths, initrepo, logs
 
 VALID = """---
 id: 0001-dark-mode
@@ -192,6 +192,49 @@ class TestStorage(unittest.TestCase):
         self.assertEqual(len(errors), 1)
         self.assertIn("0002-bad", errors[0])
         self.assertIn("unreadable", errors[0])
+
+
+class TierTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        initrepo.init(self.repo)
+        meta = {"id": "0001-thing", "title": "Thing", "stage": "triage",
+                "kind": "backend", "created": "2026-07-03T00:00:00Z",
+                "updated": "2026-07-03T00:00:00Z"}
+        items.save_item(self.repo, meta, "")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_item_tier_defaults_to_feature(self):
+        meta, _ = items.load_item(self.repo, "0001-thing")
+        self.assertEqual(items.item_tier(meta), "feature")
+
+    def test_tier_round_trips_in_frontmatter(self):
+        meta, body = items.load_item(self.repo, "0001-thing")
+        meta["tier"] = "epic"
+        items.save_item(self.repo, meta, body)
+        reloaded, _ = items.load_item(self.repo, "0001-thing")
+        self.assertEqual(items.item_tier(reloaded), "epic")
+
+    def test_set_tier_validates_and_logs(self):
+        items.set_tier(self.repo, "0001-thing", "bug")
+        meta, _ = items.load_item(self.repo, "0001-thing")
+        self.assertEqual(meta["tier"], "bug")
+        events = [e["event"] for e in logs.read_events(self.repo, "0001-thing")]
+        self.assertIn("tier.set", events)
+
+    def test_set_tier_rejects_bad_value(self):
+        with self.assertRaises(items.ItemError):
+            items.set_tier(self.repo, "0001-thing", "mega")
+
+    def test_bad_tier_enum_rejected_by_validate(self):
+        meta, body = items.load_item(self.repo, "0001-thing")
+        meta["tier"] = "mega"
+        items.save_item(self.repo, meta, body)
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any("tier" in e for e in errors), errors)
 
 
 if __name__ == "__main__":

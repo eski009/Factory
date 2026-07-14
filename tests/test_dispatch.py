@@ -47,5 +47,42 @@ class TestNextItem(unittest.TestCase):
         self.assertEqual([m["id"] for m in pending], ["0001-w"])
 
 
+class TestNextItems(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        initrepo.init(self.repo)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_empty_repo_returns_empty_list(self):
+        self.assertEqual(dispatch.next_items(self.repo, 3), [])
+
+    def test_returns_top_n_in_priority_order(self):
+        put(self.repo, "0001-c", "spec", priority=3)
+        put(self.repo, "0002-a", "idea", priority=1)
+        put(self.repo, "0003-b", "plan", priority=2)
+        got = [m["id"] for m in dispatch.next_items(self.repo, 2)]
+        self.assertEqual(got, ["0002-a", "0003-b"])
+
+    def test_n_larger_than_backlog_returns_all_actionable(self):
+        put(self.repo, "0001-a", "idea", priority=1)
+        put(self.repo, "0002-done", "done", priority=1)
+        got = [m["id"] for m in dispatch.next_items(self.repo, 10)]
+        self.assertEqual(got, ["0001-a"])
+
+    def test_non_positive_n_returns_empty(self):
+        put(self.repo, "0001-a", "idea", priority=1)
+        self.assertEqual(dispatch.next_items(self.repo, 0), [])
+        self.assertEqual(dispatch.next_items(self.repo, -1), [])
+
+    def test_next_item_still_matches_first_of_next_items(self):
+        put(self.repo, "0001-a", "idea", priority=2)
+        put(self.repo, "0002-b", "idea", priority=1)
+        self.assertEqual(dispatch.next_item(self.repo)["id"],
+                         dispatch.next_items(self.repo, 1)[0]["id"])
+
+
 if __name__ == "__main__":
     unittest.main()

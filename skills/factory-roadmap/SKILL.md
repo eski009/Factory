@@ -38,6 +38,7 @@ For each candidate the council accepts, in order:
 3. `factory priority ITEM N` — N is that candidate's position in the council's relative ranking (1 = highest).
 4. Write `items/<id>/triage.md` citing the batch synthesis (`.factory/runs/roadmap/synthesis.md`) for the build call, priority, and any scope notes.
 5. Advance the item out of triage so the next `/factory:run` resumes it at `spec` rather than re-running per-item triage: `factory advance ITEM triage` then `factory advance ITEM spec`. The spec gate's preconditions — a non-empty `triage.md` and a set `priority` — are both satisfied by steps 3-4, so this is the batch equivalent of factory-triage's own build-exit. (An item left at `idea` would be routed back through per-item council triage on the next run, discarding this batch pass.)
+6. Set each accepted item's materiality tier with `factory tier <id> <epic|feature|bug>`: `epic` for a material or UI-heavy initiative (gets the focus group + full review), `feature` for a normal roadmap item, `bug` only if the candidate is a defect. The batch council's scope read informs the call; default `feature` when unsure. Tier is orthogonal to `kind`.
 
 For each candidate the council rejects, append an entry to `docs/factory/brain/open-questions.md` naming the candidate and the council's stated reason — rejected candidates are never silently dropped.
 

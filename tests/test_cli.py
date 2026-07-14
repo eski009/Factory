@@ -204,12 +204,12 @@ class CliTest(unittest.TestCase):
         self.assertNotIn("stages", rows[0]["spend"])
         self.assertEqual(rows[0]["spend"]["item"], "0001-thing")
 
-    def test_status_table_output_unchanged(self):
+    def test_status_table_shows_tier_and_kind(self):
         self.run_cli("init")
         self.run_cli("add", "Thing")
         code, out, _ = self.run_cli("status")
         self.assertEqual(code, 0)
-        expected = f"{'0001-thing':<40} {'idea':<14} p{'-':<4} mixed\n"
+        expected = f"{'0001-thing':<40} {'idea':<14} p{'-':<4} feature/mixed\n"
         self.assertEqual(out, expected)
 
     def test_validate_exits_2_on_bad_spend_event(self):

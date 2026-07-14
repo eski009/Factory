@@ -15,6 +15,8 @@ Before touching the backlog, run `factory doctor` (or `factory doctor --json`) a
 
 Once the preflight passes, invoke `factory-dispatch` in `loop` mode. That skill's own rules — `factory validate` on every pass, stop on any validation error, pause items at `waiting-human`, block items that fail a stage twice — are the safety net for this run. Autopilot does not duplicate or second-guess them; it trusts the loop to do its own stopping when something goes wrong mid-item.
 
+When the **Headless worker** capability is present and several items sit at `implement`, the loop MAY use the `factory-workers` pool to build them in parallel within this run's budget — the same budget checkpoints (§4) and gate-respect rules (§3) apply to pooled work, and the pool's own `auth`-stop and two-strikes-then-blocked rules fold into autopilot's existing safety net. Autopilot gains no new authority from the pool; it still never answers a human gate.
+
 ## 3. Gate respect
 
 Autopilot is a wrapper, not a bigger hammer. It never gains authority the loop and its stage skills don't already have:

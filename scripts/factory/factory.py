@@ -9,9 +9,9 @@ import sys
 if __package__ in (None, ""):
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost
+    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool
 else:
-    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost
+    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool
 
 
 def _require_factory_repo(repo):
@@ -44,6 +44,8 @@ def cmd_add(args):
     now = logs.now_stamp()
     meta = {"id": item_id, "title": args.title, "stage": "idea",
             "kind": args.kind, "created": now, "updated": now}
+    if getattr(args, "tier", None):
+        meta["tier"] = args.tier
     try:
         items.save_item(args.repo, meta, f"# {args.title}\n")
     except items.ItemError as exc:
@@ -61,6 +63,7 @@ def cmd_status(args):
     rows = sorted(metas, key=lambda m: (m.get("priority", 9999), m["id"]))
     if args.json:
         for m in rows:
+            m["tier"] = items.item_tier(m)
             spend = cost.summarize(args.repo, m["id"])
             spend.pop("stages", None)
             m["spend"] = spend
@@ -70,7 +73,8 @@ def cmd_status(args):
         corrupt_items = 0
         for m in rows:
             priority = m.get("priority", "-")
-            print(f"{m['id']:<40} {m['stage']:<14} p{priority:<4} {m['kind']}")
+            print(f"{m['id']:<40} {m['stage']:<14} p{priority:<4} "
+                  f"{items.item_tier(m)}/{m['kind']}")
             _, skipped = logs.read_events_with_stats(args.repo, m["id"])
             if skipped:
                 corrupt_total += skipped
@@ -96,6 +100,60 @@ def cmd_cost(args):
         print(json.dumps(summary, indent=2, sort_keys=True))
     else:
         print(cost.render_text(summary))
+    return 0
+
+
+def cmd_work(args):
+    if not _require_factory_repo(args.repo):
+        return 2
+    code, result = work.run_work(
+        args.repo, args.item, backend=args.backend, model=args.model,
+        timeout=args.timeout, network=args.network, worktree=args.worktree)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    elif code == 0:
+        print(f"{args.item} done ({result.get('backend')}): "
+              f"{len(result.get('commits', []))} commit(s)")
+    else:
+        print(result.get("error")
+              or f"{args.item} {result.get('status', 'failed')}: "
+                 f"{result.get('reason')}", file=sys.stderr)
+    return code
+
+
+def cmd_provision(args):
+    if not _require_factory_repo(args.repo):
+        return 2
+    try:
+        items.load_item(args.repo, args.item)
+    except items.ItemError as exc:
+        if args.json:
+            print(json.dumps({"item": args.item, "prepared": False,
+                              "error": str(exc)}, indent=2, sort_keys=True))
+        else:
+            print(str(exc), file=sys.stderr)
+        return 1
+    result = pool.provision(args.repo, args.item, backend=args.backend)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    elif result.get("prepared"):
+        print(f"{args.item} provisioned: {result['worktree']}")
+    else:
+        print(f"{args.item} prep failed: {result.get('detail', '')}",
+              file=sys.stderr)
+    return 0 if result.get("prepared") else 1
+
+
+def cmd_cleanup(args):
+    if not _require_factory_repo(args.repo):
+        return 2
+    result = pool.cleanup(args.repo, args.item)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        state = "cleaned" if result["removed"] else "nothing to remove"
+        kept = " (branch kept)" if result["branch_kept"] else ""
+        print(f"{args.item} {state}{kept}")
     return 0
 
 
@@ -194,6 +252,16 @@ def cmd_next(args):
         for error in errors:
             print(error, file=sys.stderr)
         return 2
+    if args.count is not None:
+        rows = dispatch.next_items(args.repo, args.count)
+        if args.json:
+            print(json.dumps(rows, indent=2, sort_keys=True))
+        elif not rows:
+            print("nothing actionable")
+        else:
+            for m in rows:
+                print(f"{m['id']} {m['stage']}")
+        return 0
     meta = dispatch.next_item(args.repo)
     if args.json:
         print(json.dumps(meta, indent=2, sort_keys=True))
@@ -237,6 +305,18 @@ def cmd_priority(args):
     return 0
 
 
+def cmd_tier(args):
+    if not _require_factory_repo(args.repo):
+        return 2
+    try:
+        items.set_tier(args.repo, args.item, args.tier)
+    except items.ItemError as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    print(f"{args.item} tier {args.tier}")
+    return 0
+
+
 def cmd_doctor(args):
     report = doctor_mod.report(args.repo)
     if args.json:
@@ -261,6 +341,7 @@ def main(argv=None):
     p = sub.add_parser("add", help="create a work item at stage idea")
     p.add_argument("title")
     p.add_argument("--kind", choices=items.KINDS, default="mixed")
+    p.add_argument("--tier", choices=list(items.TIERS))
     p.set_defaults(func=cmd_add)
 
     p = sub.add_parser("status", help="list items by priority")
@@ -314,9 +395,35 @@ def main(argv=None):
     p.add_argument("--apply", action="store_true")
     p.set_defaults(func=cmd_prune)
 
-    p = sub.add_parser("next", help="get the next actionable work item")
+    p = sub.add_parser("next", help="get the next actionable work item(s)")
     p.add_argument("--json", action="store_true")
+    p.add_argument("--count", "-n", type=int,
+                   help="return up to N top actionable items (as a list)")
     p.set_defaults(func=cmd_next)
+
+    p = sub.add_parser("work",
+                       help="run one headless worker for an item at implement")
+    p.add_argument("item")
+    p.add_argument("--backend", choices=["claude", "codex", "stub"])
+    p.add_argument("--model")
+    p.add_argument("--timeout", type=int)
+    p.add_argument("--network", choices=["on", "off"])
+    p.add_argument("--worktree")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_work)
+
+    p = sub.add_parser("provision",
+                       help="prepare an item's worktree for a headless worker")
+    p.add_argument("item")
+    p.add_argument("--backend", choices=["claude", "codex", "stub"])
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_provision)
+
+    p = sub.add_parser("cleanup",
+                       help="remove an item's worker worktree (branch kept)")
+    p.add_argument("item")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_cleanup)
 
     p = sub.add_parser("packet", help="write a review packet for an item")
     p.add_argument("item")
@@ -332,6 +439,11 @@ def main(argv=None):
     p.add_argument("item")
     p.add_argument("priority", type=int)
     p.set_defaults(func=cmd_priority)
+
+    p = sub.add_parser("tier", help="set an item's materiality tier")
+    p.add_argument("item")
+    p.add_argument("tier")
+    p.set_defaults(func=cmd_tier)
 
     p = sub.add_parser("doctor", help="readout of repo integration state")
     p.add_argument("--json", action="store_true")

@@ -4,6 +4,54 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.5.0] - 2026-07-13
+
+### Added
+
+- **Headless workers — out-of-process, parallel execution.** A new `factory
+  work <id>` engine command runs one headless coding-agent worker (backend
+  `claude` or `codex`, plus a test-only `stub`) inside an item's
+  `factory/<id>` git worktree and captures a normalized `result.json` — the
+  worker owns its own context, so the orchestrator never holds its
+  transcript, and the run logs a **measured** spend event (the implement
+  station's burn moves from unmeasured to measured). On top of the executor,
+  a skill-driven **bounded pool** (`factory-workers`) keeps K workers busy
+  across independent items: `factory next -n` selects the top-N, `factory
+  provision` prepares each worktree (`.worktreeinclude` copy + a prep command
+  + an isolated, trust-seeded `CLAUDE_CONFIG_DIR`/`CODEX_HOME`), workers
+  launch staggered with capped-exponential backoff against the shared org
+  rate-limit bucket, and `factory cleanup` reclaims worktrees (keeping the
+  branch). Off by default (`workers.enabled`); absent or disabled, every
+  stage falls through to the in-process subagent path unchanged, and `factory
+  doctor` reports readiness. Nothing lowers a gate — worker output stays
+  untrusted until it clears the same review + verify + green-tests net.
+
+- **Work-item materiality tiers.** Items gain a `tier` frontmatter field
+  (`epic | feature | bug`, default `feature`), orthogonal to `kind`, set by
+  an agent at triage (`factory tier <id> <tier>` / `factory add --tier`). A
+  `tiers` config block maps each tier to a `{research, review}` profile
+  (epic deep/full · feature web/full · bug off/light; `factory doctor --json`
+  reports the resolved profiles). The expensive layers now scale to
+  materiality: the **focus group runs only for material epics** (a feature or
+  a bug can't trigger it even under a global `research.depth: deep`), and a
+  **bug gets a light, correctness-only council review** (the customer/
+  commercial market seats drop; the end-to-end walk and every gate stay
+  intact). Additive and back-compat — an absent tier reads as `feature`, and
+  no stage gate reads the tier.
+
+### Fixed
+
+- Result-schema `files_changed` change enum widened so an unusual `git`
+  status is safe-fail instead of a schema crash; auth failures
+  (401/403/invalid key) are classified as reason `auth` with a distinct exit
+  code so a bad key surfaces immediately instead of masquerading as a worker
+  crash; `duration_s` is populated; `worker_config` tolerates malformed
+  nested config; HTTP-status matching in the auth/rate-limit detectors is
+  word-boundary + stderr-scoped so a UUID digit collision can't misclassify
+  an ordinary crash.
+
+Suite: 332 → 431 tests.
+
 ## [0.4.0] - 2026-07-11
 
 ### Added

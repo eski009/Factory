@@ -110,6 +110,43 @@ class TestPluginCoherence(unittest.TestCase):
         self.assertIn("drops the record-choice", text.lower(),
                       "artifact-hosting must state Record-choice is DROPPED on the hosted surface")
 
+    def test_headless_worker_wiring_present(self):
+        # the headless-worker capability row, its factory-implement dispatch
+        # branch, and its reference doc must all exist together.
+        caps = read(ROOT / "skills/capabilities/SKILL.md")
+        self.assertIn("Headless worker", caps)
+        impl = read(ROOT / "skills/factory-implement/SKILL.md")
+        self.assertIn("factory work", impl)
+        self.assertTrue(
+            (ROOT / "skills/capabilities/references/"
+             "headless-workers.md").exists())
+
+    def test_headless_scheduler_wiring_present(self):
+        # the Layer-2 pool skill exists, the dispatcher cites it, and the
+        # reference doc documents the provisioning verbs.
+        self.assertIn("factory-workers", skill_names())
+        disp = read(ROOT / "skills/factory-dispatch/SKILL.md")
+        self.assertIn("factory-workers", disp)
+        ref = read(ROOT / "skills/capabilities/references/headless-workers.md")
+        self.assertIn("factory provision", ref)
+        self.assertIn("factory cleanup", ref)
+
+    def test_tier_set_wiring_present(self):
+        triage = read(ROOT / "skills/factory-triage/SKILL.md")
+        self.assertIn("factory tier", triage)
+        bug = read(ROOT / "skills/factory-bug/SKILL.md")
+        self.assertIn("factory tier", bug)
+        roadmap = read(ROOT / "skills/factory-roadmap/SKILL.md")
+        self.assertIn("tier", roadmap)
+
+    def test_tier_consume_wiring_present(self):
+        review = read(ROOT / "skills/factory-review/SKILL.md")
+        self.assertIn("Review depth by tier", review)
+        council = read(ROOT / "skills/council-review/SKILL.md")
+        self.assertIn("light", council)
+        research = read(ROOT / "skills/factory-research/SKILL.md")
+        self.assertIn("epic", research)
+
 
 if __name__ == "__main__":
     unittest.main()

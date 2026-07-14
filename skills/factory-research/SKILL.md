@@ -19,7 +19,9 @@ Read `research.depth` from `.factory/config.json` (`inputs-only | web | deep`, d
 
 - `inputs-only` — reason only from the PRD/repo already on hand; no web.
 - `web` (default) — research the open web (competitors, category conventions, real user voice in reviews/forums), citing URLs; produce one primary persona + a market read.
-- `deep` — `web` plus a persona set (primary + secondaries) and a fuller competitive teardown; fan out the gather step per competitor/segment (see the `capabilities` skill). Depth `deep` also runs the focus-group step (§3b); a `--focus-group` argument forces it at any depth, `--no-focus-group` suppresses it at `deep`.
+- `deep` — `web` plus a persona set (primary + secondaries) and a fuller competitive teardown; fan out the gather step per competitor/segment (see the `capabilities` skill). Depth `deep` also runs the focus-group step (§3b) for material (`tier: epic`) work — see its Trigger; a `--focus-group` argument forces it at any depth, `--no-focus-group` suppresses it at `deep`.
+
+When this research run is scoped to a specific work item or roadmap candidate, cap the effective depth at that item's tier `research` profile (`factory doctor --json` → `tiers`): a `feature` caps at `web` (no focus group), a `bug` at `off` (no research), an `epic` may go to `deep`. The `research.depth` config is the global ceiling; the tier caps it further for non-material work.
 
 If the depth needs the web and this run has no web access, **degrade to `inputs-only`** and add an entry to `docs/factory/brain/open-questions.md` naming the gap ("market/user web research not run — no web access this run; re-run with web for deeper grounding"). A missing capability degrades output, never blocks the run.
 
@@ -35,11 +37,15 @@ Run the `council-review` skill in **research mode** with review root `.factory/r
 
 Simulated structured interviews with 4–6 stakeholder personas of the *target
 product*. Templates and hard caps live in this skill's `focus-group.md`
-reference file (under its own `references/` directory) — follow them exactly. **Trigger:** runs only when the resolved depth is `deep`
-or the run was passed an explicit `--focus-group` argument; `--no-focus-group`
-suppresses it at `deep`. It never runs on the default `web` path or at
-`inputs-only` without the explicit flag. When the trigger is off, this
-section is skipped entirely and the skill behaves as before.
+reference file (under its own `references/` directory) — follow them exactly. **Trigger:** runs only when the resolved depth is `deep` **and** the work is
+material — i.e. the item or roadmap candidate driving this research is
+`tier: epic` (or, at bare product initiation with no specific item, the
+product itself is the material undertaking). A `feature`- or `bug`-tier
+context never triggers the focus group, even under a global `deep` — the
+focus group is for material epics only (guard rail). It never runs on the default `web` path or at
+`inputs-only` without the explicit flag. An explicit
+`--focus-group` argument still forces it at any depth; `--no-focus-group`
+suppresses it. When the trigger is off, this section is skipped entirely.
 
 All artifacts live under `.factory/runs/research/focus-group/<YYYY-MM-DD>/`
 (same-day re-runs suffix `-2`, `-3`, …): `roster.md`, `guides/`,
@@ -75,7 +81,7 @@ All artifacts live under `.factory/runs/research/focus-group/<YYYY-MM-DD>/`
    proxies). Quote its summary in the Exit report.
 
 **Autopilot:** never silent — under autopilot the focus group runs only if
-the human pre-configured `research.depth: "deep"`; autopilot never adds
+the human pre-configured `research.depth: "deep"` **and** the research is for a material (`tier: epic`) context (per the §3b Trigger); autopilot never adds
 `--focus-group` on its own, and the packet must name that a simulation ran,
 its run directory, and its spend summary.
 

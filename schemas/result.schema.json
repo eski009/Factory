@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "work-result",
+  "type": "object",
+  "required": ["id", "status", "backend", "branch"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {"type": "string", "pattern": "^[0-9]{4}-[a-z0-9-]+$"},
+    "status": {"type": "string", "enum": ["done", "blocked", "failed"]},
+    "reason": {"type": "string",
+               "enum": ["crash", "timeout", "no_changes", "red_tests",
+                        "rate_limited", "auth", "blocked", "prep_failed"]},
+    "backend": {"type": "string", "enum": ["claude", "codex", "stub"]},
+    "model": {"type": "string"},
+    "branch": {"type": "string", "minLength": 1},
+    "commits": {"type": "array", "items": {"type": "string"}},
+    "files_changed": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {"type": "string"},
+          "change": {"type": "string",
+                     "enum": ["A", "M", "D", "R", "C", "T", "U", "X", "B"]}
+        }
+      }
+    },
+    "test": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "command": {"type": "string"},
+        "passed": {"type": "boolean"},
+        "summary": {"type": "string"}
+      }
+    },
+    "usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "input": {"type": "integer", "minimum": 0},
+        "output": {"type": "integer", "minimum": 0},
+        "total": {"type": "integer", "minimum": 0},
+        "provenance": {"type": "string", "enum": ["measured", "proxy"]}
+      }
+    },
+    "cost_usd_estimate": {"type": "number", "minimum": 0},
+    "duration_s": {"type": "integer", "minimum": 0},
+    "summary": {"type": "string"},
+    "worker_log": {"type": "string"}
+  }
+}

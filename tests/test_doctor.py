@@ -55,6 +55,33 @@ class TestDoctor(unittest.TestCase):
         self.assertIn("tree_valid:", text)
         self.assertEqual(text, doctor.render(doctor.report(self.repo)))
 
+    def test_worker_readiness_reported(self):
+        r = doctor.report(self.repo)
+        self.assertIn("workers", r)
+        workers = r["workers"]
+        for key in ("enabled", "backend", "claude_cli", "codex_cli",
+                    "anthropic_key", "openai_key"):
+            self.assertIn(key, workers)
+        for key in ("enabled", "claude_cli", "codex_cli",
+                    "anthropic_key", "openai_key"):
+            self.assertIsInstance(workers[key], bool)
+        # Fresh repo has no workers config block, so worker_config()
+        # DEFAULTS apply deterministically (CLI/env keys are machine-
+        # dependent and only checked for presence/type above).
+        self.assertFalse(workers["enabled"])
+        self.assertEqual(workers["backend"], "claude")
+        self.assertIn("max_parallel", workers)
+        self.assertIn("retry", workers)
+        self.assertEqual(workers["max_parallel"], 2)
+        self.assertEqual(workers["retry"]["max_attempts"], 3)
+
+    def test_reports_tier_profiles(self):
+        r = doctor.report(self.repo)
+        self.assertIn("tiers", r)
+        self.assertEqual(r["tiers"]["bug"]["review"], "light")
+        self.assertEqual(r["tiers"]["epic"]["research"], "deep")
+        self.assertEqual(r["tiers"]["feature"]["review"], "full")
+
 
 if __name__ == "__main__":
     unittest.main()
