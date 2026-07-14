@@ -41,8 +41,17 @@ class TestPacket(unittest.TestCase):
         path = packet.write_packet(self.repo, "0001-thing")
         self.assertEqual(path, self.repo / "docs/factory/packets/0001-thing.md")
         first = path.read_text()
+        html_path = self.repo / "docs/factory/packets/0001-thing.html"
+        self.assertTrue(html_path.exists())
+        first_html = html_path.read_bytes()
         packet.write_packet(self.repo, "0001-thing")
         self.assertEqual(path.read_text(), first)
+        self.assertEqual(html_path.read_bytes(), first_html)
+
+    def test_respond_uses_real_item_id(self):
+        text = packet.render_packet(self.repo, "0001-thing")
+        self.assertIn("factory choice 0001-thing <option>", text)
+        self.assertNotIn("factory choice <id>", text)
 
     def test_spend_section_three_bullets_before_respond(self):
         text = packet.render_packet(self.repo, "0001-thing")

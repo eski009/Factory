@@ -131,6 +131,13 @@ class TestPluginCoherence(unittest.TestCase):
         self.assertIn("factory provision", ref)
         self.assertIn("factory cleanup", ref)
 
+    def test_decision_page_wiring_present(self):
+        ref = ROOT / "skills/capabilities/references/decision-pages.md"
+        self.assertTrue(ref.exists())
+        dispatch = read(ROOT / "skills/factory-dispatch/SKILL.md")
+        self.assertIn("packets/", dispatch)
+        self.assertIn(".html", dispatch)
+
     def test_tier_set_wiring_present(self):
         triage = read(ROOT / "skills/factory-triage/SKILL.md")
         self.assertIn("factory tier", triage)
