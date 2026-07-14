@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.6.0] - 2026-07-14
+
+### Added
+
+- **Every decision packet carries a clickable link to a visual HTML options
+  page.** Generalises what the design gate already did to every
+  `waiting-human` pause: `factory packet` now writes a self-contained,
+  mobile-legible `docs/factory/packets/<id>.html` beside the Markdown packet,
+  and both renderers gain a **"View the options"** section whose links are
+  ordered by preference — a hosted Artifact URL (from the paused reason) →
+  the local `design/options.html` → the HTML packet itself — so a Markdown
+  file is never the primary view when an HTML page exists. Artifacts render
+  as clickable `file://` links, and the Respond block uses the real item id
+  (fixing the literal `<id>`/`<option>` placeholders). `factory-dispatch`
+  surfaces the HTML link at every pause; see
+  `skills/capabilities/references/decision-pages.md`.
+
 ## [0.5.0] - 2026-07-13
 
 ### Added
