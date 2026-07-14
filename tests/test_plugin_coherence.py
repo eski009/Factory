@@ -114,6 +114,13 @@ class TestPluginCoherence(unittest.TestCase):
         roadmap = read(ROOT / "skills/factory-roadmap/SKILL.md")
         self.assertIn("tier", roadmap)
 
+    def test_decision_page_wiring_present(self):
+        ref = ROOT / "skills/capabilities/references/decision-pages.md"
+        self.assertTrue(ref.exists())
+        dispatch = read(ROOT / "skills/factory-dispatch/SKILL.md")
+        self.assertIn("packets/", dispatch)
+        self.assertIn(".html", dispatch)
+
     def test_interview_reachable_only_from_init(self):
         # the interview must be reachable only through the human-invoked
         # /factory:init flow — never from autopilot, the dispatcher, or any
