@@ -29,6 +29,9 @@ def write(repo, rel, text="content\n"):
     p.write_text(text, encoding="utf-8")
 
 
+SPEC_MD = "# Spec\n\n## Journey impact\nNone - no customer journey affected.\n"
+
+
 class MachineTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -123,6 +126,28 @@ class TestLegality(MachineTest):
 
 
 class TestGates(MachineTest):
+    def test_design_requires_journey_impact_section_and_declaration(self):
+        meta = make_item(self.repo, stage="spec", priority=1)
+        write(self.repo, "spec.md", "# Spec without the section\n")
+        with self.assertRaises(machine.GateError):
+            machine.advance(self.repo, "0001-thing", "design")
+        write(self.repo, "spec.md", SPEC_MD)
+        # section present but journeys never declared -> still refused
+        meta, body = items.load_item(self.repo, "0001-thing")
+        meta.pop("journeys", None)
+        items.save_item(self.repo, meta, body)
+        with self.assertRaises(machine.GateError):
+            machine.advance(self.repo, "0001-thing", "design")
+        items.set_journeys(self.repo, "0001-thing", "none")
+        self.assertEqual(
+            machine.advance(self.repo, "0001-thing", "design")["stage"], "design")
+
+    def test_plan_requires_journey_impact_for_backend(self):
+        make_item(self.repo, kind="backend", stage="spec", priority=1)
+        write(self.repo, "spec.md", "# Spec without the section\n")
+        with self.assertRaises(machine.GateError):
+            machine.advance(self.repo, "0001-thing", "plan")
+
     def test_spec_requires_triage_record_and_priority(self):
         make_item(self.repo, stage="triage")
         with self.assertRaises(machine.GateError):
@@ -138,8 +163,8 @@ class TestGates(MachineTest):
         self.assertEqual(meta["stage"], "spec")
 
     def test_plan_requires_design_choice_for_ui(self):
-        make_item(self.repo, stage="design", priority=1)
-        write(self.repo, "spec.md")
+        make_item(self.repo, stage="design", priority=1, journeys="none")
+        write(self.repo, "spec.md", SPEC_MD)
         with self.assertRaises(machine.GateError):
             machine.advance(self.repo, "0001-thing", "plan")
         write(self.repo, "design/choice.md", "choice: option-b\n")
@@ -147,8 +172,9 @@ class TestGates(MachineTest):
         self.assertEqual(meta["stage"], "plan")
 
     def test_plan_requires_repro_for_bug(self):
-        make_item(self.repo, kind="backend", stage="spec", priority=1, bug=True)
-        write(self.repo, "spec.md")
+        make_item(self.repo, kind="backend", stage="spec", priority=1, bug=True,
+                   journeys="none")
+        write(self.repo, "spec.md", SPEC_MD)
         with self.assertRaises(machine.GateError):
             machine.advance(self.repo, "0001-thing", "plan")
         write(self.repo, "repro.md", "# Repro\n## Command\nfoo\n")
@@ -159,20 +185,22 @@ class TestGates(MachineTest):
         self.assertEqual(machine.advance(self.repo, "0001-thing", "plan")["stage"], "plan")
 
     def test_plan_requires_repro_event_even_with_file(self):
-        make_item(self.repo, kind="backend", stage="spec", priority=1, bug=True)
-        write(self.repo, "spec.md")
+        make_item(self.repo, kind="backend", stage="spec", priority=1, bug=True,
+                   journeys="none")
+        write(self.repo, "spec.md", SPEC_MD)
         write(self.repo, "repro.md", "")  # empty file also refused
         with self.assertRaises(machine.GateError):
             machine.advance(self.repo, "0001-thing", "plan")
 
     def test_plan_without_bug_flag_needs_no_repro(self):
-        make_item(self.repo, kind="backend", stage="spec", priority=1)
-        write(self.repo, "spec.md")
+        make_item(self.repo, kind="backend", stage="spec", priority=1, journeys="none")
+        write(self.repo, "spec.md", SPEC_MD)
         self.assertEqual(machine.advance(self.repo, "0001-thing", "plan")["stage"], "plan")
 
     def test_plan_bug_ui_item_needs_both_choice_and_repro(self):
-        make_item(self.repo, kind="ui", stage="design", priority=1, bug=True)
-        write(self.repo, "spec.md")
+        make_item(self.repo, kind="ui", stage="design", priority=1, bug=True,
+                   journeys="none")
+        write(self.repo, "spec.md", SPEC_MD)
         write(self.repo, "design/choice.md", "choice: option-b\n")
         with self.assertRaises(machine.GateError):
             machine.advance(self.repo, "0001-thing", "plan")

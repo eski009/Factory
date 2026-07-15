@@ -51,8 +51,8 @@ class TestUiPipelineWalk(unittest.TestCase):
         meta["priority"] = 1
         items.save_item(self.repo, meta, body)
         machine.advance(self.repo, self.item, "spec")
-        # spec -> design (gate: spec.md)
-        self.art("spec.md")
+        # spec -> design (gate: spec.md with Journey impact section)
+        self.art("spec.md", "# Spec\n\n## Journey impact\nNone - no customer journey affected.\n")
         machine.advance(self.repo, self.item, "design")
         # design pause -> human choice -> resume -> plan
         machine.advance(self.repo, self.item, "waiting-human",

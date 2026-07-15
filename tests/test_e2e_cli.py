@@ -64,7 +64,7 @@ class TestE2ECli(unittest.TestCase):
         self.cli("validate")
         self.cli("advance", item, "spec")
         # spec -> design
-        self.art(item, "spec.md")
+        self.art(item, "spec.md", "# Spec\n\n## Journey impact\nNone - no customer journey affected.\n")
         self.cli("advance", item, "design")
         # design gate: pause, choice, resume
         self.cli("advance", item, "waiting-human", "--reason", "pick a design")
@@ -116,7 +116,8 @@ class TestE2ECli(unittest.TestCase):
         item_md.write_text(item_md.read_text().replace(
             "kind: backend", "kind: backend\npriority: 1"), encoding="utf-8")
         self.cli("advance", item, "spec")
-        self.art(item, "spec.md")
+        self.art(item, "spec.md", "# Spec\n\n## Journey impact\nNone - no customer journey affected.\n")
+        self.cli("journeys", item, "none")
         # backend jumps spec -> plan (no design); design is an illegal transition
         self.cli("advance", item, "design", expect=2)
         self.cli("advance", item, "plan")

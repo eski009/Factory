@@ -66,6 +66,17 @@ def _require_event(repo, meta, event, why):
         raise GateError(f"event {event!r} not logged ({why})")
 
 
+def _require_journey_impact(repo, meta):
+    """Journey-assurance spec: the engine refuses to leave spec until the
+    impact is recorded. 'none' is a valid answer; an omitted one is not."""
+    path = _artifact(repo, meta, "spec.md")
+    if "## Journey impact" not in _read_text_or_empty(path):
+        raise GateError("spec.md must contain a '## Journey impact' section")
+    if "journeys" not in meta:
+        raise GateError(
+            "journey impact must be declared: factory journeys <id> <none|J-...>")
+
+
 def _gate_spec(repo, meta):
     _require_file(repo, meta, "triage.md", "triage record required before spec")
     if "priority" not in meta:
@@ -74,10 +85,12 @@ def _gate_spec(repo, meta):
 
 def _gate_design(repo, meta):
     _require_file(repo, meta, "spec.md", "spec required before design")
+    _require_journey_impact(repo, meta)
 
 
 def _gate_plan(repo, meta):
     _require_file(repo, meta, "spec.md", "spec required before planning")
+    _require_journey_impact(repo, meta)
     if meta["kind"] in ("ui", "mixed"):
         _require_file(repo, meta, "design/choice.md", "recorded design choice required")
     if meta.get("bug"):
