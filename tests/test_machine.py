@@ -262,6 +262,27 @@ class TestGates(MachineTest):
         with self.assertRaises(machine.GateError):
             machine.advance(self.repo, "0001-thing", "implement")
 
+    def test_assure_requires_verify_green(self):
+        make_item(self.repo, stage="verify", priority=1)
+        with self.assertRaises(machine.GateError):
+            machine.advance(self.repo, "0001-thing", "assure")
+        logs.append_event(self.repo, "0001-thing", "verify.green")
+        self.assertEqual(
+            machine.advance(self.repo, "0001-thing", "assure")["stage"], "assure")
+
+    def test_assure_rework_capped(self):
+        make_item(self.repo, stage="assure", priority=1)
+        write(self.repo, "plan.md", "- [ ] Task 1\n")
+        for _ in range(2):
+            logs.append_event(self.repo, "0001-thing", "assure.rejected")
+            machine.advance(self.repo, "0001-thing", "implement")
+            meta, body = items.load_item(self.repo, "0001-thing")
+            meta["stage"] = "assure"
+            items.save_item(self.repo, meta, body)
+        logs.append_event(self.repo, "0001-thing", "assure.rejected")
+        with self.assertRaises(machine.GateError):
+            machine.advance(self.repo, "0001-thing", "implement")
+
 
 class TestGateCorruption(MachineTest):
     """Item spec 0007 §3: gates fail closed on corrupt evidence lines."""

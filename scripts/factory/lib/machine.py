@@ -5,8 +5,9 @@ deterministic gatekeeper that refuses transitions whose preconditions
 Evidence events are checked as lifetime counts, not scoped to the
 item's latest entry into its current stage, so stale evidence (e.g.
 an old review.approved after a later rework) satisfies gates.
-Round-scoped evidence is deliberately deferred to Phase 2, which owns
-the review-loop semantics.
+EXCEPTION: the ship gate's assurance events (assure.rejected, when
+added) will be round-scoped in Phase 2 (Task 4). All others (including
+the assure entry gate's verify.green) are lifetime counts.
 """
 
 import subprocess
@@ -17,6 +18,7 @@ STAGES = ["idea", "triage", "spec", "design", "plan",
           "implement", "review", "verify", "assure", "ship", "done"]
 SPECIAL = ("blocked", "waiting-human")
 MAX_REVIEW_REJECTIONS = 2
+MAX_ASSURE_REJECTIONS = 2
 
 
 class GateError(Exception):
@@ -123,6 +125,11 @@ def _gate_verify(repo, meta):
                    "review must be approved with no blocking findings")
 
 
+def _gate_assure(repo, meta):
+    _require_event(repo, meta, "verify.green",
+                   "verification evidence required before assurance")
+
+
 def _gate_ship(repo, meta):
     _require_event(repo, meta, "verify.green", "verification evidence required")
 
@@ -134,7 +141,7 @@ def _gate_done(repo, meta):
 GATES = {
     "spec": _gate_spec, "design": _gate_design, "plan": _gate_plan,
     "implement": _gate_implement, "review": _gate_review,
-    "verify": _gate_verify, "ship": _gate_ship, "done": _gate_done,
+    "verify": _gate_verify, "assure": _gate_assure, "ship": _gate_ship, "done": _gate_done,
 }
 
 
@@ -156,6 +163,9 @@ def advance(repo, item_id, to, reason=None):
     elif frm == "review" and to == "implement":
         if logs.count_events(repo, item_id, "review.rejected") > MAX_REVIEW_REJECTIONS:
             raise GateError("review rejected too many times; move item to blocked")
+    elif frm == "assure" and to == "implement":
+        if logs.count_events(repo, item_id, "assure.rejected") > MAX_ASSURE_REJECTIONS:
+            raise GateError("assurance rejected too many times; move item to blocked")
     else:
         expected = next_stage(meta)
         if to != expected:
