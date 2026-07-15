@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "assurance-impact",
+  "type": "object",
+  "required": ["item", "journeys"],
+  "additionalProperties": false,
+  "properties": {
+    "item": {"type": "string", "minLength": 1},
+    "ts": {"type": "string"},
+    "journeys": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "scenarios"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "pattern": "^J-[0-9]{3}$"},
+          "nodes_changed": {"type": "array", "items": {"type": "string"}},
+          "transitions_changed": {"type": "array", "items": {"type": "string"}},
+          "new_states": {"type": "array", "items": {"type": "string"}},
+          "scenarios": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "kind", "description"],
+              "additionalProperties": false,
+              "properties": {
+                "id": {"type": "string", "minLength": 1},
+                "kind": {"type": "string",
+                         "enum": ["happy", "recovery", "interruption"]},
+                "description": {"type": "string", "minLength": 1}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

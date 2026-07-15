@@ -5,11 +5,15 @@ deterministic gatekeeper that refuses transitions whose preconditions
 Evidence events are checked as lifetime counts, not scoped to the
 item's latest entry into its current stage, so stale evidence (e.g.
 an old review.approved after a later rework) satisfies gates.
-EXCEPTION: the ship gate's assurance events (assure.rejected, when
-added) will be round-scoped in Phase 2 (Task 4). All others (including
-the assure entry gate's verify.green) are lifetime counts.
+EXCEPTION: the ship gate's assurance evidence (assure.passed /
+assure.waived / assure.confirmed) is round-scoped — it must postdate
+the latest implement.completed, so assurance from before a rework
+never satisfies the ship gate. All other events (including
+assure.rejected, a lifetime count feeding the capped rework edge,
+and the assure entry gate's verify.green) are lifetime counts.
 """
 
+import json
 import subprocess
 
 from . import items, logs, paths
@@ -66,6 +70,73 @@ def _require_file(repo, meta, rel, why):
 def _require_event(repo, meta, event, why):
     if logs.count_events(repo, meta["id"], event) == 0:
         raise GateError(f"event {event!r} not logged ({why})")
+
+
+def _last_index(events, name):
+    idx = -1
+    for i, event in enumerate(events):
+        if event["event"] == name:
+            idx = i
+    return idx
+
+
+def _config_gates(repo):
+    try:
+        raw = json.loads(paths.config_path(repo).read_text(
+            encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    gates = raw.get("gates", []) if isinstance(raw, dict) else []
+    return [g for g in gates if isinstance(g, str)]
+
+
+def _validate_assurance_artifacts(repo, meta):
+    from .initrepo import load_schema
+    from .validate import validate as validate_schema
+
+    vpath = _artifact(repo, meta, "assurance/verdicts.json")
+    text = _read_text_or_empty(vpath)
+    if not text.strip():
+        raise GateError("assurance/verdicts.json missing or empty "
+                        "(assurance evidence required)")
+    try:
+        verdicts = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise GateError(f"assurance/verdicts.json invalid JSON ({exc})")
+    errors = validate_schema(verdicts, load_schema("assurance-verdicts"), "verdicts")
+    if errors:
+        raise GateError("assurance/verdicts.json: " + "; ".join(errors))
+    declared = [j for j in (meta.get("journeys") or "").split(",")
+                if j and j != "none"]
+    covered = {j.get("id"): j for j in verdicts.get("journeys", [])}
+    missing = [j for j in declared if j not in covered]
+    if missing:
+        raise GateError("assurance verdicts missing journeys: " + ", ".join(missing))
+    item_dir = paths.item_dir(repo, meta["id"])
+    for j in verdicts.get("journeys", []):
+        for s in j.get("scenarios", []):
+            if s.get("verdict") != "pass":
+                raise GateError(
+                    f"journey {j.get('id')} scenario {s.get('id')}: "
+                    f"verdict {s.get('verdict')!r} is not pass")
+            for ev in s.get("evidence", []):
+                if not (item_dir / ev.get("path", "")).exists():
+                    raise GateError(
+                        "assurance evidence missing on disk: " + ev.get("path", ""))
+    itext = _read_text_or_empty(_artifact(repo, meta, "assurance/impact.json"))
+    if itext.strip():
+        try:
+            impact = json.loads(itext)
+        except json.JSONDecodeError as exc:
+            raise GateError(f"assurance/impact.json invalid JSON ({exc})")
+        for j in impact.get("journeys", []) if isinstance(impact, dict) else []:
+            have = {s.get("id") for s in covered.get(j.get("id"), {}).get("scenarios", [])}
+            want = {s.get("id") for s in j.get("scenarios", []) if isinstance(s, dict)}
+            unmet = sorted(want - have)
+            if unmet:
+                raise GateError(
+                    f"journey {j.get('id')}: required scenarios without verdicts: "
+                    + ", ".join(str(u) for u in unmet))
 
 
 def _require_journey_impact(repo, meta):
@@ -131,7 +202,23 @@ def _gate_assure(repo, meta):
 
 
 def _gate_ship(repo, meta):
-    _require_event(repo, meta, "verify.green", "verification evidence required")
+    if meta.get("journeys") == "none":
+        _require_event(repo, meta, "verify.green", "verification evidence required")
+        return
+    events = logs.read_events(repo, meta["id"])
+    impl = _last_index(events, "implement.completed")
+    passed = _last_index(events, "assure.passed") > impl
+    waived = _last_index(events, "assure.waived") > impl
+    if not (passed or waived):
+        raise GateError("assure.passed (or a recorded human waiver) after the "
+                        "latest implementation round required")
+    if "assure" in _config_gates(repo) and not (
+            waived or _last_index(events, "assure.confirmed") > impl):
+        raise GateError("human confirmation required: factory confirm <id> "
+                        "(the assure gate is configured)")
+    if waived and not passed:
+        return
+    _validate_assurance_artifacts(repo, meta)
 
 
 def _gate_done(repo, meta):

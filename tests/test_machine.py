@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import subprocess
@@ -339,6 +340,119 @@ class TestGateCorruption(MachineTest):
         plan_md.write_bytes(b"\xff\xfe- [ ] Task 1\n")
         with self.assertRaises(machine.GateError):
             machine.advance(self.repo, "0001-thing", "implement")
+
+
+def _write_assurance(repo, verdict="pass", journey="J-001", scenario="happy-1",
+                     evidence=True, item_id="0001-thing"):
+    item_dir = paths.item_dir(repo, item_id)
+    ev = []
+    if evidence:
+        shot = item_dir / "assurance" / "screenshots" / "s1.txt"
+        shot.parent.mkdir(parents=True, exist_ok=True)
+        shot.write_text("evidence\n", encoding="utf-8")
+        ev = [{"type": "screenshot", "path": "assurance/screenshots/s1.txt"}]
+    verdicts = {"item": item_id, "journeys": [{
+        "id": journey, "surface": "browser",
+        "scenarios": [{"id": scenario, "verdict": verdict,
+                       "expected": "welcome screen", "actual": "welcome screen",
+                       "evidence": ev}]}]}
+    vp = item_dir / "assurance" / "verdicts.json"
+    vp.parent.mkdir(parents=True, exist_ok=True)
+    vp.write_text(json.dumps(verdicts, indent=2), encoding="utf-8")
+
+
+class TestShipGateAssurance(MachineTest):
+    def _to_assure(self, journeys="J-001"):
+        meta = make_item(self.repo, stage="assure", priority=1)
+        meta, body = items.load_item(self.repo, "0001-thing")
+        meta["journeys"] = journeys
+        items.save_item(self.repo, meta, body)
+        logs.append_event(self.repo, "0001-thing", "implement.completed")
+        logs.append_event(self.repo, "0001-thing", "verify.green")
+
+    def test_ship_requires_assure_passed_after_latest_implement(self):
+        self._to_assure()
+        _write_assurance(self.repo)
+        with self.assertRaises(machine.GateError):
+            machine.advance(self.repo, "0001-thing", "ship")
+        logs.append_event(self.repo, "0001-thing", "assure.passed")
+        self.assertEqual(
+            machine.advance(self.repo, "0001-thing", "ship")["stage"], "ship")
+
+    def test_stale_assure_passed_from_before_rework_refused(self):
+        self._to_assure()
+        _write_assurance(self.repo)
+        logs.append_event(self.repo, "0001-thing", "assure.passed")
+        logs.append_event(self.repo, "0001-thing", "implement.completed")
+        with self.assertRaises(machine.GateError):
+            machine.advance(self.repo, "0001-thing", "ship")
+
+    def test_waiver_bypasses_artifact_checks(self):
+        self._to_assure()
+        logs.append_event(self.repo, "0001-thing", "assure.waived",
+                          {"reason": "browser unavailable in CI"})
+        self.assertEqual(
+            machine.advance(self.repo, "0001-thing", "ship")["stage"], "ship")
+
+    def test_failing_verdict_refused(self):
+        self._to_assure()
+        _write_assurance(self.repo, verdict="fail")
+        logs.append_event(self.repo, "0001-thing", "assure.passed")
+        with self.assertRaises(machine.GateError):
+            machine.advance(self.repo, "0001-thing", "ship")
+
+    def test_verdicts_must_cover_declared_journeys(self):
+        self._to_assure(journeys="J-001,J-002")
+        _write_assurance(self.repo)  # only covers J-001
+        logs.append_event(self.repo, "0001-thing", "assure.passed")
+        with self.assertRaises(machine.GateError):
+            machine.advance(self.repo, "0001-thing", "ship")
+
+    def test_missing_evidence_file_refused(self):
+        self._to_assure()
+        _write_assurance(self.repo)
+        shot = paths.item_dir(self.repo, "0001-thing") / "assurance" / "screenshots" / "s1.txt"
+        shot.unlink()
+        logs.append_event(self.repo, "0001-thing", "assure.passed")
+        with self.assertRaises(machine.GateError):
+            machine.advance(self.repo, "0001-thing", "ship")
+
+    def test_verdicts_must_cover_impact_scenarios(self):
+        self._to_assure()
+        impact = {"item": "0001-thing", "journeys": [{
+            "id": "J-001", "scenarios": [
+                {"id": "happy-1", "kind": "happy", "description": "d"},
+                {"id": "recovery-1", "kind": "recovery", "description": "d"}]}]}
+        ip = paths.item_dir(self.repo, "0001-thing") / "assurance" / "impact.json"
+        ip.parent.mkdir(parents=True, exist_ok=True)
+        ip.write_text(json.dumps(impact), encoding="utf-8")
+        _write_assurance(self.repo)  # only scenario happy-1
+        logs.append_event(self.repo, "0001-thing", "assure.passed")
+        with self.assertRaises(machine.GateError):
+            machine.advance(self.repo, "0001-thing", "ship")
+
+    def test_config_assure_gate_requires_confirmation(self):
+        cfg = paths.config_path(self.repo)
+        cfg.parent.mkdir(parents=True, exist_ok=True)
+        cfg.write_text(json.dumps({"version": 1, "merge": "auto",
+                                   "gates": ["design", "assure"]}), encoding="utf-8")
+        self._to_assure()
+        _write_assurance(self.repo)
+        logs.append_event(self.repo, "0001-thing", "assure.passed")
+        with self.assertRaises(machine.GateError):
+            machine.advance(self.repo, "0001-thing", "ship")
+        logs.append_event(self.repo, "0001-thing", "assure.confirmed")
+        self.assertEqual(
+            machine.advance(self.repo, "0001-thing", "ship")["stage"], "ship")
+
+    def test_journeys_none_ship_gate_unchanged(self):
+        meta = make_item(self.repo, stage="verify", priority=1)
+        meta, body = items.load_item(self.repo, "0001-thing")
+        meta["journeys"] = "none"
+        items.save_item(self.repo, meta, body)
+        logs.append_event(self.repo, "0001-thing", "verify.green")
+        self.assertEqual(
+            machine.advance(self.repo, "0001-thing", "ship")["stage"], "ship")
 
 
 if __name__ == "__main__":
