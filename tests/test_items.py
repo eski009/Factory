@@ -264,7 +264,7 @@ class TestJourneys(unittest.TestCase):
 
     def test_set_journeys_rejects_bad_values(self):
         self._make()
-        for bad in ("", "J-1", "J-001,", "nope", "J-001, J-002", "NONE"):
+        for bad in ("", "J-1", "J-001,", "nope", "J-001, J-002", "NONE", "J-١٢٣"):
             with self.assertRaises(items.ItemError):
                 items.set_journeys(self.repo, "0001-a", bad)
 

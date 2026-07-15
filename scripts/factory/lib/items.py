@@ -207,7 +207,7 @@ def set_tier(repo, item_id, tier):
     return meta
 
 
-JOURNEYS_RE = re.compile(r"^(none|J-\d{3}(,J-\d{3})*)$")
+JOURNEYS_RE = re.compile(r"^(none|J-[0-9]{3}(,J-[0-9]{3})*)$")
 
 
 def set_journeys(repo, item_id, value):
