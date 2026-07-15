@@ -9,9 +9,9 @@ import sys
 if __package__ in (None, ""):
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool
+    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod
 else:
-    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool
+    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod
 
 
 def _require_factory_repo(repo):
@@ -293,6 +293,26 @@ def cmd_choice(args):
     return 0
 
 
+def cmd_waive(args):
+    try:
+        assure_mod.record_waiver(args.repo, args.item, args.reason)
+    except (machine.GateError, items.ItemError) as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    print(f"{args.item} assurance waived")
+    return 0
+
+
+def cmd_confirm(args):
+    try:
+        path = assure_mod.record_confirmation(args.repo, args.item)
+    except (machine.GateError, items.ItemError) as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    print(path)
+    return 0
+
+
 def cmd_priority(args):
     if not _require_factory_repo(args.repo):
         return 2
@@ -446,6 +466,17 @@ def main(argv=None):
     p.add_argument("option")
     p.add_argument("--notes")
     p.set_defaults(func=cmd_choice)
+
+    p = sub.add_parser("waive",
+                       help="record a human assurance waiver (requires a reason)")
+    p.add_argument("item")
+    p.add_argument("--reason", required=True)
+    p.set_defaults(func=cmd_waive)
+
+    p = sub.add_parser("confirm",
+                       help="record human confirmation of a passed assurance")
+    p.add_argument("item")
+    p.set_defaults(func=cmd_confirm)
 
     p = sub.add_parser("priority", help="set an item's priority (1+)")
     p.add_argument("item")
