@@ -454,6 +454,47 @@ class TestShipGateAssurance(MachineTest):
         self.assertEqual(
             machine.advance(self.repo, "0001-thing", "ship")["stage"], "ship")
 
+    def test_absolute_evidence_path_refused(self):
+        self._to_assure()
+        _write_assurance(self.repo)
+        vp = paths.item_dir(self.repo, "0001-thing") / "assurance" / "verdicts.json"
+        data = json.loads(vp.read_text(encoding="utf-8"))
+        data["journeys"][0]["scenarios"][0]["evidence"] = [
+            {"type": "screenshot", "path": "/etc/hosts"}]
+        vp.write_text(json.dumps(data), encoding="utf-8")
+        logs.append_event(self.repo, "0001-thing", "assure.passed")
+        with self.assertRaises(machine.GateError):
+            machine.advance(self.repo, "0001-thing", "ship")
+
+    def test_dotdot_evidence_path_refused(self):
+        self._to_assure()
+        _write_assurance(self.repo)
+        outside = paths.items_dir(self.repo) / "smuggled.txt"
+        outside.write_text("x", encoding="utf-8")
+        vp = paths.item_dir(self.repo, "0001-thing") / "assurance" / "verdicts.json"
+        data = json.loads(vp.read_text(encoding="utf-8"))
+        data["journeys"][0]["scenarios"][0]["evidence"] = [
+            {"type": "screenshot", "path": "../smuggled.txt"}]
+        vp.write_text(json.dumps(data), encoding="utf-8")
+        logs.append_event(self.repo, "0001-thing", "assure.passed")
+        with self.assertRaises(machine.GateError):
+            machine.advance(self.repo, "0001-thing", "ship")
+
+    def test_malformed_impact_shapes_fail_closed(self):
+        for payload in ('{"item": "0001-thing", "journeys": "nope"}',
+                        '{"item": "0001-thing", "journeys": [42]}',
+                        '{"item": "0001-thing", "journeys": [{"id": "J-001", "scenarios": 7}]}'):
+            with self.subTest(payload=payload):
+                self.tearDown(); self.setUp()
+                self._to_assure()
+                _write_assurance(self.repo)
+                ip = paths.item_dir(self.repo, "0001-thing") / "assurance" / "impact.json"
+                ip.parent.mkdir(parents=True, exist_ok=True)
+                ip.write_text(payload, encoding="utf-8")
+                logs.append_event(self.repo, "0001-thing", "assure.passed")
+                with self.assertRaises(machine.GateError):
+                    machine.advance(self.repo, "0001-thing", "ship")
+
 
 if __name__ == "__main__":
     unittest.main()

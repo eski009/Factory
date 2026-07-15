@@ -15,6 +15,7 @@ and the assure entry gate's verify.green) are lifetime counts.
 
 import json
 import subprocess
+from pathlib import PurePosixPath
 
 from . import items, logs, paths
 
@@ -120,18 +121,34 @@ def _validate_assurance_artifacts(repo, meta):
                     f"journey {j.get('id')} scenario {s.get('id')}: "
                     f"verdict {s.get('verdict')!r} is not pass")
             for ev in s.get("evidence", []):
-                if not (item_dir / ev.get("path", "")).exists():
+                rel = ev.get("path", "")
+                parts = PurePosixPath(rel).parts
+                if PurePosixPath(rel).is_absolute() or ".." in parts:
                     raise GateError(
-                        "assurance evidence missing on disk: " + ev.get("path", ""))
+                        f"journey {j.get('id')} scenario {s.get('id')}: "
+                        f"evidence path escapes the item dir: {rel}")
+                if not (item_dir / rel).exists():
+                    raise GateError(
+                        f"journey {j.get('id')} scenario {s.get('id')}: "
+                        f"assurance evidence missing on disk: {rel}")
     itext = _read_text_or_empty(_artifact(repo, meta, "assurance/impact.json"))
     if itext.strip():
         try:
             impact = json.loads(itext)
         except json.JSONDecodeError as exc:
             raise GateError(f"assurance/impact.json invalid JSON ({exc})")
-        for j in impact.get("journeys", []) if isinstance(impact, dict) else []:
+        journeys_list = impact.get("journeys") if isinstance(impact, dict) else None
+        if not isinstance(journeys_list, list):
+            raise GateError("assurance/impact.json: journeys must be a list")
+        for j in journeys_list:
+            if not isinstance(j, dict):
+                raise GateError("assurance/impact.json: journey entries must be objects")
+            scenarios = j.get("scenarios", [])
+            if not isinstance(scenarios, list):
+                raise GateError(
+                    f"assurance/impact.json: journey {j.get('id')}: scenarios must be a list")
             have = {s.get("id") for s in covered.get(j.get("id"), {}).get("scenarios", [])}
-            want = {s.get("id") for s in j.get("scenarios", []) if isinstance(s, dict)}
+            want = {s.get("id") for s in scenarios if isinstance(s, dict)}
             unmet = sorted(want - have)
             if unmet:
                 raise GateError(
