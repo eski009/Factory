@@ -40,7 +40,7 @@ class TestUiPipelineWalk(unittest.TestCase):
         self.item = items.new_item_id(self.repo, "Dark mode")
         now = logs.now_stamp()
         items.save_item(self.repo, {"id": self.item, "title": "Dark mode",
-                                    "stage": "idea", "kind": "ui",
+                                    "stage": "idea", "kind": "ui", "journeys": "none",
                                     "created": now, "updated": now}, "")
         # idea -> triage -> spec (gate: triage.md + priority)
         machine.advance(self.repo, self.item, "triage")

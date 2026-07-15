@@ -8,7 +8,7 @@ from pathlib import Path
 from scripts.factory.lib import items, logs, machine, paths
 
 
-def make_item(repo, kind="ui", stage="idea", priority=None, bug=False):
+def make_item(repo, kind="ui", stage="idea", priority=None, bug=False, journeys=None):
     meta = {
         "id": "0001-thing", "title": "Thing", "stage": stage, "kind": kind,
         "created": "2026-07-03T10:00:00Z", "updated": "2026-07-03T10:00:00Z",
@@ -17,6 +17,8 @@ def make_item(repo, kind="ui", stage="idea", priority=None, bug=False):
         meta["priority"] = priority
     if bug:
         meta["bug"] = True
+    if journeys:
+        meta["journeys"] = journeys
     items.save_item(repo, meta, "# Thing\n")
     return meta
 
@@ -50,6 +52,23 @@ class TestSequence(MachineTest):
     def test_done_has_no_next(self):
         meta = make_item(self.repo, stage="done")
         self.assertIsNone(machine.next_stage(meta))
+
+    def test_assure_sits_between_verify_and_ship(self):
+        seq = machine.stage_sequence("ui")
+        self.assertEqual(seq.index("assure"), seq.index("verify") + 1)
+        self.assertEqual(seq.index("ship"), seq.index("assure") + 1)
+
+    def test_journeys_none_skips_assure(self):
+        self.assertNotIn("assure", machine.stage_sequence("ui", "none"))
+        self.assertNotIn("assure", machine.stage_sequence("backend", "none"))
+        self.assertIn("assure", machine.stage_sequence("ui", "J-001"))
+        self.assertIn("assure", machine.stage_sequence("ui", None))
+
+    def test_next_stage_verify_routes_by_journeys(self):
+        meta = make_item(self.repo, stage="verify")
+        self.assertEqual(machine.next_stage(meta), "assure")
+        meta["journeys"] = "none"
+        self.assertEqual(machine.next_stage(meta), "ship")
 
 
 class TestLegality(MachineTest):
@@ -192,7 +211,7 @@ class TestGates(MachineTest):
         self.assertEqual(machine.advance(self.repo, "0001-thing", "verify")["stage"], "verify")
 
     def test_ship_and_done_require_evidence_events(self):
-        make_item(self.repo, stage="verify", priority=1)
+        make_item(self.repo, stage="verify", priority=1, journeys="none")
         with self.assertRaises(machine.GateError):
             machine.advance(self.repo, "0001-thing", "ship")
         logs.append_event(self.repo, "0001-thing", "verify.green")

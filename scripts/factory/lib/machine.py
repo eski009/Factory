@@ -14,7 +14,7 @@ import subprocess
 from . import items, logs, paths
 
 STAGES = ["idea", "triage", "spec", "design", "plan",
-          "implement", "review", "verify", "ship", "done"]
+          "implement", "review", "verify", "assure", "ship", "done"]
 SPECIAL = ("blocked", "waiting-human")
 MAX_REVIEW_REJECTIONS = 2
 
@@ -23,14 +23,17 @@ class GateError(Exception):
     """Transition refused: illegal move or precondition unmet."""
 
 
-def stage_sequence(kind):
+def stage_sequence(kind, journeys=None):
+    seq = list(STAGES)
     if kind == "backend":
-        return [s for s in STAGES if s != "design"]
-    return list(STAGES)
+        seq = [s for s in seq if s != "design"]
+    if journeys == "none":
+        seq = [s for s in seq if s != "assure"]
+    return seq
 
 
 def next_stage(meta):
-    seq = stage_sequence(meta["kind"])
+    seq = stage_sequence(meta["kind"], meta.get("journeys"))
     try:
         idx = seq.index(meta["stage"])
     except ValueError:

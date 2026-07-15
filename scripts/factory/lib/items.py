@@ -10,7 +10,7 @@ import re
 from . import logs, paths
 
 FIELD_ORDER = (
-    "id", "title", "stage", "kind", "tier", "bug", "priority",
+    "id", "title", "stage", "kind", "tier", "bug", "journeys", "priority",
     "created", "updated", "paused-from", "paused-reason",
 )
 REQUIRED_FIELDS = ("id", "title", "stage", "kind", "created", "updated")
@@ -204,4 +204,22 @@ def set_tier(repo, item_id, tier):
     meta["updated"] = logs.now_stamp()
     save_item(repo, meta, body)
     logs.append_event(repo, item_id, "tier.set", {"tier": tier})
+    return meta
+
+
+JOURNEYS_RE = re.compile(r"^(none|J-\d{3}(,J-\d{3})*)$")
+
+
+def set_journeys(repo, item_id, value):
+    """Record the item's declared journey impact: 'none' or a comma-
+    separated list of journey ids (J-004,J-011). Absent means undeclared —
+    the spec-exit gates refuse to advance until this is set."""
+    if not JOURNEYS_RE.match(value or ""):
+        raise ItemError(
+            "journeys must be 'none' or comma-separated ids like J-004,J-011")
+    meta, body = load_item(repo, item_id)
+    meta["journeys"] = value
+    meta["updated"] = logs.now_stamp()
+    save_item(repo, meta, body)
+    logs.append_event(repo, item_id, "journeys.set", {"journeys": value})
     return meta

@@ -317,6 +317,18 @@ def cmd_tier(args):
     return 0
 
 
+def cmd_journeys(args):
+    if not _require_factory_repo(args.repo):
+        return 2
+    try:
+        items.set_journeys(args.repo, args.item, args.value)
+    except items.ItemError as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    print(f"{args.item} journeys {args.value}")
+    return 0
+
+
 def cmd_doctor(args):
     report = doctor_mod.report(args.repo)
     if args.json:
@@ -444,6 +456,12 @@ def main(argv=None):
     p.add_argument("item")
     p.add_argument("tier")
     p.set_defaults(func=cmd_tier)
+
+    p = sub.add_parser("journeys",
+                       help="declare an item's journey impact (none or J-ids)")
+    p.add_argument("item")
+    p.add_argument("value")
+    p.set_defaults(func=cmd_journeys)
 
     p = sub.add_parser("doctor", help="readout of repo integration state")
     p.add_argument("--json", action="store_true")

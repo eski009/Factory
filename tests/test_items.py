@@ -237,5 +237,44 @@ class TierTest(unittest.TestCase):
         self.assertTrue(any("tier" in e for e in errors), errors)
 
 
+class TestJourneys(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _make(self):
+        meta = {"id": "0001-a", "title": "A", "stage": "idea", "kind": "ui",
+                "created": "2026-07-15T10:00:00Z", "updated": "2026-07-15T10:00:00Z"}
+        items.save_item(self.repo, meta, "# A\n")
+
+    def test_set_journeys_accepts_none_and_id_lists(self):
+        self._make()
+        for value in ("none", "J-001", "J-001,J-042"):
+            meta = items.set_journeys(self.repo, "0001-a", value)
+            self.assertEqual(meta["journeys"], value)
+
+    def test_set_journeys_logs_event(self):
+        self._make()
+        items.set_journeys(self.repo, "0001-a", "J-001")
+        from scripts.factory.lib import logs
+        self.assertEqual(logs.count_events(self.repo, "0001-a", "journeys.set"), 1)
+
+    def test_set_journeys_rejects_bad_values(self):
+        self._make()
+        for bad in ("", "J-1", "J-001,", "nope", "J-001, J-002", "NONE"):
+            with self.assertRaises(items.ItemError):
+                items.set_journeys(self.repo, "0001-a", bad)
+
+    def test_journeys_field_round_trips(self):
+        meta = {"id": "0001-a", "title": "A", "stage": "idea", "kind": "ui",
+                "journeys": "J-001,J-002",
+                "created": "2026-07-15T10:00:00Z", "updated": "2026-07-15T10:00:00Z"}
+        parsed, _ = items.parse_item(items.render_item(meta, "body"))
+        self.assertEqual(parsed["journeys"], "J-001,J-002")
+
+
 if __name__ == "__main__":
     unittest.main()

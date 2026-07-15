@@ -60,6 +60,7 @@ class TestE2ECli(unittest.TestCase):
         # set priority through the CLI (Phase 7), then confirm the tree still
         # validates -- priority.set is gate-neutral -- before the spec gate reads it
         self.cli("priority", item, "1")
+        self.cli("journeys", item, "none")
         self.cli("validate")
         self.cli("advance", item, "spec")
         # spec -> design
