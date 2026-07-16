@@ -30,6 +30,10 @@ class InitTest(unittest.TestCase):
         self.assertEqual(config["product"], "demo")
         self.assertEqual(created, sorted(created))
 
+    def test_init_creates_escapes_ledger(self):
+        initrepo.init(self.repo)
+        self.assertTrue((self.repo / ".factory" / "ledgers" / "escapes.jsonl").exists())
+
     def test_init_is_idempotent_and_never_clobbers(self):
         initrepo.init(self.repo)
         marker = self.repo / "docs/factory/brain/vision.md"

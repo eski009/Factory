@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "escape",
+  "type": "object",
+  "required": ["id", "ts", "journey", "finding", "miss_type", "status"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {"type": "string", "pattern": "^esc-[0-9]{4}$"},
+    "ts": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"},
+    "item": {"type": "string"},
+    "journey": {"type": "string", "pattern": "^J-[0-9]{3}$"},
+    "node": {"type": "string"},
+    "finding": {"type": "string", "minLength": 1},
+    "miss_type": {"type": "string",
+                  "enum": ["missing-journey", "missing-node", "missing-oracle",
+                           "missing-contract-detail", "review-rule-gap"]},
+    "evidence": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "status": {"type": "string", "enum": ["open", "promoted"]},
+    "promotion": {"type": "string", "minLength": 1}
+  }
+}

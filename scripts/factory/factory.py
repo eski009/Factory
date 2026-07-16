@@ -9,9 +9,9 @@ import sys
 if __package__ in (None, ""):
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod
+    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod
 else:
-    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod
+    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod
 
 
 def _require_factory_repo(repo):
@@ -85,6 +85,10 @@ def cmd_status(args):
             print(f"corrupt log lines: {corrupt_total} across "
                   f"{corrupt_items} items (skipped; run factory validate)",
                   file=sys.stderr)
+        open_esc = escapes_mod.open_escapes(args.repo)
+        if open_esc:
+            print(f"open escapes: {len(open_esc)} "
+                  "(promote each into a contract/test/oracle/rule/decision)")
     for error in errors:
         print(error, file=sys.stderr)
     return 2 if errors else 0
@@ -313,6 +317,33 @@ def cmd_confirm(args):
     return 0
 
 
+def cmd_escape(args):
+    if not _require_factory_repo(args.repo):
+        return 2
+    try:
+        entry = escapes_mod.file_escape(
+            args.repo, args.journey, args.finding, args.miss_type,
+            item=args.item or "", node=args.node or "",
+            evidence=args.evidence or [])
+    except escapes_mod.EscapeError as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    print(entry["id"])
+    return 0
+
+
+def cmd_promote(args):
+    if not _require_factory_repo(args.repo):
+        return 2
+    try:
+        escapes_mod.promote(args.repo, args.escape, args.via)
+    except escapes_mod.EscapeError as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    print(f"{args.escape} promoted -> {args.via}")
+    return 0
+
+
 def cmd_priority(args):
     if not _require_factory_repo(args.repo):
         return 2
@@ -477,6 +508,22 @@ def main(argv=None):
                        help="record human confirmation of a passed assurance")
     p.add_argument("item")
     p.set_defaults(func=cmd_confirm)
+
+    p = sub.add_parser("escape", help="file a post-assurance human discovery")
+    p.add_argument("journey")
+    p.add_argument("finding")
+    p.add_argument("--miss-type", required=True, dest="miss_type",
+                   choices=list(escapes_mod.MISS_TYPES))
+    p.add_argument("--item", default="")
+    p.add_argument("--node", default="")
+    p.add_argument("--evidence", action="append")
+    p.set_defaults(func=cmd_escape)
+
+    p = sub.add_parser("promote",
+                       help="close an escape by naming its durable promotion")
+    p.add_argument("escape")
+    p.add_argument("--via", required=True)
+    p.set_defaults(func=cmd_promote)
 
     p = sub.add_parser("priority", help="set an item's priority (1+)")
     p.add_argument("item")
