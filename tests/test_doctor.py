@@ -14,8 +14,19 @@ class TestDoctor(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.repo = Path(self.tmp.name)
         initrepo.init(self.repo, product="demo")
+        # hermetic: report() -> worker_readiness() reads the codex login
+        # home; never let these tests touch a developer's real ~/.codex.
+        self.codex_home = tempfile.TemporaryDirectory()
+        self._had_codex_home = "CODEX_HOME" in os.environ
+        self._old_codex_home = os.environ.get("CODEX_HOME")
+        os.environ["CODEX_HOME"] = self.codex_home.name
 
     def tearDown(self):
+        if self._had_codex_home:
+            os.environ["CODEX_HOME"] = self._old_codex_home
+        else:
+            os.environ.pop("CODEX_HOME", None)
+        self.codex_home.cleanup()
         self.tmp.cleanup()
 
     def test_fresh_repo_report(self):

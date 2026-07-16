@@ -343,3 +343,11 @@ class CleanupBackoffTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ChatGptAuthBinaryTest(ChatGptAuthSeedTest):
+    def test_chatgpt_seed_refuses_non_utf8_auth_json(self):
+        (Path(self.login_home.name) / "auth.json").write_bytes(
+            b"\xff\xfe not json")
+        with self.assertRaises(pool.CodexAuthError):
+            pool.seed_config_dir(self.repo, "0001-thing", "codex", "/wt")

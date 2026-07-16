@@ -36,7 +36,7 @@ def _codex_login_ttl():
     src = pool._codex_login_home() / "auth.json"
     try:
         auth = json.loads(src.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return 0
     token = pool._access_token(auth) if isinstance(auth, dict) else None
     exp = pool._jwt_exp(token) if token else None

@@ -157,7 +157,7 @@ def seed_config_dir(repo, item_id, backend, worktree):
             src = _codex_login_home() / "auth.json"
             try:
                 auth = json.loads(src.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
                 raise CodexAuthError(
                     "codex auth 'chatgpt': no readable auth.json at "
                     f"{src} - run `codex` interactively to log in, then retry")
