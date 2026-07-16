@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from scripts.factory import factory
-from scripts.factory.lib import assure, items, logs, machine, paths
+from scripts.factory.lib import assure, items, logs, machine
 
 
 def make_item(repo, stage="assure", paused_from=None):
@@ -63,6 +63,13 @@ class AssureVerbTest(unittest.TestCase):
         path = assure.record_confirmation(self.repo, "0001-a")
         self.assertTrue(path.exists())
         self.assertEqual(logs.count_events(self.repo, "0001-a", "assure.confirmed"), 1)
+
+    def test_confirm_refuses_stale_assure_passed_after_rework(self):
+        make_item(self.repo, stage="waiting-human", paused_from="assure")
+        logs.append_event(self.repo, "0001-a", "assure.passed")
+        logs.append_event(self.repo, "0001-a", "implement.completed")
+        with self.assertRaises(machine.GateError):
+            assure.record_confirmation(self.repo, "0001-a")
 
     def test_cli_waive_and_confirm(self):
         from scripts.factory.lib import initrepo

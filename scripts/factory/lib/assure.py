@@ -3,7 +3,7 @@ assure.confirmed. Journey-assurance spec. Skills and autopilot never call
 these — a real human answers the assure gate (the factory-choice pattern)."""
 
 from . import items, logs, paths
-from .machine import GateError
+from .machine import GateError, _last_index
 
 
 def _require_assure_context(meta):
@@ -28,8 +28,10 @@ def record_waiver(repo, item_id, reason):
 def record_confirmation(repo, item_id):
     meta, _body = items.load_item(repo, item_id)
     _require_assure_context(meta)
-    if logs.count_events(repo, item_id, "assure.passed") == 0:
-        raise GateError("nothing to confirm: assure.passed has not been logged")
+    events = logs.read_events(repo, item_id)
+    if _last_index(events, "assure.passed") <= _last_index(events, "implement.completed"):
+        raise GateError("nothing to confirm: no assure.passed after the "
+                        "latest implementation round")
     path = paths.item_dir(repo, item_id) / "assurance" / "human-confirmation.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
