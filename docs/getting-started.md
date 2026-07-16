@@ -81,12 +81,13 @@ reports its id — it does not start work.
 skill, which drives one item stage by stage:
 
 ```
-idea → triage → spec → design → plan → implement → review → verify → ship → done
+idea → triage → spec → design → plan → implement → review → verify → assure → ship → done
 ```
 
 Each stage maps to its own skill (`factory-triage` covers idea→triage→spec,
 then `factory-spec`, `factory-design`, `factory-plan`, `factory-implement`,
-`factory-review`, `factory-verify`, `factory-ship`). The dispatcher runs
+`factory-review`, `factory-verify`, `factory-assure`, `factory-ship`). The
+dispatcher runs
 `factory validate` before every transition and stops immediately on any
 validation error rather than guessing at corrupt state.
 
@@ -103,6 +104,17 @@ factory choice 0001-dark-mode b --notes "wizard flow reads clearer"
 The next `/factory:run` notices the recorded choice and auto-resumes the
 item back through `design`, which advances it straight to `plan`. `backend`
 items skip the design stage entirely — there's nothing to render.
+
+**The assurance stage.** Between verify and ship, journey-affecting items
+get a fresh-context walk of the affected customer journeys against the
+running product (browser journeys need a browser-automation tool — absent,
+the item parks for you rather than silently passing). Failures route back
+to implement; judgement calls park with a packet. Your two verbs:
+`factory waive <id> --reason "..."` (override with a recorded reason) and
+`factory confirm <id>` (when you've configured `"assure"` in the config
+`gates` list, items pause for your confirmation after passing). Anything
+you still find after shipping: `/factory:escape` files it, and it stays
+open until promoted into a contract, test, oracle, or review rule.
 
 ## 4. The autonomy dial
 

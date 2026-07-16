@@ -4,6 +4,96 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.7.0] - 2026-07-16
+
+### Added
+
+- **Journey assurance — a first-class `assure` stage between verify and
+  ship.** The pipeline is now `idea → triage → spec → design → plan →
+  implement → review → verify → assure → ship → done`. Review asks "is the
+  code sound," verify asks "do the checks pass" — assure asks "can the
+  customer get through it." Every spec must now declare journey impact: a
+  `## Journey impact` section in `spec.md` plus a `journeys` frontmatter
+  field set via the new `factory journeys <id> <none|J-004,...>` verb — the
+  hardened spec-exit gates (design and plan) refuse to advance an item
+  without both. `journeys: none` is a valid, explicit answer that skips
+  assure through the engine's `stage_sequence` (the same mechanism backend
+  items use to skip design); an *absent* declaration never is. An assurance
+  failure routes back to implement on a second bounded rework edge
+  (`assure.rejected`, lifetime cap 2, then blocked with a packet).
+
+- **A round-scoped ship gate over schema-validated evidence.** For
+  journey-affecting items, ship requires
+  `.factory/items/<id>/assurance/verdicts.json` that schema-validates,
+  covers every declared journey and every scenario `impact.json` requires,
+  references evidence files that actually exist under the item dir, and
+  contains no fail or unresolved ambiguity — plus an `assure.passed` (or
+  `assure.waived`) event logged *after* the latest `implement.completed`:
+  the engine's first round-scoped evidence check, so after a rework bounce
+  stale assurance no longer satisfies ship. When the config `gates` list
+  includes `"assure"`, ship additionally requires an equally round-scoped
+  `assure.confirmed` — a recorded waiver is authoritative and satisfies the
+  gate on its own.
+
+- **A durable journey model.** `docs/factory/journeys/`, sibling to the
+  brain: `inventory.md` + `graph.json` are roadmap-like — stage skills
+  maintain them directly — while `contracts/` are brain-like: a stage skill
+  may author a *draft* contract directly, but amending an *approved* one
+  goes through the council-judgement firewall. Brownfield `factory-intake`
+  infers inventory entries from the routes/screens/tests mining it already
+  performs (every entry cited, criticality tagged `(assumption)`), and the
+  init interview harvests the placeholder and those assumptions
+  automatically — zero interview changes. `factory-spec` gains three
+  mechanical duties: **map** the item's behavior onto journey nodes
+  (drafting a contract where an affected journey lacks one), **declare**
+  the impact in `spec.md` and its machine-readable twin `impact.json`, and
+  **set** `factory journeys` — and `factory-bug` seeds `## Journey impact`
+  at intake from the replicated broken node, carried into spec verbatim.
+
+- **A fresh-context journey reviewer + the Browser drive capability.** The
+  assure stage dispatches one fresh journey-reviewer subagent per affected
+  journey — no implementer transcript, no review/verify conclusions, no
+  "this is complete" framing — which walks the journey node by node against
+  the *running product*, writing expectations before acting and capturing
+  screenshot, console, and network evidence. Browser journeys need a
+  browser-automation tool (Playwright MCP, chrome-devtools MCP, or
+  Claude-in-Chrome — a behavioral probe, not tool-pinned); absent, the item
+  parks `waiting-human` with a blocker packet, never a silent pass. CLI/API
+  journeys are driven through the real commands a caller would run, with
+  typed transcripts in place of screenshots. Depth scales with materiality
+  via the tier profiles' new `assure` key: a bug re-walks the broken node,
+  a feature the affected journeys, an epic the full journey surface
+  (`node | affected | full`).
+
+- **Two human-only verbs, engine-enforced.** `factory waive <id> --reason
+  "..."` records a waiver (writes `assurance/waiver.md`, refuses an empty
+  reason); `factory confirm <id>` records the confirmation
+  (`assurance/human-confirmation.md`) when the assure gate is configured.
+  Both are single-writer at the engine level — `factory log` refuses to
+  record `assure.waived`/`assure.confirmed` events, so no skill or
+  autopilot path can fake them — and dispatch auto-resumes a parked item
+  when the waiver or confirmation file appears, exactly like a design
+  choice.
+
+- **The escape register.** A fourth append-only ledger
+  (`.factory/ledgers/escapes.jsonl`, schema-validated per line) for
+  anything a human still finds after assurance: `/factory:escape`
+  classifies the miss conversationally and files it via `factory escape`;
+  the record stays **open** until `factory promote` links it to a contract
+  amendment, regression test, acceptance oracle, council review rule, or
+  brain decision — and `factory status` surfaces the open count until then.
+  That's the compounding loop: escape → improved contract or check → future
+  assurance catches it → fewer human discoveries.
+
+**Migration note.** Items already past spec never hit the hardened
+spec-exit gates, but any pre-existing item reaching assure without a
+journeys declaration parks `waiting-human` with a packet. Unblock it with
+`factory journeys <id> none` — valid even while parked; the engine falls
+back to the unfiltered stage sequence so the item can advance out — or
+with `factory waive <id> --reason "..."`.
+
+Suite: 434 → 505 tests.
+
 ## [0.6.0] - 2026-07-14
 
 ### Added

@@ -12,7 +12,7 @@ Shipping a feature is never one step. It's a dozen: write a spec, pick a design,
 
 Factory is an **assembly line** for exactly that. You drop an idea onto the line; it moves from station to station, and a specialist handles each one. Four rules make it trustworthy:
 
-- **Nothing advances until it passes.** Every station has real checks — a spec must exist, a plan must list tasks, tests must be green. An item can't skip ahead on vibes.
+- **Nothing advances until it passes.** Every station has real checks — a spec must exist, a plan must list tasks, tests must be green — and before anything ships, a fresh-context reviewer walks the affected customer journey against the running product (screenshots, console, network — not vibes). An item can't skip ahead.
 - **A council reviews the work — not a lone bot.** At two points (triage and code review), a panel of AI personas argues it out *with evidence*.
 - **The council learns your taste.** Evidence-backed findings pass a firewall into the product's durable memory, so the council gets sharper on *your* conventions and standards with every review — never generic, never a silent edit. *([more below](#it-learns-your-taste))*
 - **You're interrupted only where judgment matters.** The one built-in human stop is **design**: Factory produces a few real mockups and waits for you to choose. The rest is autonomous.
@@ -28,7 +28,8 @@ flowchart LR
     plan --> implement[implement]
     implement --> review[review]
     review --> verify[verify]
-    verify --> ship[ship]
+    verify --> assure[assure]
+    assure --> ship[ship]
     ship --> done([done])
     spec -. backend skips design .-> plan
 
@@ -41,7 +42,7 @@ flowchart LR
 - 🔵 **Blue = the council.** At **triage** ("build it? at what priority?") and **review** ("does the code actually match the spec?"), six specialist seats — product, architecture, engineering, UI, customer, commercial — weigh in before the item moves on.
 - 🟡 **Amber = you.** **Design** is the single station that pauses for a human. Factory writes 2–4 genuinely different mockup options and waits for your pick. *(Backend-only items skip design — there's nothing to render.)*
 
-In one line: `idea → triage → spec → design → plan → implement → review → verify → ship → done`.
+In one line: `idea → triage → spec → design → plan → implement → review → verify → assure → ship → done`.
 
 ## See it run (60 seconds)
 
@@ -57,7 +58,7 @@ In one line: `idea → triage → spec → design → plan → implement → rev
 factory choice 0001-dark-mode b          ← you skim the mockups and choose B
 
 /factory:run
-   → plan → implement → review → verify → ship → done ✅
+   → plan → implement → review → verify → assure → ship → done ✅
 ```
 
 That's the whole loop: **add → run → pick a design → run → shipped.** The only thing you did by hand was choose the look.
@@ -91,6 +92,7 @@ flowchart LR
 
 - **Autonomous where it can be, human where it should be.** One default stop (design) — and you can dial that up or down.
 - **Evidence, not vibes.** Every stage transition is gate-checked by a deterministic engine; "done" requires proof — a spec on disk, a plan with tasks, green tests.
+- **"Done" means a customer got through it.** Between verify and ship, a fresh-context journey reviewer — no memory of the implementation — walks the affected journeys against the running product and files evidence the engine validates. What it can't run parks for you; what you still find becomes an escape that stays open until it's promoted into a permanent check.
 - **Effort scales to how much the work matters.** Every item is a *bug*, a *feature*, or an *epic*, and Factory sizes the process to match — a bug gets a fast, correctness-only review; a material epic gets the full council and a market focus group. No epic-weight ceremony for a one-line fix.
 - **Portable.** Works on any Claude model; faster-model features are bonuses, never requirements.
 
@@ -139,7 +141,7 @@ Full walkthrough — the design gate, the autonomy dial, where state lives — i
 - A **deterministic, zero-dependency engine** (Python) owns all state and the gate checks. The AI skills drive it but can't bypass a gate. State splits into `.factory/` (machine-owned: work items, council ledgers) and `docs/factory/` (human-readable: the brain, the roadmap, review packets awaiting a decision).
 - **Optional parallel execution.** Turn on *headless workers* and Factory builds independent items concurrently — each in its own isolated git worktree, driven by a headless `claude` or `codex` process — while the orchestrator only collects the results and advances them through the same gates. Off by default; absent, it degrades to in-process building. Both this and the materiality *tiers* are config knobs in `.factory/config.json`.
 - **Full design spec:** [docs/superpowers/specs/2026-07-03-software-factory-design.md](docs/superpowers/specs/2026-07-03-software-factory-design.md)
-- **Tests:** `python3 -m unittest discover -s tests -v` (430+, all green)
+- **Tests:** `python3 -m unittest discover -s tests -v` (505+, all green)
 
 ## Status
 

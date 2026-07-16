@@ -45,7 +45,8 @@ run time (design spec open-question 1).
 ## Trust
 
 Worker output is untrusted until it clears Factory's existing review +
-verify + green-tests gates. `factory work` only fills the `implement`
+verify + green-tests gates (plus assure, for journey-affecting items).
+`factory work` only fills the `implement`
 station; nothing about the gates changes. Set `workers.test_command` so the
 implement station has a real green-check: without it, a worker's plan-tick
 happens with no independent test gate at this stage, and partial or broken
@@ -80,7 +81,7 @@ factory cleanup <id> [--json]
   cannot fix a broken prep offline.
 - **`factory cleanup <id>`** removes the worktree (`git worktree remove
   --force` + `prune`) and the per-worker config dir. The **branch is kept**,
-  so `review`/`verify`/`ship` still operate on `factory/<id>`.
+  so `review`/`verify`/`assure`/`ship` still operate on `factory/<id>`.
 
 **Isolation invariant:** one branch ↔ one worktree ↔ one worker ↔ one config
 dir. `factory provision` guarantees it.
