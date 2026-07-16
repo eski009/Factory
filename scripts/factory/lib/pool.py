@@ -46,7 +46,7 @@ def _jwt_exp(token):
         claims = json.loads(base64.urlsafe_b64decode(padded))
         exp = claims.get("exp")
         return int(exp) if isinstance(exp, (int, float)) else None
-    except (IndexError, ValueError, TypeError, AttributeError):
+    except (IndexError, ValueError, TypeError, AttributeError, OverflowError):
         return None
 
 
@@ -174,9 +174,15 @@ def seed_config_dir(repo, item_id, backend, worktree):
                     f"codex auth 'chatgpt': access token expires in {remaining}s "
                     f"but the run needs {needed}s - run `codex` interactively to "
                     "refresh the login, then retry")
-            (home / "auth.json").write_text(
-                json.dumps(_strip_refresh(auth), indent=2, sort_keys=True) + "\n",
+            os.chmod(home, 0o700)
+            stripped = _strip_refresh(auth)
+            if isinstance(stripped, dict):
+                stripped.pop("OPENAI_API_KEY", None)
+            auth_path = home / "auth.json"
+            auth_path.write_text(
+                json.dumps(stripped, indent=2, sort_keys=True) + "\n",
                 encoding="utf-8")
+            os.chmod(auth_path, 0o600)
         return {"CODEX_HOME": str(home)}
     return {}
 
@@ -260,10 +266,10 @@ def provision(repo, item_id, backend=None, cfg=None):
     try:
         result["config_env"] = seed_config_dir(repo, item_id, backend, wt)
     except CodexAuthError as exc:
-        result["reason"] = "prep_failed"
+        result["reason"] = "auth"
         result["detail"] = str(exc)
         logs.append_event(repo, item_id, "prep.failed",
-                          {"reason": "prep_failed", "stage": "implement",
+                          {"reason": "auth", "stage": "implement",
                            "detail": str(exc)[:500]})
         return result
     result["prepared"] = True

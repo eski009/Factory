@@ -216,7 +216,8 @@ def _looks_auth(obj, raw):
     blob = (json.dumps(obj) + " " + stderr).lower()
     return any(term in blob for term in
                ("invalid api key", "invalid_api_key", "unauthorized",
-                "authentication"))
+                "authentication", "token expired", "not logged in",
+                "codex login"))
 
 
 def _claude_argv(brief, worktree, model, network):

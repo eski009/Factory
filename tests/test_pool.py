@@ -206,11 +206,41 @@ class ChatGptAuthSeedTest(unittest.TestCase):
         with self.assertRaises(pool.CodexAuthError):
             pool.seed_config_dir(self.repo, "0001-thing", "codex", "/wt")
 
-    def test_provision_reports_auth_failure_as_prep_failure(self):
+    def test_provision_reports_auth_failure_with_auth_reason(self):
         result = pool.provision(self.repo, "0001-thing", backend="codex")
         self.assertFalse(result["prepared"])
+        self.assertEqual(result["reason"], "auth")
         self.assertIn("detail", result)
         self.assertTrue(result["detail"])
+
+    def test_chatgpt_seed_auth_file_is_owner_only(self):
+        import stat
+        self._write_login_auth({"access_token": fake_jwt(int(time.time()) + 7200)})
+        env = pool.seed_config_dir(self.repo, "0001-thing", "codex", "/wt")
+        auth_path = Path(env["CODEX_HOME"]) / "auth.json"
+        self.assertEqual(stat.S_IMODE(os.stat(auth_path).st_mode), 0o600)
+        self.assertEqual(stat.S_IMODE(os.stat(Path(env["CODEX_HOME"])).st_mode), 0o700)
+
+    def test_chatgpt_seed_strips_stored_openai_api_key(self):
+        self._write_login_auth({
+            "access_token": fake_jwt(int(time.time()) + 7200),
+            "OPENAI_API_KEY": "sk-stored",
+        })
+        env = pool.seed_config_dir(self.repo, "0001-thing", "codex", "/wt")
+        text = (Path(env["CODEX_HOME"]) / "auth.json").read_text(encoding="utf-8")
+        self.assertNotIn("sk-stored", text)
+        self.assertNotIn("OPENAI_API_KEY", text)
+
+    def test_chatgpt_seed_refuses_non_utf8_auth_json(self):
+        (Path(self.login_home.name) / "auth.json").write_bytes(
+            b"\xff\xfe not json")
+        with self.assertRaises(pool.CodexAuthError):
+            pool.seed_config_dir(self.repo, "0001-thing", "codex", "/wt")
+
+
+class JwtExpTest(unittest.TestCase):
+    def test_jwt_exp_overflow_returns_none(self):
+        self.assertIsNone(pool._jwt_exp(fake_jwt(1e999)))
 
 
 class WorktreeIncludeTest(unittest.TestCase):
@@ -343,11 +373,3 @@ class CleanupBackoffTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-
-class ChatGptAuthBinaryTest(ChatGptAuthSeedTest):
-    def test_chatgpt_seed_refuses_non_utf8_auth_json(self):
-        (Path(self.login_home.name) / "auth.json").write_bytes(
-            b"\xff\xfe not json")
-        with self.assertRaises(pool.CodexAuthError):
-            pool.seed_config_dir(self.repo, "0001-thing", "codex", "/wt")

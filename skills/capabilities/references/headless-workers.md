@@ -17,7 +17,7 @@ Exit codes: `0` succeeded (result `done`, `implement.completed` logged);
 `chatgpt` mode, an expired login); `2` precondition refusal (not at
 `implement`, or no unticked plan tasks); `3` worker attempted but failed —
 read `result.json`'s typed `reason`:
-`crash|timeout|no_changes|red_tests|rate_limited`. `prep_failed` is a
+`crash|timeout|no_changes|red_tests|rate_limited|blocked`. `prep_failed` is a
 `factory provision` outcome, not a `factory work` one — see Scheduler below.
 
 ## Config (`.factory/config.json` → `workers`)
@@ -38,11 +38,14 @@ Two modes per repo, `workers.codex.auth` in `.factory/config.json`:
   token, so parallel runs cannot race the login, and the engine never writes
   the real `~/.codex`. Provision fail-closes unless the access token outlives
   `timeout_seconds` + margin (the message says to run `codex` interactively
-  and retry); mid-run expiry surfaces as reason `auth` → exit 1 → the pool
-  stops with a packet, exactly like a bad key. All workers share the
-  plan rate limits — the pool's staggered launch and backoff already pace
-  that bucket. The engine removes `OPENAI_API_KEY` from chatgpt-mode worker
-  environments so billing never silently flips to the API. `factory doctor
+  and retry); mid-run expiry is classified `auth` → exit 1 → pool-stop when
+  codex reports it recognizably (401/403, "token expired", "not logged in");
+  an unrecognized failure shape surfaces as `crash` and burns the two-strikes
+  retry instead — either way the run fails loudly, never a silent pass. All
+  workers share the plan rate limits — the pool's staggered launch and
+  backoff already pace that bucket. The engine removes `OPENAI_API_KEY` from
+  chatgpt-mode worker environments so billing never silently flips to the
+  API. `factory doctor
   --json` → workers reports `codex_auth` and `codex_login` (remaining token
   seconds). Running `factory work` without provisioning uses your real
   `~/.codex` like an interactive session — fine for one process; the pool

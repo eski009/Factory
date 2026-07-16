@@ -525,6 +525,13 @@ class TestPluginStructure(unittest.TestCase):
         self.assertIn("factory waive", ref)
         self.assertIn("Parking is not failing", ref)
 
+    def test_factory_workers_skill_auth_reason_carve_out(self):
+        text = (ROOT / "skills/factory-workers/SKILL.md").read_text()
+        self.assertIn("a provision refusal with reason `auth`", text)
+        self.assertIn(
+            "Unless the result's reason is `auth` (a chatgpt-mode login "
+            "refusal): that is a setup fault for the whole pool", text)
+
     def test_headless_workers_reference_documents_auth_modes(self):
         ref = (ROOT / "skills/capabilities/references/headless-workers.md").read_text()
         self.assertIn('workers.codex.auth', ref)
