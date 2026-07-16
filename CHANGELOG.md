@@ -4,6 +4,34 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.9.0] - 2026-07-16
+
+### Added
+
+- **DesignSync journeys — the journey model meets the linked design
+  project.** Three additions riding the existing `mcp__claude-design__*`
+  capability, inheriting its doctrine unchanged (interactive sessions only,
+  probe-don't-ask, degrade-never-block, proxy spend, repo files canonical —
+  never a second source of truth). (1) **Visual journey map:** the three
+  surfaces that mutate `docs/factory/journeys/` — intake at seeding end,
+  factory-spec on registering a journey or drafting a contract, and
+  `/factory:escape` after a `contract:` promotion — regenerate a
+  self-contained `factory-journeys.html` flow view (nodes, transitions,
+  criticality, contract status) in the linked project, best-effort and
+  never blocking. (2) **Greenfield frame-pull:** a greenfield repo has no
+  routes to mine, but a linked design project often holds the screens
+  before code exists — intake now pulls its frame/flow structure and emits
+  journey-inventory entries cited `(source: claude-design
+  <project>/<file>)` with `(assumption)`-tagged criticality, which the init
+  interview then puts in front of the owner automatically. (3)
+  **Node-annotated design gate:** pushed mockup options and the
+  chosen-direction note carry the journey nodes their screens serve (from
+  `impact.json`), and a recorded pick may refresh the touched nodes'
+  expectation text in still-draft contracts — never approved ones, which
+  amend only through the council-judgement firewall. No engine changes; the
+  assure stage is untouched (design artifacts never substitute for
+  running-product evidence). Suite: 532 → 536 tests.
+
 ## [0.8.0] - 2026-07-16
 
 ### Added
