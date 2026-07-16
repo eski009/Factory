@@ -28,7 +28,7 @@ class TestPluginStructure(unittest.TestCase):
     def test_commands_have_frontmatter(self):
         commands = sorted((ROOT / "commands").glob("*.md"))
         self.assertEqual([p.stem for p in commands],
-                         ["add", "autopilot", "bug", "init", "packet", "research", "roadmap", "run", "status"])
+                         ["add", "autopilot", "bug", "escape", "init", "packet", "research", "roadmap", "run", "status"])
         for path in commands:
             self.assertRegex(path.read_text(), FRONTMATTER, path.name)
 
@@ -78,6 +78,16 @@ class TestPluginStructure(unittest.TestCase):
         self.assertIn("never answers its own human gates", text.lower())
         self.assertIn("never waives or confirms assurance", text.lower())
         self.assertIn("never files or promotes escapes", text.lower())
+
+    def test_escape_command_wraps_cli_and_links_bugs(self):
+        cmd = ROOT / "commands/escape.md"
+        self.assertTrue(cmd.exists())
+        text = cmd.read_text()
+        self.assertRegex(text, FRONTMATTER, str(cmd))
+        self.assertIn("factory escape", text)
+        self.assertIn("factory promote", text)
+        self.assertIn("factory-bug", text)
+        self.assertIn("miss", text)
 
     def test_roadmap_skill_mentions_factory_add_and_priority(self):
         skill = ROOT / "skills/factory-roadmap/SKILL.md"
