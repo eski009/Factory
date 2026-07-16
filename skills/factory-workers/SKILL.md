@@ -7,7 +7,7 @@ Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.p
 
 You are the Layer-2 scheduler: a bounded pool that keeps **K** headless workers busy across **independent** items, each in its own `factory/<id>` worktree, then advances each result through Factory's *existing* gates. You do the loop/pacing/collect-advance; the engine primitives (`factory next -n`, `factory provision`, `factory work`, `factory cleanup`) do the mechanics. You never type code and never lower a gate — worker output is untrusted until it clears `review` + `verify` + green tests exactly like a subagent's.
 
-Only run this when the **Headless worker** capability (capabilities skill) is present: `workers.enabled` true and the backend CLI + key are ready (`factory doctor --json` → `workers`). Without it, implementation stays on factory-implement's in-process path — do not run a pool.
+Only run this when the **Headless worker** capability (capabilities skill) is present: `workers.enabled` true and the backend CLI + key are ready (`factory doctor --json` → `workers`). Without it, implementation stays on factory-implement's in-process path — do not run a pool. In `chatgpt` auth mode, a provision refusal naming the codex login is a setup fault for the human (re-login, retry) — treat it like the auth pool-stop, not a per-item skip.
 
 ## Read the pool budget
 

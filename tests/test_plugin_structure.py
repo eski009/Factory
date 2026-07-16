@@ -525,6 +525,15 @@ class TestPluginStructure(unittest.TestCase):
         self.assertIn("factory waive", ref)
         self.assertIn("Parking is not failing", ref)
 
+    def test_headless_workers_reference_documents_auth_modes(self):
+        ref = (ROOT / "skills/capabilities/references/headless-workers.md").read_text()
+        self.assertIn('workers.codex.auth', ref)
+        self.assertIn('"chatgpt"', ref)
+        self.assertIn("refresh token", ref)
+        self.assertIn("never writes", ref)
+        self.assertIn("plan rate limits", ref)
+        self.assertIn("factory work` without provisioning", ref)
+
 
 if __name__ == "__main__":
     unittest.main()

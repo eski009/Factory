@@ -4,6 +4,29 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.8.0] - 2026-07-16
+
+### Added
+
+- **Parallel Codex workers on the ChatGPT subscription, not just API keys.**
+  A new `workers.codex.auth` key in `.factory/config.json` — `"key"`
+  (default, unchanged: `OPENAI_API_KEY`/`ANTHROPIC_API_KEY` in the
+  environment) or `"chatgpt"`: `factory provision` copies
+  `~/.codex/auth.json` into each worker's isolated `CODEX_HOME` with the
+  refresh token stripped, so no worker can rotate the login — the pool fans
+  out on one subscription token at any parallelism without racing it, and
+  the engine never writes the real `~/.codex`. Provision fail-closes when
+  the access token wouldn't outlive the run (`timeout_seconds` + margin),
+  naming the fix (log in with `codex` interactively, then retry); mid-run
+  expiry is classified `reason: auth` → exit 1, the same honest pool-stop a
+  bad key already triggers, never a silent retry loop. Chatgpt-mode worker
+  environments have `OPENAI_API_KEY` popped so billing can't silently flip
+  to the API mid-run. `factory doctor --json` → `workers` gains `codex_auth`
+  (the configured mode) and `codex_login` (remaining access-token TTL in
+  seconds). Default mode is `"key"` — existing configs are unaffected.
+
+Suite: 505 → 532 tests.
+
 ## [0.7.0] - 2026-07-16
 
 ### Added
