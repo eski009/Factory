@@ -363,6 +363,12 @@ class SpendValidateTest(unittest.TestCase):
             "0001-x/log.jsonl:1" in e and "must be an object" in e
             for e in errors))
 
+    def test_spend_event_stage_assure_valid(self):
+        errors = initrepo.spend_event_errors(
+            {"provenance": "proxy", "stage": "assure", "source": "factory-assure",
+             "dispatches": 1}, "x")
+        self.assertEqual(errors, [])
+
     def test_valid_spend_and_unknown_events_stay_clean(self):
         self.log_spend({"provenance": "measured", "stage": "review",
                         "source": "factory-review", "dispatches": 6,

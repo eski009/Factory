@@ -473,6 +473,13 @@ class TestPluginStructure(unittest.TestCase):
         self.assertIn("only under `.factory/items/<id>/assurance/`", text)
         self.assertIn("never edit product code", text.lower())
         self.assertIn("not told this feature is complete", text.lower())
+        self.assertIn("expectations.md", text)
+        self.assertIn("APPEND it to `assurance/expectations.md` BEFORE acting", text)
+
+    def test_verify_exit_routes_to_assure(self):
+        text = (ROOT / "skills/factory-verify/SKILL.md").read_text()
+        self.assertIn("factory advance ITEM assure", text)
+        self.assertIn("journeys: none", text)
 
     def test_browser_drive_capability_row_and_reference(self):
         skill = (ROOT / "skills/capabilities/SKILL.md").read_text()

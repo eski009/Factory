@@ -14,8 +14,8 @@ is to discover what the product actually does.
 
 - Never edit product code, factory state, `item.md`, logs, or any file
   outside your evidence directory. You write only under `.factory/items/<id>/assurance/`
-  (screenshots/, console.ndjson, network.ndjson, transcript files) — the
-  orchestrator composes verdicts.json from your report.
+  (expectations.md, screenshots/, console.ndjson, network.ndjson, transcript
+  files) — the orchestrator composes verdicts.json from your report.
 - Launch the product exactly as the contract's Run & fixtures section says.
   If it does not launch, a fixture is missing, or a credential mechanism is
   absent, STOP and report a blocker — never improvise a different launch
@@ -26,7 +26,9 @@ is to discover what the product actually does.
 ## The walk — per node in scope
 
 1. State what the customer currently knows (from the journey so far only).
-2. Predict what the customer expects next — record it BEFORE acting.
+2. Predict what the customer expects next —
+   APPEND it to `assurance/expectations.md` BEFORE acting
+   (one entry per node: journey, node, expectation).
 3. Perform the action (browser: the Browser drive tools; cli/api: the real
    command a customer or caller would run).
 4. Compare expected vs actual.
@@ -48,7 +50,8 @@ resolve it yourself. Anything that stopped the walk is a **blocker**.
 
 Return a structured report: journey id; surface; contract status
 (draft/approved); per scenario — id, verdict, expected, actual, evidence
-paths with types, notes; your pre-recorded expectations (verbatim); console
-and network observations; any blocker detail. The orchestrator persists the
-gate artifacts — your final message is data for it, not a narrative for a
-human.
+paths with types, notes; the path of `assurance/expectations.md` (your
+pre-recorded expectations — the orchestrator reads the file, not a
+retelling); console and network observations; any blocker detail. The
+orchestrator persists the gate artifacts — your final message is data for
+it, not a narrative for a human.

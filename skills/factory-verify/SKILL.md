@@ -9,7 +9,7 @@ Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.p
 
 - **Entry stage:** `verify`. The gate into `verify` already required `reviews/synthesis.md` non-empty and `review.approved` logged.
 - **Artifacts produced:** `items/<id>/verify.md`.
-- **Exit — all pass:** `factory log ITEM verify.green --data '{"tests": "<counts>", "criteria": "<n>/<n>"}'` then `factory advance ITEM ship`. The `ship` gate checks only for the `verify.green` event — which is exactly why it must never be logged on partial evidence.
+- **Exit — all pass:** `factory log ITEM verify.green --data '{"tests": "<counts>", "criteria": "<n>/<n>"}'` then `factory advance ITEM assure`; for an item whose `journeys` frontmatter is `none` (read it from `factory status --json`), the engine routes verify straight to `ship` instead, so attempt `factory advance ITEM ship` in that case. The engine gate is the authority — if it refuses, report the message verbatim, never guess a different stage. The assure entry gate — and, for `journeys: none` items, the ship gate — checks only for the `verify.green` event; that is exactly why it must never be logged on partial evidence.
 - **Exit — any failure:** no log call, no advance. Report to the dispatcher as a stage failure; it applies its own two-strikes-then-blocked rule.
 
 ## REQUIRED SUB-SKILL: superpowers:verification-before-completion
@@ -22,7 +22,7 @@ This whole stage *is* that skill's Iron Law applied to a pipeline gate: no `veri
 2. Run the full test suite (the project's whole suite, not just the tests the plan named) and capture the pass/fail counts.
 3. **Exercise the changed behavior directly**, not just through tests: run the actual app or CLI path each acceptance criterion names — the real command a user or caller would run, observing real output.
 4. For **every** acceptance criterion, write one line: the criterion, the exact command run to check it, and the observed result (verbatim output or a precise summary of it — not "looks right"). Write all of this to `items/<id>/verify.md`.
-5. Only if the suite is fully green **and** every criterion's line shows a pass: log `verify.green` with the real test counts and `criteria` as `"<passed>/<total>"`, then advance to `ship` per the Contract.
+5. Only if the suite is fully green **and** every criterion's line shows a pass: log `verify.green` with the real test counts and `criteria` as `"<passed>/<total>"`, then advance per the Contract.
 6. If the suite has any failure, or any criterion's observed result doesn't match its expectation: stop here. Do not log `verify.green` for the ones that did pass — the event is whole-item evidence, not partial credit. Report the specific failing criteria/tests to the dispatcher.
 
 ## Notes
