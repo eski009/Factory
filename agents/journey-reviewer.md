@@ -15,7 +15,9 @@ is to discover what the product actually does.
 - Never edit product code, factory state, `item.md`, logs, or any file
   outside your evidence directory. You write only under `.factory/items/<id>/assurance/`
   (expectations.md, screenshots/, console.ndjson, network.ndjson, transcript
-  files) — the orchestrator composes verdicts.json from your report.
+  files) — the orchestrator composes verdicts.json from your report. Never
+  write `waiver.md`, `human-confirmation.md`, or `verdicts.json` — those
+  belong to the human verbs and the orchestrator.
 - Launch the product exactly as the contract's Run & fixtures section says.
   If it does not launch, a fixture is missing, or a credential mechanism is
   absent, STOP and report a blocker — never improvise a different launch

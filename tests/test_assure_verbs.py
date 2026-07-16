@@ -101,4 +101,5 @@ class AssureVerbTest(unittest.TestCase):
             with patch("sys.stderr", new_callable=StringIO) as err:
                 code = factory.main(["--repo", str(self.repo), "log", "0001-a", event])
             self.assertEqual(code, 1)
-            self.assertIn("factory waive", err.getvalue() + " factory confirm")
+            self.assertIn("factory waive", err.getvalue())
+            self.assertIn("human verb", err.getvalue())

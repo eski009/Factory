@@ -88,6 +88,7 @@ class TestPluginStructure(unittest.TestCase):
         self.assertIn("factory promote", text)
         self.assertIn("factory-bug", text)
         self.assertIn("miss", text)
+        self.assertIn("missing-journey", text)
 
     def test_roadmap_skill_mentions_factory_add_and_priority(self):
         skill = ROOT / "skills/factory-roadmap/SKILL.md"
@@ -162,6 +163,7 @@ class TestPluginStructure(unittest.TestCase):
         self.assertIn(
             "A human reviews the seeded brain before the first council run "
             "treats it as ground truth", text)
+        self.assertIn("journeys/inventory.md", text)
 
     def test_spec_and_design_reason_against_persona(self):
         self.assertIn("personas.md", (ROOT / "skills/factory-spec/SKILL.md").read_text())
@@ -474,6 +476,9 @@ class TestPluginStructure(unittest.TestCase):
         self.assertIn("never a silent pass", text)
         self.assertIn("one fresh journey-reviewer subagent per affected journey", text)
         self.assertIn("agents/journey-reviewer.md", text)
+        self.assertIn("-assure.md", text)
+        self.assertIn("Fresh round", text)
+        self.assertIn("journey impact undeclared", text)
 
     def test_journey_reviewer_agent_discipline(self):
         agent = ROOT / "agents/journey-reviewer.md"

@@ -30,12 +30,15 @@ path, unchanged.
 Build one question set from four sources:
 
 1. `docs/factory/brain/open-questions.md` — the gaps intake/research couldn't source.
-2. `(assumption)`-tagged claims in `personas.md` / `market.md` — research's
-   guesses, each turned into a confirm-or-correct question.
-3. Brain surfaces still showing the `_Not yet written.` marker (every brain
-   template's placeholder text begins with it — whole-surface placeholders
-   continue with a sentence, personas/market field stubs end at the period —
-   so the prefix is a reliable signal).
+2. `(assumption)`-tagged claims in `personas.md` / `market.md` and
+   `docs/factory/journeys/inventory.md` (e.g. `(assumption)`-tagged
+   criticality) — research's guesses, each turned into a confirm-or-correct
+   question.
+3. Brain surfaces and `docs/factory/journeys/inventory.md` still showing the
+   `_Not yet written.` marker (every brain template's placeholder text begins
+   with it — whole-surface placeholders continue with a sentence,
+   personas/market field stubs end at the period — so the prefix is a
+   reliable signal).
 4. `docs/factory/packets/taste.md` questionnaire items (brownfield only; absent
    in a greenfield scaffold).
 
@@ -110,6 +113,9 @@ When the human gives a real answer:
   "awaiting review," and update any brain citations of
   `docs/factory/packets/taste.md` to the `answered/` path so they don't dangle.
   A partially answered packet stays where it is.
+- **Journey answers** land in `docs/factory/journeys/inventory.md` and
+  `graph.json` (same citation), the one non-brain surface this interview
+  seeds — contracts/ stays untouched.
 
 A skipped / "not sure" answer changes nothing — the item stays parked.
 

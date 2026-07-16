@@ -9,7 +9,7 @@ Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.p
 
 - **Entry stage:** `assure` (the engine's gate already required `verify.green`).
 - **Artifacts produced:** `items/<id>/assurance/` — `run-manifest.json`, `expectations.md`, `verdicts.json`, evidence files (`screenshots/`, `console.ndjson`, `network.ndjson`, transcripts), `blockers.md` when blocked.
-- **Exit:** all scenarios pass → `factory log ITEM assure.passed`, then if `"assure"` is in the config `gates` list, `factory advance ITEM waiting-human --reason "assurance passed - awaiting human confirmation (factory confirm ITEM)"` + `factory packet ITEM`; otherwise `factory advance ITEM ship`. Any objective fail → `factory log ITEM assure.rejected --data '{"round": <n>}'` + `factory advance ITEM implement` (the engine caps rework at 2, then blocked). Ambiguity or blocker → park: `factory advance ITEM waiting-human --reason "<what needs a human>"` + `factory packet ITEM` — never a silent pass, never a self-answered judgement call.
+- **Exit:** all scenarios pass → `factory log ITEM assure.passed`, then always write a confirmation packet `docs/factory/packets/<id>-assure.md` (journeys walked, per-scenario verdict summary, evidence links, draft-contract flags, unresolved judgement calls, a recommended confirmation walkthrough). If `"assure"` is in the config `gates` list, the packet stays in `docs/factory/packets/` and `factory advance ITEM waiting-human --reason "assurance passed - awaiting human confirmation (factory confirm ITEM)"` — the item parks for `factory confirm`; otherwise move the packet to `docs/factory/packets/reports/<id>-assure.md` (the non-nagging home) and `factory advance ITEM ship`. Any objective fail → `factory log ITEM assure.rejected --data '{"round": <n>}'` + `factory advance ITEM implement` (the engine caps rework at 2, then blocked). Ambiguity or blocker → park: `factory advance ITEM waiting-human --reason "<what needs a human>"` + `factory packet ITEM` — never a silent pass, never a self-answered judgement call.
 
 ## Entry check
 
@@ -22,6 +22,12 @@ engine's round-scoped gate is the authority and will refuse a stale answer).
 This mirrors factory-design's entry check: the stage never re-asks a
 question a human already answered.
 
+An item that arrives here with no `journeys` declaration (pre-upgrade work), or
+a declared item missing `assurance/impact.json`, parks the same way: `factory
+advance ITEM waiting-human --reason "journey impact undeclared - factory
+journeys ITEM <none|J-...> (or factory waive)"` + `factory packet ITEM`. Never
+guess an impact on the item's behalf.
+
 Review asked "is the code sound"; verify asked "do the checks pass"; this stage asks **"can the customer get through it"** — against the running product, in a context that has never seen the implementation.
 
 ## Read first
@@ -29,6 +35,12 @@ Review asked "is the code sound"; verify asked "do the checks pass"; this stage 
 `items/<id>/spec.md` (`## Journey impact`), `items/<id>/assurance/impact.json`, `docs/factory/journeys/graph.json`, and each affected journey's contract under `docs/factory/journeys/contracts/`. Read the item's tier from `factory status --json` and the assure depth from `factory doctor --json` → `tiers` → `assure`: `node` = the changed node plus its immediate transition (bug), `affected` = every affected journey's required scenarios including interruption paths (feature), `full` = affected plus core journeys the item touches, including adjacent journeys where state carries across (epic).
 
 ## Dispatch — one fresh journey-reviewer subagent per affected journey
+
+**Fresh round:** delete the prior round's assurance outputs first —
+`run-manifest.json`, `expectations.md`, `verdicts.json`, `screenshots/`,
+`console.ndjson`, `network.ndjson`, `blockers.md` (keep `impact.json`; only
+the spec stage rewrites it) — so no stale evidence can satisfy this round's
+gate.
 
 Dispatch `agents/journey-reviewer.md` once per affected journey, sequentially, at the most-capable model tier (references/model-tiering.md) — and on a different model from the one that ran implement when the session supports model overrides. Compose each reviewer's prompt ONLY from this input allowlist:
 
@@ -51,6 +63,7 @@ The reviewer returns a structured report and writes ONLY evidence files under `i
 
 - `run-manifest.json` — what was launched and driven, per journey (commands, urls, fixture state, reviewer model).
 - `verdicts.json` — per journey, per scenario: verdict, expected, actual, typed evidence refs (`screenshot | dom | console | network | transcript`, paths relative to the item dir). Shape: `schemas/assurance-verdicts.schema.json`; every declared journey and every impact.json scenario must be covered — the ship gate refuses gaps, missing evidence files, and any non-pass verdict.
+- On an all-pass verdict, `docs/factory/packets/<id>-assure.md` — the confirmation packet from the Contract Exit (journeys walked, per-scenario verdict summary, evidence links, draft-contract flags, unresolved judgement calls, a recommended confirmation walkthrough), always produced, never skipped.
 
 Then take the Exit branch that matches the verdicts. A draft contract never blocks assurance, but flag it in the packet: "contract is draft — confirm it reflects intent." This skill **never runs `factory waive` or `factory confirm`** — those are the human's verbs, exactly like `factory choice`; an unattended run leaves parked items parked.
 

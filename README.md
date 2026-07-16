@@ -2,7 +2,7 @@
 
 > **From idea to shipped — on an assembly line of AI specialists, inside [Claude Code](https://claude.com/claude-code).**
 
-You give Factory a feature idea (or a whole PRD, or an existing codebase). It carries that idea all the way to merged, tested code — triage, spec, design, build, review, ship — with a team of AI specialists doing the work and a review *council* that checks the work — and learns your taste as it goes. It stops to ask you exactly one kind of question: **which design direction do you want.** Everything else runs on its own.
+You give Factory a feature idea (or a whole PRD, or an existing codebase). It carries that idea all the way to merged, tested code — triage, spec, design, build, review, ship — with a team of AI specialists doing the work and a review *council* that checks the work — and learns your taste as it goes. It stops for you where judgment lives: **which design direction do you want** — and, when it can't honestly assure a customer journey, it parks and asks rather than guessing. Everything else runs on its own.
 
 Runs on any Claude model.
 
