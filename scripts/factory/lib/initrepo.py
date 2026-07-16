@@ -153,6 +153,18 @@ def validate_tree(repo):
                     if event.get("event") == "spend":
                         errors.extend(spend_event_errors(
                             event.get("data"), f"{sub.name}/log.jsonl:{lineno}"))
+            for rel, schema_name in (("assurance/impact.json", "assurance-impact"),
+                                     ("assurance/verdicts.json", "assurance-verdicts")):
+                apath = sub / rel
+                if apath.exists():
+                    try:
+                        data = json.loads(apath.read_text(
+                            encoding="utf-8", errors="replace"))
+                    except json.JSONDecodeError as exc:
+                        errors.append(f"{sub.name}/{rel}: invalid JSON ({exc})")
+                        continue
+                    errors.extend(validate(data, load_schema(schema_name),
+                                           f"{sub.name}/{rel}"))
             if meta is not None and not schema_errors and log_valid:
                 expected = "idea"
                 for event in log_events:
@@ -164,6 +176,15 @@ def validate_tree(repo):
                     errors.append(
                         f"{sub.name}: stage {meta['stage']!r} does not match "
                         f"log (expected {expected!r})")
+    graph_path = paths.docs_root(repo) / "journeys" / "graph.json"
+    if graph_path.exists():
+        try:
+            graph = json.loads(graph_path.read_text(
+                encoding="utf-8", errors="replace"))
+            errors.extend(validate(graph, load_schema("journey-graph"),
+                                   "journeys/graph.json"))
+        except json.JSONDecodeError as exc:
+            errors.append(f"journeys/graph.json: invalid JSON ({exc})")
     entries = {}
     clean = {}
     for name in LEDGERS:

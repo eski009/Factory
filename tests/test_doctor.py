@@ -82,6 +82,10 @@ class TestDoctor(unittest.TestCase):
         self.assertEqual(r["tiers"]["epic"]["research"], "deep")
         self.assertEqual(r["tiers"]["feature"]["review"], "full")
 
+    def test_doctor_tiers_include_assure(self):
+        report = doctor.report(self.repo)
+        self.assertEqual(report["tiers"]["bug"]["assure"], "node")
+
 
 if __name__ == "__main__":
     unittest.main()

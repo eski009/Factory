@@ -260,6 +260,28 @@ class InitTest(unittest.TestCase):
         self.assertTrue(
             any("log.jsonl:2: invalid event" in e for e in errors), errors)
 
+    def test_validate_flags_bad_assurance_artifacts(self):
+        initrepo.init(self.repo)
+        meta = {"id": "0001-a", "title": "A", "stage": "assure", "kind": "ui",
+                "journeys": "J-001",
+                "created": "2026-07-15T10:00:00Z", "updated": "2026-07-15T10:00:00Z"}
+        items.save_item(self.repo, meta, "# A\n")
+        adir = paths.item_dir(self.repo, "0001-a") / "assurance"
+        adir.mkdir(parents=True)
+        (adir / "verdicts.json").write_text('{"nope": true}', encoding="utf-8")
+        (adir / "impact.json").write_text('not json', encoding="utf-8")
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any("verdicts.json" in e for e in errors))
+        self.assertTrue(any("impact.json" in e for e in errors))
+
+    def test_validate_flags_bad_journey_graph(self):
+        initrepo.init(self.repo)
+        graph = paths.docs_root(self.repo) / "journeys" / "graph.json"
+        graph.parent.mkdir(parents=True, exist_ok=True)
+        graph.write_text('{"journeys": [{"id": "banana"}]}', encoding="utf-8")
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any("graph.json" in e for e in errors))
+
     def test_validate_flags_event_dict_missing_keys(self):
         # A dict line missing the required "event"/"ts" keys (append_event
         # writes both unconditionally) is corrupt at the same boundary

@@ -3,7 +3,8 @@
 from . import cost, items, logs, paths
 
 ARTIFACTS = ("triage.md", "spec.md", "plan.md", "design/choice.md",
-             "reviews/synthesis.md")
+             "reviews/synthesis.md", "assurance/impact.json",
+             "assurance/verdicts.json")
 
 
 def render_packet(repo, item_id):
@@ -28,7 +29,9 @@ def render_packet(repo, item_id):
     lines += cost.render_receipt(cost.summarize(repo, item_id)).splitlines()
     lines += ["", "## Respond",
               "Reply in session, or use the factory CLI to record your",
-              "decision (for a design pause: `factory choice <id> <option>`),",
+              "decision (design pause: `factory choice <id> <option>`;",
+              "assurance pause: `factory confirm <id>` or",
+              '`factory waive <id> --reason "..."`),',
               "then run `/factory:run` to resume.", ""]
     return "\n".join(lines)
 

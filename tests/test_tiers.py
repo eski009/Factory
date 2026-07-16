@@ -25,11 +25,11 @@ class TierProfileTest(unittest.TestCase):
 
     def test_defaults(self):
         self.assertEqual(tiers.profile(self.repo, "epic"),
-                         {"research": "deep", "review": "full"})
+                         {"research": "deep", "review": "full", "assure": "full"})
         self.assertEqual(tiers.profile(self.repo, "feature"),
-                         {"research": "web", "review": "full"})
+                         {"research": "web", "review": "full", "assure": "affected"})
         self.assertEqual(tiers.profile(self.repo, "bug"),
-                         {"research": "off", "review": "light"})
+                         {"research": "off", "review": "light", "assure": "node"})
 
     def test_unknown_tier_falls_back_to_feature(self):
         self.assertEqual(tiers.profile(self.repo, "mystery"),
@@ -49,6 +49,15 @@ class TierProfileTest(unittest.TestCase):
         _set_tiers(self.repo, {"bug": {"review": "medium"}})
         errors = initrepo.validate_tree(self.repo)
         self.assertTrue(any("review" in e for e in errors), errors)
+
+    def test_assure_defaults_per_tier(self):
+        self.assertEqual(tiers.profile(self.repo, "epic")["assure"], "full")
+        self.assertEqual(tiers.profile(self.repo, "feature")["assure"], "affected")
+        self.assertEqual(tiers.profile(self.repo, "bug")["assure"], "node")
+
+    def test_assure_config_override(self):
+        _set_tiers(self.repo, {"bug": {"assure": "affected"}})
+        self.assertEqual(tiers.profile(self.repo, "bug")["assure"], "affected")
 
 
 if __name__ == "__main__":
