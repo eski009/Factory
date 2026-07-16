@@ -20,6 +20,11 @@ def record_waiver(repo, item_id, reason):
         raise GateError("a waiver requires a non-empty --reason")
     meta, _body = items.load_item(repo, item_id)
     _require_assure_context(meta)
+    path = paths.item_dir(repo, item_id) / "assurance" / "waiver.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        f"# Assurance waiver\n\n- ts: {logs.now_stamp()}\n\n{reason.strip()}\n",
+        encoding="utf-8")
     logs.append_event(repo, item_id, "assure.waived",
                       {"reason": reason.strip()})
     return meta

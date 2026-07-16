@@ -179,6 +179,10 @@ def cmd_log(args):
         except json.JSONDecodeError as exc:
             print(f"--data is not valid JSON: {exc}", file=sys.stderr)
             return 1
+    if args.event in ("assure.waived", "assure.confirmed"):
+        print(f"{args.event} is written only by its human verb "
+              "(factory waive / factory confirm)", file=sys.stderr)
+        return 1
     try:
         items.load_item(args.repo, args.item)
     except items.ItemError as exc:

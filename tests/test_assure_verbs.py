@@ -85,3 +85,20 @@ class AssureVerbTest(unittest.TestCase):
                                  "--reason", "   "])
         self.assertEqual(code, 2)
         self.assertIn("refused", err.getvalue())
+
+    def test_waiver_writes_artifact_file(self):
+        make_item(self.repo)
+        assure.record_waiver(self.repo, "0001-a", "no browser here")
+        path = Path(self.repo) / ".factory" / "items" / "0001-a" / "assurance" / "waiver.md"
+        self.assertTrue(path.exists())
+        self.assertIn("no browser here", path.read_text(encoding="utf-8"))
+
+    def test_cmd_log_refuses_human_only_events(self):
+        from scripts.factory.lib import initrepo
+        initrepo.init(self.repo)
+        make_item(self.repo)
+        for event in ("assure.waived", "assure.confirmed"):
+            with patch("sys.stderr", new_callable=StringIO) as err:
+                code = factory.main(["--repo", str(self.repo), "log", "0001-a", event])
+            self.assertEqual(code, 1)
+            self.assertIn("factory waive", err.getvalue() + " factory confirm")
