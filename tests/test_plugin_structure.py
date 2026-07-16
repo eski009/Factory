@@ -355,6 +355,20 @@ class TestPluginStructure(unittest.TestCase):
         self.assertIn("replaces", ref)
         self.assertIn("fallback tokens", ref)
 
+    def test_designsync_journeys_section(self):
+        ref = (ROOT / "skills/capabilities/references/designsync.md").read_text()
+        self.assertIn("## Journeys", ref)
+        self.assertIn("factory-journeys.html", ref)
+        self.assertIn("(source: claude-design", ref)
+        self.assertIn("never contracts/", ref)
+        self.assertIn("never a second source of truth", ref)
+
+    def test_intake_greenfield_frame_pull(self):
+        text = (ROOT / "skills/factory-intake/SKILL.md").read_text()
+        self.assertIn("designsync_project", text)
+        self.assertIn("(source: claude-design", text)
+        self.assertIn("factory-journeys.html", text)
+
     def test_factory_design_entry_check_three_way_branch(self):
         text = (ROOT / "skills/factory-design/SKILL.md").read_text()
         self.assertIn("Absent or empty", text)

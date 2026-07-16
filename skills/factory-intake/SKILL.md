@@ -79,8 +79,15 @@ Same citation rule as above: every claim needs `(source: <path>)`.
   guess at intake — tag it `(assumption)`; every entry cites its source
   like any other claim. Never invent a journey the code doesn't evidence —
   an uncertain flow goes to `open-questions.md` instead. Greenfield repos
-  skip this collector: the templates stay placeholder and the init
-  interview asks the owner.
+  skip the repo-mining half — but when any
+  `mcp__claude-design__*` tool is present and `.factory/config.json` sets
+  `designsync_project` (see the capabilities skill's references/designsync.md
+  `## Journeys`), pull the linked project's frame/flow structure instead and
+  emit inventory entries from screen sequences, each cited
+  `(source: claude-design <project>/<file>)` with `(assumption)`-tagged
+  criticality and `status: inventory` — frames are hypotheses the init
+  interview puts in front of the owner. Otherwise the templates stay
+  placeholder and the interview asks unaided.
 
 **2. Taste packet.** Write `docs/factory/packets/taste.md`, a questionnaire
 for the human covering: 3 products whose UI they admire and why; hard
@@ -103,7 +110,10 @@ pass, is how taste keeps sharpening after seeding.
 
 End by listing which surfaces are still thin (little or no real content) —
 this tells the user what the triage council will treat as open questions
-rather than settled ground.
+rather than settled ground. When the DesignSync capability is present and
+the journey inventory was seeded or changed, regenerate the linked
+project's factory-journeys.html map per references/designsync.md
+`## Journeys` — best-effort, never blocking, one proxy spend event.
 
 ## Hard gate
 

@@ -50,3 +50,33 @@ Provenance is `proxy` with no `tokens` key, because main-loop MCP calls surface 
 ## Interactive-only
 
 The `mcp__claude-design__*` family depends on an interactive claude.ai login, so it is never attempted in headless, scheduled, or autopilot runs (see `references/scheduling.md`) — those runs don't have a session to log in with, and pull/push semantics assume a human is available to reconcile the interaction if it comes back oddly. Autopilot and other unattended runs skip the pull/push entirely and rely on `design-system.md`, same as any session where the MCP simply isn't present. A missing tool, a missing `designsync_project` link, or a failed MCP call falls through silently to `design-system.md` — the degraded path is the tested contract, not an error state.
+
+## Journeys
+
+The journey model (`docs/factory/journeys/`) gets the same convenience-mirror
+treatment as design tokens — repo files canonical, the linked project never a
+second source of truth:
+
+- **Visual map (push).** The three surfaces that mutate the journey model —
+  factory-intake at the end of seeding, factory-spec when it registers a
+  journey or drafts a contract, and `/factory:escape` after a `contract:`
+  promotion — regenerate `factory-journeys.html` in the linked project via
+  `mcp__claude-design__write_files`: one self-contained HTML flow view built
+  from `graph.json` (nodes, transitions, criticality, contract status),
+  replacing the previous file. Strictly best-effort: a failed push never
+  blocks the stage, and each round-trip logs one proxy spend event.
+- **Greenfield frame-pull (intake only).** A greenfield repo has no routes to
+  mine, but a linked design project often holds the product's screens before
+  any code exists. When the tool family is present and `designsync_project`
+  is set, factory-intake reads the project's frame/flow structure
+  (`mcp__claude-design__list_files` + `read_file`) and emits journey-inventory
+  entries from screen sequences — each cited
+  `(source: claude-design <project>/<file>)`, criticality tagged
+  `(assumption)`, `status: inventory`, never contracts/. Frames are
+  hypotheses, not evidence: the init interview's normal assumption-harvest
+  puts every inferred journey in front of the human. Without the capability,
+  greenfield intake is unchanged.
+- **What never happens here:** no pull ever touches `contracts/` (drafts are
+  the spec stage's job; approved contracts amend only through the
+  council-judgement firewall), and no design artifact ever substitutes for
+  the assure stage's running-product evidence.
