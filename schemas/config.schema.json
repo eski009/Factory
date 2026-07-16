@@ -82,7 +82,8 @@
           "additionalProperties": false,
           "properties": {
             "sandbox": {"type": "string",
-                        "enum": ["workspace-write", "danger-full-access"]}
+                        "enum": ["workspace-write", "danger-full-access"]},
+            "auth": {"type": "string", "enum": ["key", "chatgpt"]}
           }
         },
         "retry": {

@@ -2,10 +2,19 @@ import json
 import os
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
 from scripts.factory.lib import initrepo, items, logs, paths, pool
+
+
+def fake_jwt(exp):
+    import base64, json as _json
+    def seg(obj):
+        raw = base64.urlsafe_b64encode(_json.dumps(obj).encode()).decode()
+        return raw.rstrip("=")
+    return f"{seg({'alg': 'none'})}.{seg({'exp': exp})}.sig"
 
 
 def _git(repo, *args):
@@ -106,9 +115,89 @@ class SeedConfigDirTest(unittest.TestCase):
         self.assertIn("CODEX_HOME", env)
         self.assertTrue(Path(env["CODEX_HOME"]).is_dir())
 
+    def test_key_mode_home_stays_empty(self):
+        # default config (no workers.codex.auth): byte-identical to today's
+        # behavior — bare CODEX_HOME return, no auth.json written.
+        env = pool.seed_config_dir(self.repo, "0001-thing", "codex", "/wt")
+        expected_home = str(pool._worker_home(self.repo, "0001-thing"))
+        self.assertEqual(env, {"CODEX_HOME": expected_home})
+        self.assertFalse((Path(env["CODEX_HOME"]) / "auth.json").exists())
+
     def test_stub_backend_has_no_config_env(self):
         self.assertEqual(
             pool.seed_config_dir(self.repo, "0001-thing", "stub", "/wt"), {})
+
+
+class ChatGptAuthSeedTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        _init_git_repo(self.repo)
+        initrepo.init(self.repo)
+        _make_item(self.repo)
+        _set_workers(self.repo, {"codex": {"auth": "chatgpt"}})
+        self.login_home = tempfile.TemporaryDirectory()
+        self._had_codex_home = "CODEX_HOME" in os.environ
+        self._old_codex_home = os.environ.get("CODEX_HOME")
+        os.environ["CODEX_HOME"] = self.login_home.name
+
+    def tearDown(self):
+        if self._had_codex_home:
+            os.environ["CODEX_HOME"] = self._old_codex_home
+        else:
+            os.environ.pop("CODEX_HOME", None)
+        self.login_home.cleanup()
+        self.tmp.cleanup()
+
+    def _write_login_auth(self, data):
+        (Path(self.login_home.name) / "auth.json").write_text(
+            json.dumps(data), encoding="utf-8")
+
+    def test_chatgpt_seed_strips_refresh_and_preserves_unknown_fields(self):
+        self._write_login_auth({
+            "tokens": {
+                "access_token": fake_jwt(int(time.time()) + 7200),
+                "refresh_token": "SECRET",
+                "account_id": "acc",
+            },
+            "custom": 1,
+        })
+        env = pool.seed_config_dir(self.repo, "0001-thing", "codex", "/wt")
+        auth_path = Path(env["CODEX_HOME"]) / "auth.json"
+        self.assertTrue(auth_path.exists())
+        text = auth_path.read_text(encoding="utf-8")
+        self.assertNotIn("SECRET", text)
+        self.assertNotIn("refresh_token", text)
+        data = json.loads(text)
+        self.assertEqual(data["tokens"]["account_id"], "acc")
+        self.assertEqual(data["custom"], 1)
+        self.assertIn("access_token", data["tokens"])
+
+    def test_chatgpt_seed_accepts_flat_access_token(self):
+        self._write_login_auth({"access_token": fake_jwt(int(time.time()) + 7200)})
+        env = pool.seed_config_dir(self.repo, "0001-thing", "codex", "/wt")
+        self.assertTrue((Path(env["CODEX_HOME"]) / "auth.json").exists())
+
+    def test_chatgpt_seed_refuses_stale_token(self):
+        self._write_login_auth({"access_token": fake_jwt(int(time.time()) + 60)})
+        with self.assertRaises(pool.CodexAuthError) as ctx:
+            pool.seed_config_dir(self.repo, "0001-thing", "codex", "/wt")
+        msg = str(ctx.exception).lower()
+        self.assertIn("codex", msg)
+        self.assertIn("retry", msg)
+
+    def test_chatgpt_seed_refuses_missing_or_undecodable(self):
+        with self.assertRaises(pool.CodexAuthError):
+            pool.seed_config_dir(self.repo, "0001-thing", "codex", "/wt")
+        self._write_login_auth({"access_token": "garbage"})
+        with self.assertRaises(pool.CodexAuthError):
+            pool.seed_config_dir(self.repo, "0001-thing", "codex", "/wt")
+
+    def test_provision_reports_auth_failure_as_prep_failure(self):
+        result = pool.provision(self.repo, "0001-thing", backend="codex")
+        self.assertFalse(result["prepared"])
+        self.assertIn("detail", result)
+        self.assertTrue(result["detail"])
 
 
 class WorktreeIncludeTest(unittest.TestCase):

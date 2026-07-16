@@ -288,6 +288,25 @@ class InitTest(unittest.TestCase):
         errors = initrepo.validate_tree(self.repo)
         self.assertTrue(any("graph.json" in e for e in errors))
 
+    def test_validate_accepts_workers_codex_auth_chatgpt(self):
+        initrepo.init(self.repo)
+        cfg = self.repo / ".factory/config.json"
+        data = json.loads(cfg.read_text())
+        data["workers"] = {"codex": {"auth": "chatgpt"}}
+        cfg.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n",
+                       encoding="utf-8")
+        self.assertEqual(initrepo.validate_tree(self.repo), [])
+
+    def test_validate_rejects_bad_workers_codex_auth(self):
+        initrepo.init(self.repo)
+        cfg = self.repo / ".factory/config.json"
+        data = json.loads(cfg.read_text())
+        data["workers"] = {"codex": {"auth": "bogus"}}
+        cfg.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n",
+                       encoding="utf-8")
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any("auth" in e for e in errors), errors)
+
     def test_validate_flags_event_dict_missing_keys(self):
         # A dict line missing the required "event"/"ts" keys (append_event
         # writes both unconditionally) is corrupt at the same boundary
