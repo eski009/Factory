@@ -145,4 +145,8 @@ after it rather than after research): "A human reviews the seeded brain before t
 
 Report: how many questions were asked, how many resolved (with where each answer
 landed), how many skipped or parked, and whether the taste packet was fully or
-partially consumed. Then present the assembled brain for review and stop.
+partially consumed. If journey answers changed the inventory and any
+`mcp__claude-design__*` tool is present with `designsync_project` configured,
+regenerate the linked project's `factory-journeys.html` map (capabilities
+skill's `references/designsync.md` `## Journeys`) — best-effort, never
+blocking. Then present the assembled brain for review and stop.

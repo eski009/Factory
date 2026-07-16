@@ -83,7 +83,8 @@ Same citation rule as above: every claim needs `(source: <path>)`.
   `mcp__claude-design__*` tool is present and `.factory/config.json` sets
   `designsync_project` (see the capabilities skill's references/designsync.md
   `## Journeys`), pull the linked project's frame/flow structure instead and
-  emit inventory entries from screen sequences, each cited
+  emit inventory entries (inventory.md plus matching graph.json records,
+  same J-NNN ids) from screen sequences, each cited
   `(source: claude-design <project>/<file>)` with `(assumption)`-tagged
   criticality and `status: inventory` — frames are hypotheses the init
   interview puts in front of the owner. Otherwise the templates stay
@@ -110,10 +111,12 @@ pass, is how taste keeps sharpening after seeding.
 
 End by listing which surfaces are still thin (little or no real content) —
 this tells the user what the triage council will treat as open questions
-rather than settled ground. When the DesignSync capability is present and
+rather than settled ground. When the DesignSync capability is present,
+`designsync_project` is configured, and
 the journey inventory was seeded or changed, regenerate the linked
 project's factory-journeys.html map per references/designsync.md
-`## Journeys` — best-effort, never blocking, one proxy spend event.
+`## Journeys` — best-effort, never blocking (no spend event: spend is
+item-scoped and no item exists at seeding).
 
 ## Hard gate
 
