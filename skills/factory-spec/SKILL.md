@@ -57,7 +57,12 @@ three duties run for every item, in order:
    profile (`factory doctor --json` → tiers: bug `node`, feature
    `affected`, epic `full`). Amending a `status: approved` contract is
    NEVER done directly — that goes through a `council-judgement` bid with
-   `--surface journeys/contracts/<file>`.
+   `--surface journeys/contracts/<file>`. When any `mcp__claude-design__*`
+   tool is present and `designsync_project` is configured, regenerate the
+   linked project's `factory-journeys.html` map after registering a
+   journey or drafting a contract (capabilities skill's
+   `references/designsync.md` `## Journeys`) — best-effort, never
+   blocking, one proxy spend event.
 2. **Declare.** Write the `## Journey impact` spec section (see structure
    below) AND its machine twin `.factory/items/<id>/assurance/impact.json`
    (shape: `schemas/assurance-impact.schema.json` — per journey: id,

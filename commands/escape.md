@@ -24,5 +24,9 @@ and read back the escape id.
 An escape stays open until it is promoted into a durable check — say so.
 When the human (or a later council judgement) lands the promotion, close it:
 `factory promote <esc-id> --via <jdg-NNNN|test:path|contract:path|oracle:ref|decision:ref>`.
+After a `contract:` promotion, if any `mcp__claude-design__*` tool is
+present and `designsync_project` is configured, regenerate the linked
+project's `factory-journeys.html` map (capabilities skill's
+`references/designsync.md` `## Journeys`) — best-effort, never blocking.
 `factory status` nags the open count until then. Never file escapes on the
 factory's own behalf — this command is for what a HUMAN found.

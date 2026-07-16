@@ -555,6 +555,19 @@ class TestPluginStructure(unittest.TestCase):
         self.assertIn("plan rate limits", ref)
         self.assertIn("factory work` without provisioning", ref)
 
+    def test_spec_and_escape_push_journey_map(self):
+        spec = (ROOT / "skills/factory-spec/SKILL.md").read_text()
+        self.assertIn("factory-journeys.html", spec)
+        esc = (ROOT / "commands/escape.md").read_text()
+        self.assertIn("factory-journeys.html", esc)
+
+    def test_design_gate_journey_annotations(self):
+        text = (ROOT / "skills/factory-design/SKILL.md").read_text()
+        self.assertIn("impact.json", text)
+        self.assertIn("journey node", text)
+        self.assertIn("still-draft contract", text)
+        self.assertIn("never an approved contract", text)
+
 
 if __name__ == "__main__":
     unittest.main()
