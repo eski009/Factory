@@ -142,9 +142,11 @@ class TestPluginCoherence(unittest.TestCase):
         # must sit between Behavior and Non-goals in BOTH.
         for rel in ("skills/factory-spec/SKILL.md", "agents/spec-writer.md"):
             text = read(ROOT / rel)
-            b = text.index("## Behavior`")
-            j = text.index("## Journey impact`")
-            n = text.index("## Non-goals`")
+            # anchor on the dash-bullet form so prose mentions of the section
+            # names elsewhere in the file cannot satisfy the ordering check
+            b = text.index("- `## Behavior`")
+            j = text.index("- `## Journey impact`")
+            n = text.index("- `## Non-goals`")
             self.assertTrue(b < j < n, f"{rel}: Journey impact must sit between Behavior and Non-goals")
 
 
