@@ -203,6 +203,12 @@ class InitTest(unittest.TestCase):
         self.assertTrue((self.repo / "docs/factory/brain/personas.md").exists())
         self.assertTrue((self.repo / "docs/factory/brain/market.md").exists())
 
+    def test_init_scaffolds_journeys_and_tree_validates(self):
+        initrepo.init(self.repo)
+        self.assertTrue((self.repo / "docs" / "factory" / "journeys" / "inventory.md").exists())
+        self.assertTrue((self.repo / "docs" / "factory" / "journeys" / "graph.json").exists())
+        self.assertEqual(initrepo.validate_tree(self.repo), [])
+
     def test_validate_flags_undecodable_config(self):
         # Item spec 0009 §1: byte corruption lands in the existing
         # invalid-JSON flag path — validate never tracebacks.

@@ -412,6 +412,18 @@ class TestPluginStructure(unittest.TestCase):
         self.assertIn(
             "requires a judgement amending the zero-network rule first", ref)
 
+    def test_journeys_templates_exist_and_validate(self):
+        inv = ROOT / "templates/docs-factory/journeys/inventory.md"
+        graph = ROOT / "templates/docs-factory/journeys/graph.json"
+        self.assertTrue(inv.exists())
+        self.assertTrue(graph.exists())
+        self.assertIn("_Not yet written.", inv.read_text())
+        import json as _json
+        from scripts.factory.lib.initrepo import load_schema
+        from scripts.factory.lib.validate import validate
+        data = _json.loads(graph.read_text())
+        self.assertEqual(validate(data, load_schema("journey-graph"), "graph"), [])
+
 
 if __name__ == "__main__":
     unittest.main()
