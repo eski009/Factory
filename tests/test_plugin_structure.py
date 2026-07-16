@@ -441,6 +441,11 @@ class TestPluginStructure(unittest.TestCase):
         self.assertIn("status: draft", text)
         self.assertIn("Run & fixtures", text)
 
+    def test_bug_intake_seeds_journey_impact(self):
+        text = (ROOT / "skills/factory-bug/SKILL.md").read_text()
+        self.assertIn("## Journey impact (seeded at bug intake — carry into spec.md verbatim)", text)
+        self.assertIn("immediate transition", text)
+
 
 if __name__ == "__main__":
     unittest.main()

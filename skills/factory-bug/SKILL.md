@@ -48,6 +48,16 @@ The core promise: **we never claim a bug is fixed when it isn't.** The recorded 
 
    These two criteria are non-optional. The spec stage carries them verbatim into `spec.md`, where the verify stage's Iron Law enforces them with fresh evidence.
 
+   Replication almost always identifies the broken journey node precisely,
+   so seed the impact too: append a section titled exactly
+   `## Journey impact (seeded at bug intake — carry into spec.md verbatim)`
+   naming the affected journey id from `docs/factory/journeys/graph.json`,
+   the changed node, and the immediate transition — the bug tier's assure
+   depth (`node`) walks exactly that. If the graph has no matching journey,
+   name the flow in prose and flag it for the spec stage to register. Only
+   a bug with genuinely no customer-visible surface seeds
+   `None — no customer journey affected.` plus the justification.
+
 7. **Write the intake triage record and enter the pipeline.** Write `items/<id>/triage.md`: decision (build — confirmed replicated bug), the kind rationale from step 2, and priority. Set priority with `factory priority ITEM N` — ask the human while they are present; default 1 (front of queue) if they don't say. Then `factory advance ITEM triage` and `factory advance ITEM spec`. No council runs at intake; the council still reviews the fix at the review stage. From spec onward this is ordinary pipeline work — implement branches per item with TDD, ui/mixed items pass the design gate, ship merges per policy.
 
 8. **Spend.** If replication dispatches subagents, log spend per the dispatch convention: `factory log ITEM spend --data '{"provenance":"measured","stage":"triage","source":"factory-bug","dispatches":<n>,"tokens":{"total":<n>}}'` with harness-reported counts, or `"provenance":"proxy"` and no `tokens` key when the harness reports none. Never estimate; main-loop burn is never logged as measured.
