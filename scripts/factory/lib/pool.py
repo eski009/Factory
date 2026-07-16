@@ -61,6 +61,8 @@ def _strip_refresh(node):
     if isinstance(node, dict):
         return {key: _strip_refresh(value) for key, value in node.items()
                 if key not in _REFRESH_KEYS}
+    if isinstance(node, list):
+        return [_strip_refresh(value) for value in node]
     return node
 
 

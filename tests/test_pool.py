@@ -173,6 +173,19 @@ class ChatGptAuthSeedTest(unittest.TestCase):
         self.assertEqual(data["custom"], 1)
         self.assertIn("access_token", data["tokens"])
 
+    def test_chatgpt_seed_strips_refresh_inside_lists(self):
+        # future auth.json shape drift: a refresh token nested in a
+        # list-of-dicts must not survive into the worker home either.
+        self._write_login_auth({
+            "access_token": fake_jwt(int(time.time()) + 7200),
+            "sessions": [{"refresh_token": "SECRET", "label": "keep"}],
+        })
+        env = pool.seed_config_dir(self.repo, "0001-thing", "codex", "/wt")
+        text = (Path(env["CODEX_HOME"]) / "auth.json").read_text(encoding="utf-8")
+        self.assertNotIn("SECRET", text)
+        self.assertNotIn("refresh_token", text)
+        self.assertIn("keep", text)
+
     def test_chatgpt_seed_accepts_flat_access_token(self):
         self._write_login_auth({"access_token": fake_jwt(int(time.time()) + 7200)})
         env = pool.seed_config_dir(self.repo, "0001-thing", "codex", "/wt")
