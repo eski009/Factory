@@ -13,8 +13,8 @@ from .validate import validate
 MISS_TYPES = ("missing-journey", "missing-node", "missing-oracle",
               "missing-contract-detail", "review-rule-gap")
 PROMOTION_RE = re.compile(
-    r"^(jdg-\d{4}|test:.+|contract:.+|oracle:.+|decision:.+)$")
-ID_RE = re.compile(r"^esc-(\d{4})$")
+    r"^(jdg-[0-9]{4}|test:.+|contract:.+|oracle:.+|decision:.+)$")
+ID_RE = re.compile(r"^esc-([0-9]{4})$")
 
 
 class EscapeError(ValueError):
