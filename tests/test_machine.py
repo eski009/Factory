@@ -284,6 +284,15 @@ class TestGates(MachineTest):
         with self.assertRaises(machine.GateError):
             machine.advance(self.repo, "0001-thing", "implement")
 
+    def test_declaring_none_at_assure_still_advances_to_ship(self):
+        make_item(self.repo, stage="assure", priority=1)
+        items.set_journeys(self.repo, "0001-thing", "none")
+        meta, _ = items.load_item(self.repo, "0001-thing")
+        self.assertEqual(machine.next_stage(meta), "ship")
+        logs.append_event(self.repo, "0001-thing", "verify.green")
+        self.assertEqual(
+            machine.advance(self.repo, "0001-thing", "ship")["stage"], "ship")
+
 
 class TestGateCorruption(MachineTest):
     """Item spec 0007 §3: gates fail closed on corrupt evidence lines."""
@@ -494,6 +503,34 @@ class TestShipGateAssurance(MachineTest):
                 logs.append_event(self.repo, "0001-thing", "assure.passed")
                 with self.assertRaises(machine.GateError):
                     machine.advance(self.repo, "0001-thing", "ship")
+
+    def test_empty_scenarios_refused(self):
+        self._to_assure()
+        item_dir = paths.item_dir(self.repo, "0001-thing")
+        verdicts = {"item": "0001-thing", "journeys": [
+            {"id": "J-001", "surface": "browser", "scenarios": []}]}
+        vp = item_dir / "assurance" / "verdicts.json"
+        vp.parent.mkdir(parents=True, exist_ok=True)
+        vp.write_text(json.dumps(verdicts), encoding="utf-8")
+        logs.append_event(self.repo, "0001-thing", "assure.passed")
+        with self.assertRaises(machine.GateError):
+            machine.advance(self.repo, "0001-thing", "ship")
+
+    def test_waiver_overrides_failing_artifacts_even_with_passed(self):
+        self._to_assure()
+        _write_assurance(self.repo, verdict="fail")
+        logs.append_event(self.repo, "0001-thing", "assure.passed")
+        logs.append_event(self.repo, "0001-thing", "assure.waived",
+                          {"reason": "known cosmetic fail; shipping anyway"})
+        self.assertEqual(
+            machine.advance(self.repo, "0001-thing", "ship")["stage"], "ship")
+
+    def test_config_gates_scalar_string_treated_as_no_gates(self):
+        cfg = paths.config_path(self.repo)
+        cfg.parent.mkdir(parents=True, exist_ok=True)
+        cfg.write_text(json.dumps({"version": 1, "merge": "auto",
+                                   "gates": "assure"}), encoding="utf-8")
+        self.assertEqual(machine._config_gates(self.repo), [])
 
 
 if __name__ == "__main__":

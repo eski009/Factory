@@ -41,6 +41,11 @@ def stage_sequence(kind, journeys=None):
 
 def next_stage(meta):
     seq = stage_sequence(meta["kind"], meta.get("journeys"))
+    if meta["stage"] not in seq:
+        # A declaration can remove the item's CURRENT stage from its own
+        # sequence (journeys set to none while parked at assure): fall back
+        # to the unfiltered sequence so the item can still advance out.
+        seq = stage_sequence(meta["kind"])
     try:
         idx = seq.index(meta["stage"])
     except ValueError:
@@ -88,6 +93,8 @@ def _config_gates(repo):
     except (OSError, json.JSONDecodeError):
         return []
     gates = raw.get("gates", []) if isinstance(raw, dict) else []
+    if not isinstance(gates, list):
+        return []
     return [g for g in gates if isinstance(g, str)]
 
 
@@ -115,6 +122,10 @@ def _validate_assurance_artifacts(repo, meta):
         raise GateError("assurance verdicts missing journeys: " + ", ".join(missing))
     item_dir = paths.item_dir(repo, meta["id"])
     for j in verdicts.get("journeys", []):
+        if not j.get("scenarios"):
+            raise GateError(
+                f"journey {j.get('id')}: verdicts contain no scenarios — "
+                "nothing was exercised")
         for s in j.get("scenarios", []):
             if s.get("verdict") != "pass":
                 raise GateError(
@@ -233,7 +244,8 @@ def _gate_ship(repo, meta):
             waived or _last_index(events, "assure.confirmed") > impl):
         raise GateError("human confirmation required: factory confirm <id> "
                         "(the assure gate is configured)")
-    if waived and not passed:
+    # a recorded human waiver is authoritative — artifact checks are the machine's, not the human's
+    if waived:
         return
     _validate_assurance_artifacts(repo, meta)
 
