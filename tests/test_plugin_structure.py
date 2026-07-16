@@ -424,6 +424,14 @@ class TestPluginStructure(unittest.TestCase):
         data = _json.loads(graph.read_text())
         self.assertEqual(validate(data, load_schema("journey-graph"), "graph"), [])
 
+    def test_intake_journeys_collector_and_license(self):
+        text = (ROOT / "skills/factory-intake/SKILL.md").read_text()
+        self.assertIn("journeys/inventory.md", text)
+        self.assertIn("graph.json", text)
+        self.assertIn("(assumption)", text)
+        self.assertIn("never contracts/", text)
+        self.assertIn("docs/factory/journeys/", text)
+
 
 if __name__ == "__main__":
     unittest.main()

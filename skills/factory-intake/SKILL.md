@@ -46,7 +46,9 @@ resolve it, instead of writing invented content into that surface.
 ## Never
 
 Never touch product code or `CLAUDE.md`. This skill only writes to
-`docs/factory/brain/*.md` and, in brownfield mode, `docs/factory/packets/taste.md`;
+`docs/factory/brain/*.md`, `docs/factory/journeys/` (inventory.md and
+graph.json only — never contracts/, which belong to the spec stage and the
+council firewall), and, in brownfield mode, `docs/factory/packets/taste.md`;
 it has no license to change anything else in the target repo, however
 tempting a fix looks along the way.
 
@@ -67,6 +69,18 @@ addition to the inventory:
 - the test suite, read as a behavior spec, feeding `constraints.md` and `users.md`
 
 Same citation rule as above: every claim needs `(source: <path>)`.
+
+- **Journey inventory (brownfield):** the same routes/screens/navigation
+  mining and test-suite reading also emit a first journey inventory —
+  `docs/factory/journeys/inventory.md` entries plus matching `graph.json`
+  records (stable id `J-NNN` starting at J-001, slug, title, persona when
+  `users.md` names one, trigger, intended outcome, `status: inventory`,
+  links to the routes/screens/tests that evidence it). Criticality is a
+  guess at intake — tag it `(assumption)`; every entry cites its source
+  like any other claim. Never invent a journey the code doesn't evidence —
+  an uncertain flow goes to `open-questions.md` instead. Greenfield repos
+  skip this collector: the templates stay placeholder and the init
+  interview asks the owner.
 
 **2. Taste packet.** Write `docs/factory/packets/taste.md`, a questionnaire
 for the human covering: 3 products whose UI they admire and why; hard
