@@ -76,6 +76,8 @@ class TestPluginStructure(unittest.TestCase):
         text = skill.read_text()
         self.assertRegex(text, FRONTMATTER, str(skill))
         self.assertIn("never answers its own human gates", text.lower())
+        self.assertIn("never waives or confirms assurance", text.lower())
+        self.assertIn("never files or promotes escapes", text.lower())
 
     def test_roadmap_skill_mentions_factory_add_and_priority(self):
         skill = ROOT / "skills/factory-roadmap/SKILL.md"
@@ -479,6 +481,22 @@ class TestPluginStructure(unittest.TestCase):
     def test_verify_exit_routes_to_assure(self):
         text = (ROOT / "skills/factory-verify/SKILL.md").read_text()
         self.assertIn("factory advance ITEM assure", text)
+        self.assertIn("journeys: none", text)
+
+    def test_dispatch_recognizes_assure_pauses(self):
+        text = (ROOT / "skills/factory-dispatch/SKILL.md").read_text()
+        self.assertIn("assurance/waiver.md", text)
+        self.assertIn("assurance/human-confirmation.md", text)
+
+    def test_assure_skill_entry_check_short_circuits(self):
+        text = (ROOT / "skills/factory-assure/SKILL.md").read_text()
+        self.assertIn("## Entry check", text)
+        self.assertIn("waiver.md", text)
+        self.assertIn("do not re-walk", text)
+
+    def test_ship_entry_names_assurance(self):
+        text = (ROOT / "skills/factory-ship/SKILL.md").read_text()
+        self.assertIn("assure.passed", text)
         self.assertIn("journeys: none", text)
 
     def test_browser_drive_capability_row_and_reference(self):

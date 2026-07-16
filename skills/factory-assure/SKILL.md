@@ -11,6 +11,17 @@ Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.p
 - **Artifacts produced:** `items/<id>/assurance/` — `run-manifest.json`, `expectations.md`, `verdicts.json`, evidence files (`screenshots/`, `console.ndjson`, `network.ndjson`, transcripts), `blockers.md` when blocked.
 - **Exit:** all scenarios pass → `factory log ITEM assure.passed`, then if `"assure"` is in the config `gates` list, `factory advance ITEM waiting-human --reason "assurance passed - awaiting human confirmation (factory confirm ITEM)"` + `factory packet ITEM`; otherwise `factory advance ITEM ship`. Any objective fail → `factory log ITEM assure.rejected --data '{"round": <n>}'` + `factory advance ITEM implement` (the engine caps rework at 2, then blocked). Ambiguity or blocker → park: `factory advance ITEM waiting-human --reason "<what needs a human>"` + `factory packet ITEM` — never a silent pass, never a self-answered judgement call.
 
+## Entry check
+
+Before dispatching any reviewer, check for an already-answered stage: if
+`items/<id>/assurance/waiver.md` exists (a human ran `factory waive`), or
+`human-confirmation.md` exists with `assure.confirmed` logged, and the
+recorded answer postdates the latest implementation round, do not re-walk —
+take the matching Exit branch directly (`factory advance ITEM ship`; the
+engine's round-scoped gate is the authority and will refuse a stale answer).
+This mirrors factory-design's entry check: the stage never re-asks a
+question a human already answered.
+
 Review asked "is the code sound"; verify asked "do the checks pass"; this stage asks **"can the customer get through it"** — against the running product, in a context that has never seen the implementation.
 
 ## Read first

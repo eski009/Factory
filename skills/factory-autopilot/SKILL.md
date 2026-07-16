@@ -24,6 +24,8 @@ Autopilot is a wrapper, not a bigger hammer. It never gains authority the loop a
 - It never records a design `choice` on an item's behalf — `design/choice.md` is written only by a human via `factory choice`, never by autopilot itself.
 - It never merges outside the repo's configured `merge` policy (`merge`/`gates` in the factory config) — ship still stops wherever that policy says it must.
 - It never edits `docs/factory/brain/` directly — brain changes flow only through the judgement firewall (`council-judgement`).
+- Never waives or confirms assurance: `factory waive` and `factory confirm` are the human's verbs; items parked at assure (blockers, ambiguities, gated confirmation) stay parked with their packets until a real human acts.
+- Never files or promotes escapes: escapes are the human's post-assurance discoveries; promotion routes through the human/judgement paths.
 - Most importantly: **autopilot never answers its own human gates.** Any item that lands at `waiting-human` — whether from a design pause, a merge gate, or a mapped-skill-unavailable pause — stays parked exactly where the loop left it, with its packet written for a person to read. Autopilot never simulates a human, never picks a design option, never approves a merge, and never resumes a paused item itself. Only a real human action (e.g. `factory choice`) moves a parked item forward — the loop's own resume check picks that up on a later invocation.
 
 ## 4. Budget and termination
