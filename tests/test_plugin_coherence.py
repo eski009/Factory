@@ -137,6 +137,16 @@ class TestPluginCoherence(unittest.TestCase):
         research = read(ROOT / "skills/factory-research/SKILL.md")
         self.assertIn("epic", research)
 
+    def test_spec_section_lists_stay_synced(self):
+        # the spec.md section order is defined in two places; Journey impact
+        # must sit between Behavior and Non-goals in BOTH.
+        for rel in ("skills/factory-spec/SKILL.md", "agents/spec-writer.md"):
+            text = read(ROOT / rel)
+            b = text.index("## Behavior`")
+            j = text.index("## Journey impact`")
+            n = text.index("## Non-goals`")
+            self.assertTrue(b < j < n, f"{rel}: Journey impact must sit between Behavior and Non-goals")
+
 
 if __name__ == "__main__":
     unittest.main()

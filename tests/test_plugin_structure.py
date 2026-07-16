@@ -432,6 +432,15 @@ class TestPluginStructure(unittest.TestCase):
         self.assertIn("never contracts/", text)
         self.assertIn("docs/factory/journeys/", text)
 
+    def test_spec_skill_journey_impact_duties(self):
+        text = (ROOT / "skills/factory-spec/SKILL.md").read_text()
+        self.assertIn("## Journey impact", text)
+        self.assertIn("assurance/impact.json", text)
+        self.assertIn("factory journeys", text)
+        self.assertIn("None — no customer journey affected.", text)
+        self.assertIn("status: draft", text)
+        self.assertIn("Run & fixtures", text)
+
 
 if __name__ == "__main__":
     unittest.main()

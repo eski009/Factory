@@ -13,7 +13,7 @@ Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.p
 
 ## Read first
 
-Read the item body, `items/<id>/triage.md`, and the brain surfaces: `docs/factory/brain/vision.md`, `users.md`, `personas.md`, `constraints.md`, and (for `ui`/`mixed` items) `design-system.md`.
+Read the item body, `items/<id>/triage.md`, and the brain surfaces: `docs/factory/brain/vision.md`, `users.md`, `personas.md`, `constraints.md`, and (for `ui`/`mixed` items) `design-system.md`, plus `docs/factory/journeys/graph.json` and `inventory.md`.
 
 ## The autonomous substitute for brainstorming
 
@@ -35,7 +35,41 @@ This loop — enumerate, answer-from-brain, reversible-default, record, file-bid
 
 ## Large items: dispatch spec-writer
 
-If the spec would run to roughly more than a screen of `## Behavior` bullets, or `items/<id>/triage.md` flags the item as complex, don't author it inline — dispatch `agents/spec-writer.md` with the item body, `triage.md`, and the brain excerpts from Read first. It runs the same enumerate/answer-from-brain/reversible-default loop and returns the spec text as its final report; this session (the orchestrator, not the subagent) persists that report to `items/<id>/spec.md` — the same orchestrator-persists convention council rounds use. `agents/spec-writer.md` is read-only (Read, Grep, Glob), so it cannot file bids itself: after persisting the spec, file a `factory bid` per brain gap its report names, same as step 5 above.
+If the spec would run to roughly more than a screen of `## Behavior` bullets, or `items/<id>/triage.md` flags the item as complex, don't author it inline — dispatch `agents/spec-writer.md` with the item body, `triage.md`, and the brain excerpts from Read first. It runs the same enumerate/answer-from-brain/reversible-default loop and returns the spec text as its final report; this session (the orchestrator, not the subagent) persists that report to `items/<id>/spec.md` — the same orchestrator-persists convention council rounds use. `agents/spec-writer.md` is read-only (Read, Grep, Glob), so it cannot file bids itself: after persisting the spec, file a `factory bid` per brain gap its report names, same as step 5 above. The subagent is read-only, so after persisting its spec text the orchestrator also writes impact.json from the report's ## Journey impact section and runs the factory journeys verb (duty 3), exactly as it files the bids.
+
+## Journey impact — map, declare, set (mandatory)
+
+The engine refuses to leave spec until journey impact is recorded; these
+three duties run for every item, in order:
+
+1. **Map.** Read `docs/factory/journeys/graph.json` and `inventory.md`; map
+   the item's `## Behavior` onto journey nodes. An item that introduces a
+   new journey registers it directly as an inventory-only entry (next free
+   `J-NNN` id, `status: inventory`, cited to this item's spec) — the same
+   direct-write license triage has for `roadmap.md`. Any affected journey
+   that has no contract yet gets a **minimal draft contract** at
+   `docs/factory/journeys/contracts/J-NNN-<slug>.md` with `status: draft`
+   recorded in `graph.json`: cover at least the touched nodes (what the
+   customer knows at each, what they expect next), deterministic oracles
+   for the required scenarios, a Run & fixtures section (exact launch
+   commands, fixture setup, credentials through safe fixture mechanisms),
+   and interruption/recovery paths — depth scaled by the tier's `assure`
+   profile (`factory doctor --json` → tiers: bug `node`, feature
+   `affected`, epic `full`). Amending a `status: approved` contract is
+   NEVER done directly — that goes through a `council-judgement` bid with
+   `--surface journeys/contracts/<file>`.
+2. **Declare.** Write the `## Journey impact` spec section (see structure
+   below) AND its machine twin `.factory/items/<id>/assurance/impact.json`
+   (shape: `schemas/assurance-impact.schema.json` — per journey: id,
+   nodes_changed, transitions_changed, new_states, and the required
+   scenarios, each `{id, kind: happy|recovery|interruption, description}`).
+   The assure stage cross-checks verdicts against this file scenario by
+   scenario. For a no-impact item the section reads exactly
+   `None — no customer journey affected.` plus a one-line justification,
+   and NO impact.json is written.
+3. **Set.** Run `factory journeys ITEM <none|J-004,...>` — exactly how
+   triage runs `factory tier`. The spec-exit gate checks both the section
+   heading and this declaration.
 
 ## Spec structure
 
@@ -43,6 +77,15 @@ Write `items/<id>/spec.md` with these sections, in order:
 
 - `## Purpose` — what this item is for and why it matters, one paragraph.
 - `## Behavior` — what the system does, described concretely enough to build from.
+- `## Journey impact` — affected journey ids (from `graph.json`), nodes
+  changed, transitions changed, new states introduced, and required
+  assurance scenarios (happy path, recovery paths, viewport requirements
+  where the surface is a browser) — or exactly
+  `None — no customer journey affected.` plus a one-line justification.
+  If the item body contains a section titled
+  `## Journey impact (seeded at bug intake — carry into spec.md verbatim)`,
+  its content MUST appear verbatim here — it may be extended, never
+  replaced or reworded.
 - `## Non-goals` — what this item explicitly does not cover.
 - `## Assumptions (brain gaps)` — one entry per brain gap from the loop above (omit the section only if there were none).
 - `## Acceptance criteria` — a numbered list, each criterion testable (a later stage can check it mechanically or by inspection, not by opinion). If the item body contains a section titled `## Acceptance criteria (seeded at bug intake — carry into spec.md verbatim)`, its criteria MUST appear verbatim in this list — they may be joined by further criteria, never replaced or reworded.
