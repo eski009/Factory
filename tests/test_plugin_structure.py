@@ -99,7 +99,7 @@ class TestPluginStructure(unittest.TestCase):
 
     def test_capability_upgrade_references_exist_and_are_linked(self):
         skill_text = (ROOT / "skills/capabilities/SKILL.md").read_text()
-        for name in ("workflow-fanout", "artifact-hosting", "scheduling", "designsync", "orchestration-patterns", "model-tiering", "browser-read"):
+        for name in ("workflow-fanout", "artifact-hosting", "scheduling", "designsync", "orchestration-patterns", "model-tiering", "browser-read", "browser-drive"):
             ref = ROOT / f"skills/capabilities/references/{name}.md"
             self.assertTrue(ref.exists(), str(ref))
             self.assertIn(f"references/{name}.md", skill_text, name)
@@ -445,6 +445,45 @@ class TestPluginStructure(unittest.TestCase):
         text = (ROOT / "skills/factory-bug/SKILL.md").read_text()
         self.assertIn("## Journey impact (seeded at bug intake — carry into spec.md verbatim)", text)
         self.assertIn("immediate transition", text)
+
+    def test_assure_skill_contract_and_discipline(self):
+        skill = ROOT / "skills/factory-assure/SKILL.md"
+        self.assertTrue(skill.exists())
+        text = skill.read_text()
+        self.assertRegex(text, FRONTMATTER, str(skill))
+        self.assertIn("never the implementer transcript", text)
+        self.assertIn("expectations.md", text)
+        self.assertIn("run-manifest.json", text)
+        self.assertIn("pass | fail | ambiguity | blocker", text)
+        self.assertIn("assure.passed", text)
+        self.assertIn("assure.rejected", text)
+        self.assertIn("never runs `factory waive` or `factory confirm`", text)
+        self.assertIn("Browser drive", text)
+        self.assertIn("never a silent pass", text)
+        self.assertIn("one fresh journey-reviewer subagent per affected journey", text)
+        self.assertIn("agents/journey-reviewer.md", text)
+
+    def test_journey_reviewer_agent_discipline(self):
+        agent = ROOT / "agents/journey-reviewer.md"
+        self.assertTrue(agent.exists())
+        text = agent.read_text()
+        self.assertRegex(text, FRONTMATTER, str(agent))
+        self.assertIn("pass | fail | ambiguity | blocker", text)
+        self.assertIn("before acting", text.lower())
+        self.assertIn("only under `.factory/items/<id>/assurance/`", text)
+        self.assertIn("never edit product code", text.lower())
+        self.assertIn("not told this feature is complete", text.lower())
+
+    def test_browser_drive_capability_row_and_reference(self):
+        skill = (ROOT / "skills/capabilities/SKILL.md").read_text()
+        self.assertIn("| Browser drive |", skill)
+        self.assertIn("references/browser-drive.md", skill)
+        ref = (ROOT / "skills/capabilities/references/browser-drive.md").read_text()
+        self.assertIn("navigate, click, type, screenshot, and read console/network", ref)
+        self.assertIn("park", ref)
+        self.assertIn("silent pass", ref)
+        self.assertIn("factory waive", ref)
+        self.assertIn("Parking is not failing", ref)
 
 
 if __name__ == "__main__":

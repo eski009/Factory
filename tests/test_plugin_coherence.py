@@ -24,7 +24,7 @@ class TestPluginCoherence(unittest.TestCase):
         # factory-dispatch maps stages to factory-<stage> skills; each must exist.
         dispatch = read(ROOT / "skills/factory-dispatch/SKILL.md")
         mapped = set(re.findall(r"factory-(triage|spec|design|plan|implement|"
-                                r"review|verify|ship)", dispatch))
+                                r"review|verify|assure|ship)", dispatch))
         skills = skill_names()
         for stage in mapped:
             self.assertIn(f"factory-{stage}", skills,
@@ -148,6 +148,14 @@ class TestPluginCoherence(unittest.TestCase):
             j = text.index("- `## Journey impact`")
             n = text.index("- `## Non-goals`")
             self.assertTrue(b < j < n, f"{rel}: Journey impact must sit between Behavior and Non-goals")
+
+    def test_dispatch_maps_assure_between_verify_and_ship(self):
+        dispatch = read(ROOT / "skills/factory-dispatch/SKILL.md")
+        self.assertIn("| assure | factory-assure |", dispatch)
+        self.assertLess(dispatch.index("| verify | factory-verify |"),
+                        dispatch.index("| assure | factory-assure |"))
+        self.assertLess(dispatch.index("| assure | factory-assure |"),
+                        dispatch.index("| ship | factory-ship |"))
 
 
 if __name__ == "__main__":
