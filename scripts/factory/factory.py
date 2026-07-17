@@ -9,9 +9,9 @@ import sys
 if __package__ in (None, ""):
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod
+    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod
 else:
-    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod
+    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod
 
 
 def _require_factory_repo(repo):
@@ -89,6 +89,13 @@ def cmd_status(args):
         if open_esc:
             print(f"open escapes: {len(open_esc)} "
                   "(promote each into a contract/test/oracle/rule/decision)")
+        debt = journeys_mod.coverage_debt(args.repo)
+        if debt and (debt["inventory_only"] or debt["draft"]):
+            print(f"journey coverage debt: {debt['inventory_only']} of "
+                  f"{debt['total']} journeys inventory-only, "
+                  f"{debt['draft']} draft contracts "
+                  "(deep contracts exist only where they earn their keep; "
+                  "this line is the honest remainder)")
     for error in errors:
         print(error, file=sys.stderr)
     return 2 if errors else 0

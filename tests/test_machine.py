@@ -440,6 +440,40 @@ class TestShipGateAssurance(MachineTest):
         with self.assertRaises(machine.GateError):
             machine.advance(self.repo, "0001-thing", "ship")
 
+    def test_full_shape_impact_with_new_kinds_ships_when_covered(self):
+        # empty/error scenario kinds, viewports, and the explicit adjacent
+        # declaration are legal impact shapes; coverage stays id-based.
+        self._to_assure()
+        item_dir = paths.item_dir(self.repo, "0001-thing")
+        impact = {"item": "0001-thing", "journeys": [{
+            "id": "J-001",
+            "nodes_changed": ["N2"], "transitions_changed": ["N2->N3"],
+            "new_states": ["saved-empty"],
+            "viewports": ["desktop-1280", "mobile-390"],
+            "adjacent": {"upstream": ["N1"], "downstream": ["N3"]},
+            "scenarios": [
+                {"id": "happy-1", "kind": "happy", "description": "d"},
+                {"id": "empty-1", "kind": "empty", "description": "d"},
+                {"id": "error-1", "kind": "error", "description": "d"}]}]}
+        ip = item_dir / "assurance" / "impact.json"
+        ip.parent.mkdir(parents=True, exist_ok=True)
+        ip.write_text(json.dumps(impact), encoding="utf-8")
+        shot = item_dir / "assurance" / "screenshots" / "s1.txt"
+        shot.parent.mkdir(parents=True, exist_ok=True)
+        shot.write_text("evidence\n", encoding="utf-8")
+        ev = [{"type": "screenshot", "path": "assurance/screenshots/s1.txt"}]
+        verdicts = {"item": "0001-thing", "journeys": [{
+            "id": "J-001", "surface": "browser",
+            "scenarios": [
+                {"id": s, "verdict": "pass", "expected": "e", "actual": "e",
+                 "evidence": ev}
+                for s in ("happy-1", "empty-1", "error-1")]}]}
+        (item_dir / "assurance" / "verdicts.json").write_text(
+            json.dumps(verdicts), encoding="utf-8")
+        logs.append_event(self.repo, "0001-thing", "assure.passed")
+        self.assertEqual(
+            machine.advance(self.repo, "0001-thing", "ship")["stage"], "ship")
+
     def test_config_assure_gate_requires_confirmation(self):
         cfg = paths.config_path(self.repo)
         cfg.parent.mkdir(parents=True, exist_ok=True)

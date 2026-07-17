@@ -18,7 +18,12 @@ Never mix families within one journey walk.
 ## Evidence conventions
 
 - Screenshots → `.factory/items/<id>/assurance/screenshots/<journey>-<node>-<n>.png`
-  (or the family's native format), one per walk step that changed the screen.
+  (or the family's native format), one per walk step that changed the screen;
+  suffix the viewport when the impact map declares more than one
+  (`...-mobile.png`).
+- DOM/a11y snapshots → `assurance/dom/<journey>-<node>-<n>.html` (raw DOM)
+  or `.txt` (accessibility-tree dump, where the family exposes one) —
+  captured where semantics carry the evidence; referenced with type `dom`.
 - Console → append one JSON line per material message to
   `assurance/console.ndjson`: `{"journey", "node", "level", "text"}`.
 - Network → append one JSON line per failure or unexpected request to

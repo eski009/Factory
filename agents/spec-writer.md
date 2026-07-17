@@ -25,7 +25,10 @@ Produce `items/<id>/spec.md` with these sections, in order:
 - `## Purpose` — what this item is for and why it matters, one paragraph.
 - `## Behavior` — what the system does, concrete enough to build from.
 - `## Journey impact` — affected journey ids, nodes changed, transitions
-  changed, new states introduced, and required assurance scenarios — or
+  changed, new states introduced, required assurance scenarios (happy,
+  empty, error, interruption and recovery paths as the change warrants),
+  required variants and viewports where the surface is a browser, and
+  whether adjacent upstream/downstream nodes need inspection — or
   exactly `None — no customer journey affected.` plus a one-line
   justification. Name any affected journey that lacks a contract so the
   orchestrator can draft it.

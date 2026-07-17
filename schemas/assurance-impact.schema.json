@@ -18,6 +18,16 @@
           "nodes_changed": {"type": "array", "items": {"type": "string"}},
           "transitions_changed": {"type": "array", "items": {"type": "string"}},
           "new_states": {"type": "array", "items": {"type": "string"}},
+          "viewports": {"type": "array", "items": {"type": "string"}},
+          "adjacent": {
+            "type": "object",
+            "required": ["upstream", "downstream"],
+            "additionalProperties": false,
+            "properties": {
+              "upstream": {"type": "array", "items": {"type": "string"}},
+              "downstream": {"type": "array", "items": {"type": "string"}}
+            }
+          },
           "scenarios": {
             "type": "array",
             "items": {
@@ -27,7 +37,8 @@
               "properties": {
                 "id": {"type": "string", "minLength": 1},
                 "kind": {"type": "string",
-                         "enum": ["happy", "recovery", "interruption"]},
+                         "enum": ["happy", "empty", "error",
+                                  "recovery", "interruption"]},
                 "description": {"type": "string", "minLength": 1}
               }
             }
