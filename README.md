@@ -132,6 +132,7 @@ In the repo you want Factory to work on:
 /factory:run                 # run the pipeline — one item, stage by stage
 /factory:status              # what's in flight, what's waiting on you, memory health
 /factory:autopilot           # drain the whole backlog unattended (still won't answer your gates)
+/factory:do "…anything…"     # don't remember the commands? say what you want — it routes to the right one
 ```
 
 Full walkthrough — the design gate, the autonomy dial, where state lives — in **[docs/getting-started.md](docs/getting-started.md)**.

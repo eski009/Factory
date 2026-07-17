@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.9.2] - 2026-07-17
+
+### Added
+
+- **`/factory:do` — one entry point, your words.** A router command that
+  takes free-form intent ("dark mode is broken", "keep going", "go with
+  option b", a PRD path, or nothing at all for "do the next right thing"),
+  reads the pipeline state first, and hands the intent to the surface that
+  already owns it — bug intake, add, roadmap, research, dispatch,
+  autopilot, status, or the escape flow. It is a relay, not a new
+  pipeline: it never advances stages itself, only runs the human verbs
+  (`choice`/`waive`/`confirm`) when the human's own words carry the
+  decision (a waiver reason is never invented), asks one clarifying
+  question when two intents genuinely fit, and is never invoked by
+  unattended runs.
+
 ## [0.9.1] - 2026-07-17
 
 ### Added

@@ -149,6 +149,12 @@ permit — it's a bigger wrapper, not a bigger hammer.
   (`brain/*.md`), council role docs, `roadmap.md`, and review `packets/`
   waiting for a decision.
 
+Not sure which command you want? `/factory:do "…what you want, in your own
+words…"` reads the pipeline state and routes to the right one — bug intake,
+add, roadmap, run, an answer to a waiting packet — asking one clarifying
+question when your intent genuinely fits two. With no arguments it does the
+next right thing (surfaces a waiting packet, or dispatches the next item).
+
 To check in on a running factory from any session:
 
 ```
