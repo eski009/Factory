@@ -141,7 +141,7 @@ Full walkthrough — the design gate, the autonomy dial, where state lives — i
 - A **deterministic, zero-dependency engine** (Python) owns all state and the gate checks. The AI skills drive it but can't bypass a gate. State splits into `.factory/` (machine-owned: work items, council ledgers) and `docs/factory/` (human-readable: the brain, the roadmap, review packets awaiting a decision).
 - **Optional parallel execution.** Turn on *headless workers* and Factory builds independent items concurrently — each in its own isolated git worktree, driven by a headless `claude` or `codex` process — while the orchestrator only collects the results and advances them through the same gates. Off by default; absent, it degrades to in-process building. Both this and the materiality *tiers* are config knobs in `.factory/config.json`.
 - **Full design spec:** [docs/superpowers/specs/2026-07-03-software-factory-design.md](docs/superpowers/specs/2026-07-03-software-factory-design.md)
-- **Tests:** `python3 -m unittest discover -s tests -v` (505+, all green)
+- **Tests:** `python3 -m unittest discover -s tests -v` (540+, all green)
 
 ## Status
 

@@ -156,7 +156,11 @@ To check in on a running factory from any session:
 ```
 
 which reports items by priority, the next actionable item, memory health,
-and any packets waiting under `docs/factory/packets/`.
+and any packets waiting under `docs/factory/packets/`. The CLI's
+`factory status` also prints the open-escape count and the journey
+coverage debt — how many registered journeys are still inventory-only or
+hold only draft contracts. Shallow coverage is legitimate (deep contracts
+exist only where they earn their keep); unnamed shallow coverage is not.
 
 For a lower-level readout of the repo's integration state (whether the
 state tree validates, whether design-system tokens and a DesignSync
