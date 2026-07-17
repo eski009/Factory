@@ -262,6 +262,10 @@ class TestPluginStructure(unittest.TestCase):
                      "write_files", "render_preview"):
             self.assertIn(f"mcp__claude-design__{tool}", text, tool)
         self.assertIn("presence of any tool in the family", text)
+        # built-in variant satisfies the same probe; writes are plan-locked
+        self.assertIn("Built-in variant.", text)
+        self.assertIn("`finalize_plan`", text)
+        self.assertIn("the built-in `DesignSync` tool counts", text)
         # canonical-mirror rule; interactive-only survives (AC 5)
         self.assertIn("never a second source of truth", text)
         self.assertIn("items/<id>/design/", text)
@@ -294,7 +298,7 @@ class TestPluginStructure(unittest.TestCase):
         text = (ROOT / "skills/capabilities/SKILL.md").read_text()
         self.assertIn(
             "| DesignSync | any `mcp__claude-design__*` tool present "
-            "in tool list |", text)
+            "in tool list, or the built-in `DesignSync` tool |", text)
         self.assertIn("references/designsync.md", text)
         self.assertIn("Never let a missing optional tool fail a stage",
                       text)
