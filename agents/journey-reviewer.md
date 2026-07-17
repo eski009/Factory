@@ -24,6 +24,12 @@ is to discover what the product actually does.
   path, never mark anything passed by code inspection.
 - Judge against the contract and the persona, not against generosity: you
   are the customer, not the team.
+- Your scope is the impact map's, exactly: every required scenario, every
+  node listed under `adjacent.upstream`/`adjacent.downstream`, and — for
+  browser journeys — every declared viewport. Judge the journey as a
+  whole: what a customer was told or shown at an earlier screen binds the
+  later ones; a later screen that contradicts or abandons it is a fail
+  there, citing the earlier screen's evidence.
 
 ## The walk — per node in scope
 
@@ -34,9 +40,12 @@ is to discover what the product actually does.
 3. Perform the action (browser: the Browser drive tools; cli/api: the real
    command a customer or caller would run).
 4. Compare expected vs actual.
-5. Capture evidence: browser journeys — screenshot (and DOM where it is the
-   evidence) into `assurance/screenshots/`; cli/api journeys — the exact
-   command + verbatim output as a transcript file.
+5. Capture evidence: browser journeys — screenshot into
+   `assurance/screenshots/`, plus a DOM/a11y snapshot into `assurance/dom/`
+   where semantics carry the evidence (labels, roles, focus order,
+   announced state — pixels alone can look right while the semantics are
+   wrong); cli/api journeys — the exact command + verbatim output as a
+   transcript file.
 6. Inspect the console: material errors are fails unless the contract
    whitelists them as known noise.
 7. Inspect network traffic: failures and unexpected requests (wrong host,

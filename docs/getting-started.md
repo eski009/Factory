@@ -149,6 +149,12 @@ permit — it's a bigger wrapper, not a bigger hammer.
   (`brain/*.md`), council role docs, `roadmap.md`, and review `packets/`
   waiting for a decision.
 
+Not sure which command you want? `/factory:do "…what you want, in your own
+words…"` reads the pipeline state and routes to the right one — bug intake,
+add, roadmap, run, an answer to a waiting packet — asking one clarifying
+question when your intent genuinely fits two. With no arguments it does the
+next right thing (surfaces a waiting packet, or dispatches the next item).
+
 To check in on a running factory from any session:
 
 ```
@@ -156,7 +162,11 @@ To check in on a running factory from any session:
 ```
 
 which reports items by priority, the next actionable item, memory health,
-and any packets waiting under `docs/factory/packets/`.
+and any packets waiting under `docs/factory/packets/`. The CLI's
+`factory status` also prints the open-escape count and the journey
+coverage debt — how many registered journeys are still inventory-only or
+hold only draft contracts. Shallow coverage is legitimate (deep contracts
+exist only where they earn their keep); unnamed shallow coverage is not.
 
 For a lower-level readout of the repo's integration state (whether the
 state tree validates, whether design-system tokens and a DesignSync

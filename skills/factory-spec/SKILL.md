@@ -50,12 +50,16 @@ three duties run for every item, in order:
    that has no contract yet gets a **minimal draft contract** at
    `docs/factory/journeys/contracts/J-NNN-<slug>.md` with `status: draft`
    recorded in `graph.json`: cover at least the touched nodes (what the
-   customer knows at each, what they expect next), deterministic oracles
-   for the required scenarios, a Run & fixtures section (exact launch
-   commands, fixture setup, credentials through safe fixture mechanisms),
-   and interruption/recovery paths — depth scaled by the tier's `assure`
-   profile (`factory doctor --json` → tiers: bug `node`, feature
-   `affected`, epic `full`). Amending a `status: approved` contract is
+   customer knows at each, what they expect next), trust and reassurance
+   requirements at the nodes where the customer commits something (what
+   must be visible for them to proceed with confidence), deterministic
+   oracles for the required scenarios, the required evidence per surface
+   (browser: screenshots, DOM/a11y snapshots where semantics matter,
+   console, network; cli/api: typed transcripts), a Run & fixtures section
+   (exact launch commands, fixture setup, credentials through safe fixture
+   mechanisms), and empty/error/interruption/recovery paths — depth scaled
+   by the tier's `assure` profile (`factory doctor --json` → tiers: bug
+   `node`, feature `affected`, epic `full`). Amending a `status: approved` contract is
    NEVER done directly — that goes through a `council-judgement` bid with
    `--surface journeys/contracts/<file>`. When any `mcp__claude-design__*`
    tool is present and `designsync_project` is configured, regenerate the
@@ -66,10 +70,16 @@ three duties run for every item, in order:
 2. **Declare.** Write the `## Journey impact` spec section (see structure
    below) AND its machine twin `.factory/items/<id>/assurance/impact.json`
    (shape: `schemas/assurance-impact.schema.json` — per journey: id,
-   nodes_changed, transitions_changed, new_states, and the required
-   scenarios, each `{id, kind: happy|recovery|interruption, description}`).
-   The assure stage cross-checks verdicts against this file scenario by
-   scenario. For a no-impact item the section reads exactly
+   nodes_changed, transitions_changed, new_states, the required scenarios,
+   each `{id, kind: happy|empty|error|recovery|interruption, description}`,
+   plus for browser-surface journeys `viewports` (the widths/devices the
+   walk must cover — at least one), and `adjacent` — an explicit
+   `{"upstream": [...], "downstream": [...]}` answer to "do the nodes
+   before and after the changed ones need inspection because expectations
+   or state carry across?"; empty lists are a considered no, but the key
+   is always written — an omitted answer is not a no. The assure stage
+   cross-checks verdicts against this file scenario by scenario. For a
+   no-impact item the section reads exactly
    `None — no customer journey affected.` plus a one-line justification,
    and NO impact.json is written.
 3. **Set.** Run `factory journeys ITEM <none|J-004,...>` — exactly how
@@ -83,9 +93,11 @@ Write `items/<id>/spec.md` with these sections, in order:
 - `## Purpose` — what this item is for and why it matters, one paragraph.
 - `## Behavior` — what the system does, described concretely enough to build from.
 - `## Journey impact` — affected journey ids (from `graph.json`), nodes
-  changed, transitions changed, new states introduced, and required
-  assurance scenarios (happy path, recovery paths, viewport requirements
-  where the surface is a browser) — or exactly
+  changed, transitions changed, new states introduced, required assurance
+  scenarios (happy, empty, error, interruption and recovery paths as the
+  change warrants), required variants and viewports where the surface is
+  a browser, and whether adjacent upstream/downstream nodes need
+  inspection — or exactly
   `None — no customer journey affected.` plus a one-line justification.
   If the item body contains a section titled
   `## Journey impact (seeded at bug intake — carry into spec.md verbatim)`,

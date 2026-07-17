@@ -4,6 +4,62 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.9.2] - 2026-07-17
+
+### Added
+
+- **`/factory:do` — one entry point, your words.** A router command that
+  takes free-form intent ("dark mode is broken", "keep going", "go with
+  option b", a PRD path, or nothing at all for "do the next right thing"),
+  reads the pipeline state first, and hands the intent to the surface that
+  already owns it — bug intake, add, roadmap, research, dispatch,
+  autopilot, status, or the escape flow. It is a relay, not a new
+  pipeline: it never advances stages itself, only runs the human verbs
+  (`choice`/`waive`/`confirm`) when the human's own words carry the
+  decision (a waiver reason is never invented), asks one clarifying
+  question when two intents genuinely fit, and is never invoked by
+  unattended runs.
+
+### Changed
+
+- **README gains a command reference** — all eleven slash commands with
+  one-line descriptions, plus the four human-only CLI verbs (`choice`,
+  `confirm`, `waive`, `promote`) and where the rest of the engine CLI
+  lives.
+
+## [0.9.1] - 2026-07-17
+
+### Added
+
+- **Journey traceability closes its declared-shape gaps.** The
+  machine-readable impact declaration (`assurance-impact.schema.json`) now
+  carries what the spec prose already promised: scenario kinds gain
+  `empty` and `error` alongside happy/recovery/interruption; browser-borne
+  journeys declare their required `viewports`; and every journey answers
+  the adjacency question explicitly — `adjacent.upstream` /
+  `adjacent.downstream` name the surrounding nodes that need inspection
+  because expectations or state carry across (empty lists are a considered
+  no; an omitted key is not a no). factory-spec's Declare duty writes all
+  of it; factory-assure and the journey-reviewer walk it — every declared
+  viewport, every declared adjacent node. All additions are
+  schema-optional, so mid-flight items validate unchanged.
+- **Journey coverage debt is explicit.** `factory status` now prints the
+  honest remainder of the progressive-depth registry: how many journeys
+  are inventory-only (no contract) and how many hold only draft contracts.
+  Shallow coverage was always legitimate; silent shallow coverage no
+  longer is.
+- **DOM/a11y snapshots as first-class evidence.** The reviewer captures a
+  DOM or accessibility-tree snapshot into `assurance/dom/` where semantics
+  carry the evidence (labels, roles, focus order, announced state), typed
+  `dom` in verdicts — pixels alone can look right while the semantics are
+  wrong. Draft contracts now also record trust-and-reassurance
+  requirements at commitment nodes and the required evidence per surface.
+- **Cross-screen coherence named as the verdict rule.** The walk judges
+  the journey as a whole: an expectation created on one screen that a
+  later screen contradicts or abandons is a fail at the later node, citing
+  the earlier node's evidence — isolated per-screen passes can no longer
+  compose into a passing journey.
+
 ## [0.9.0] - 2026-07-16
 
 ### Added

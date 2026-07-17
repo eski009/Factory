@@ -38,6 +38,40 @@ class TestCliJourneys(unittest.TestCase):
         factory.main(["--repo", str(self.repo), "journeys", "0001-thing", "none"])
         self.assertEqual(factory.main(["--repo", str(self.repo), "validate"]), 0)
 
+    def _write_graph(self, journeys):
+        graph = self.repo / "docs" / "factory" / "journeys" / "graph.json"
+        graph.parent.mkdir(parents=True, exist_ok=True)
+        graph.write_text(
+            '{"version": 1, "journeys": ' + journeys + '}', encoding="utf-8")
+
+    def test_status_surfaces_journey_coverage_debt(self):
+        self._write_graph(
+            '[{"id": "J-001", "slug": "a", "title": "A",'
+            ' "criticality": "core", "status": "inventory"},'
+            ' {"id": "J-002", "slug": "b", "title": "B",'
+            ' "criticality": "high", "status": "draft",'
+            ' "contract": "contracts/J-002-b.md"},'
+            ' {"id": "J-003", "slug": "c", "title": "C",'
+            ' "criticality": "standard", "status": "approved",'
+            ' "contract": "contracts/J-003-c.md"}]')
+        with patch("sys.stdout", new_callable=StringIO) as out:
+            code = factory.main(["--repo", str(self.repo), "status"])
+        self.assertEqual(code, 0)
+        self.assertIn("journey coverage debt: 1 of 3 journeys inventory-only, "
+                      "1 draft contracts", out.getvalue())
+
+    def test_status_silent_when_no_debt_or_no_graph(self):
+        with patch("sys.stdout", new_callable=StringIO) as out:
+            factory.main(["--repo", str(self.repo), "status"])
+        self.assertNotIn("coverage debt", out.getvalue())
+        self._write_graph(
+            '[{"id": "J-001", "slug": "a", "title": "A",'
+            ' "criticality": "core", "status": "approved",'
+            ' "contract": "contracts/J-001-a.md"}]')
+        with patch("sys.stdout", new_callable=StringIO) as out:
+            factory.main(["--repo", str(self.repo), "status"])
+        self.assertNotIn("coverage debt", out.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

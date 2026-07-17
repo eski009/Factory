@@ -28,7 +28,7 @@ class TestPluginStructure(unittest.TestCase):
     def test_commands_have_frontmatter(self):
         commands = sorted((ROOT / "commands").glob("*.md"))
         self.assertEqual([p.stem for p in commands],
-                         ["add", "autopilot", "bug", "escape", "init", "packet", "research", "roadmap", "run", "status"])
+                         ["add", "autopilot", "bug", "do", "escape", "init", "packet", "research", "roadmap", "run", "status"])
         for path in commands:
             self.assertRegex(path.read_text(), FRONTMATTER, path.name)
 
@@ -78,6 +78,29 @@ class TestPluginStructure(unittest.TestCase):
         self.assertIn("never answers its own human gates", text.lower())
         self.assertIn("never waives or confirms assurance", text.lower())
         self.assertIn("never files or promotes escapes", text.lower())
+
+    def test_do_command_routes_to_owning_surfaces(self):
+        cmd = ROOT / "commands/do.md"
+        self.assertTrue(cmd.exists())
+        text = cmd.read_text()
+        self.assertRegex(text, FRONTMATTER, str(cmd))
+        # a router, not a new pipeline: every route lands on an existing owner
+        for owner in ("factory-bug", "factory-roadmap", "factory-research",
+                      "factory-dispatch", "factory-autopilot",
+                      "factory add", "commands/escape.md"):
+            self.assertIn(owner, text, owner)
+        # it never advances stages itself
+        self.assertIn("never run `factory advance` yourself", text)
+        # human verbs are relays of an expressed decision, never guesses
+        self.assertIn("ONLY when the human's own words carry the decision",
+                      text)
+        for verb in ("factory choice", "factory waive", "factory confirm"):
+            self.assertIn(verb, text, verb)
+        self.assertIn("never invented", text)
+        # ambiguity goes to the present human, not the nearest match
+        self.assertIn("ask ONE clarifying question", text)
+        # unattended runs never route through it
+        self.assertIn("never invoke it at all", text)
 
     def test_escape_command_wraps_cli_and_links_bugs(self):
         cmd = ROOT / "commands/escape.md"
@@ -262,6 +285,10 @@ class TestPluginStructure(unittest.TestCase):
                      "write_files", "render_preview"):
             self.assertIn(f"mcp__claude-design__{tool}", text, tool)
         self.assertIn("presence of any tool in the family", text)
+        # built-in variant satisfies the same probe; writes are plan-locked
+        self.assertIn("Built-in variant.", text)
+        self.assertIn("`finalize_plan`", text)
+        self.assertIn("the built-in `DesignSync` tool counts", text)
         # canonical-mirror rule; interactive-only survives (AC 5)
         self.assertIn("never a second source of truth", text)
         self.assertIn("items/<id>/design/", text)
@@ -294,7 +321,7 @@ class TestPluginStructure(unittest.TestCase):
         text = (ROOT / "skills/capabilities/SKILL.md").read_text()
         self.assertIn(
             "| DesignSync | any `mcp__claude-design__*` tool present "
-            "in tool list |", text)
+            "in tool list, or the built-in `DesignSync` tool |", text)
         self.assertIn("references/designsync.md", text)
         self.assertIn("Never let a missing optional tool fail a stage",
                       text)
