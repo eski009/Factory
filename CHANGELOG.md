@@ -20,6 +20,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   question when two intents genuinely fit, and is never invoked by
   unattended runs.
 
+### Changed
+
+- **README gains a command reference** — all eleven slash commands with
+  one-line descriptions, plus the four human-only CLI verbs (`choice`,
+  `confirm`, `waive`, `promote`) and where the rest of the engine CLI
+  lives.
+
 ## [0.9.1] - 2026-07-17
 
 ### Added

@@ -137,6 +137,24 @@ In the repo you want Factory to work on:
 
 Full walkthrough — the design gate, the autonomy dial, where state lives — in **[docs/getting-started.md](docs/getting-started.md)**.
 
+## Command reference
+
+| Command | What it does |
+|---|---|
+| `/factory:init <product>` | One-time setup: scaffold state, seed the product brain from real sources (mines a brownfield repo), then interview you on the gaps. |
+| `/factory:add "title"` | File a work item into the backlog (optionally `kind:ui\|backend\|mixed`). Nothing runs yet. |
+| `/factory:bug "report"` | Report a bug in your own words — replicated before any fix is planned, proven fixed before merge. |
+| `/factory:run` | Advance the pipeline: `step` (one stage), `item` (default — one item to its next stop), or `loop` (until something needs you). |
+| `/factory:do "…anything…"` | The router: say what you want in plain words and it hands off to whichever command or skill owns that intent. Empty = do the next right thing. |
+| `/factory:status` | Items by priority, the next actionable item, memory health, packets waiting on you, open escapes, journey coverage debt. |
+| `/factory:roadmap prd.md` | Turn a PRD or backlog document into triaged, prioritized work items. |
+| `/factory:research` | Run the research stage on demand — depth scales with the item's tier (epics get a market focus group). |
+| `/factory:autopilot` | Drain the backlog unattended. Refuses an invalid state tree; never answers your gates. |
+| `/factory:packet` | Write/refresh an item's human-readable packet: what it's waiting on, the evidence, the one CLI line to answer it. |
+| `/factory:escape "finding"` | For what *you* found after Factory said done — filed as an escape that stays open until promoted into a permanent check. |
+
+Four CLI verbs are **human-only** — Factory never runs them on its own behalf, and every packet prints the exact line to type: `factory choice <id> <a-d>` (pick a design), `factory confirm <id>` (approve a passed assurance run when the assure gate is configured), `factory waive <id> --reason "…"` (override a parked assurance question, reason recorded), `factory promote <esc-id> --via …` (close an escape by naming the durable check it became). The full engine CLI (`scripts/factory/factory.py --help`) has the rest: state and flow verbs the skills drive, council/memory verbs, optional worker verbs, and the `status`/`cost`/`validate`/`doctor` readouts.
+
 ## Under the hood
 
 - A **deterministic, zero-dependency engine** (Python) owns all state and the gate checks. The AI skills drive it but can't bypass a gate. State splits into `.factory/` (machine-owned: work items, council ledgers) and `docs/factory/` (human-readable: the brain, the roadmap, review packets awaiting a decision).
