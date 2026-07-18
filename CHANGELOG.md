@@ -4,61 +4,240 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [0.8.1] - 2026-07-18
+## [0.10.0] - 2026-07-18
+
+Integration release: merges the upstream line (through 0.9.2 — codex
+subscription workers, DesignSync journeys, journey assurance, `/factory:do`)
+into this fork, alongside the fork-only features listed below. Where the two
+lines touched the same surface, the merge keeps both improvements (e.g. the
+capabilities table carries upstream's built-in-DesignSync probe and codex
+worker auth *and* the fork's App visual capture row; the review packet lists
+upstream's assurance artifacts/verbs *and* renders the fork's HTML packet).
 
 ### Fixed
 
 - **Visual bugs no longer get a false `verify.green`.** A `mode: human-confirmed`
-  (visual) bug reaching the forked, unattended `verify` stage had no runnable
-  command to exercise, but could still read the seeded acceptance criteria (the
+  (visual) bug reaching the unattended `verify` stage had no runnable command to
+  exercise, but could still read the seeded acceptance criteria (the
   expected-after state) in `spec.md`. With the answer key visible and nothing to
   run, verify would read the diff, decide "the fix looks applied," and log
-  `verify.green` — a confirmation-biased false "done" (recorded as bug-intake
-  residual seam #2). `factory-verify` now routes any visual / human-confirmed
-  criterion through a **blind observer** protocol: a fresh subagent drives the app
-  and reports what it factually sees — blind to the diagnosis, diff, and expected
-  outcome — and verify judges that independent report against the criteria,
-  requiring both that the original failure is absent AND that the expected state
-  is present. Observation and judgment are separated so the party that knows the
-  answer never looks at the app and the party that looks at the app never knows
-  the answer. Gated on a new **App visual capture** capability
-  (`skills/capabilities/references/visual-verify.md`); when no screenshot-capable
-  driver is available, verify does not self-attest — the item pauses
-  `waiting-human` for the human to confirm the repro.
+  `verify.green` — a confirmation-biased false "done." `factory-verify` now routes
+  any visual / human-confirmed criterion through a **blind observer** protocol: a
+  fresh subagent drives the app and reports what it factually sees — blind to the
+  diagnosis, diff, and expected outcome — and verify judges that independent
+  report against the criteria, requiring both that the original failure is absent
+  AND that the expected state is present. Gated on a new **App visual capture**
+  capability (`skills/capabilities/references/visual-verify.md`); when no
+  screenshot-capable driver is available, verify does not self-attest — the item
+  pauses `waiting-human` for the human to confirm the repro.
 
-## [0.8.0] - 2026-07-17
+### Fork features carried (not in the upstream line)
 
-### Changed
+- **Visual HTML decision packets** — `factory packet` writes a self-contained,
+  mobile-legible `docs/factory/packets/<id>.html` beside the Markdown packet, and
+  every `waiting-human` pause surfaces a clickable "View the options" link
+  (hosted Artifact URL → local `options.html` → HTML packet).
+- **Forked-context stage skills** — the pipeline stage skills carry
+  `context: fork`, each executing in an isolated subagent context and returning a
+  compact outcome report, so a long `/factory:run loop` or `/factory:autopilot`
+  session no longer accumulates every stage's working context.
 
-- **Stage skills now run in forked contexts.** The nine pipeline stage skills
-  (`factory-triage`, `factory-spec`, `factory-design`, `factory-plan`,
-  `factory-implement`, `factory-review`, `factory-verify`, `factory-ship`,
-  `council-review`) carry `context: fork`: each executes in an isolated
-  subagent context and returns only a compact outcome report to the
-  dispatcher, so a `/factory:run loop` or `/factory:autopilot` session no
-  longer accumulates every stage's working context (council report
-  round-trips, generated `options.html`, per-task implementer output). The
-  fork boundary is explicit in each skill's contract — item id in via the
-  skill argument, outcome report out via the final message, all other state
-  via files — and `factory-dispatch` logs one measured spend event per
-  returned stage fork.
-
-## [0.7.0] - 2026-07-14
+## [0.9.2] - 2026-07-17
 
 ### Added
 
-- **Every decision packet carries a clickable link to a visual HTML options
-  page.** Generalises what the design gate already did to every
-  `waiting-human` pause: `factory packet` now writes a self-contained,
-  mobile-legible `docs/factory/packets/<id>.html` beside the Markdown packet,
-  and both renderers gain a **"View the options"** section whose links are
-  ordered by preference — a hosted Artifact URL (from the paused reason) →
-  the local `design/options.html` → the HTML packet itself — so a Markdown
-  file is never the primary view when an HTML page exists. Artifacts render
-  as clickable `file://` links, and the Respond block uses the real item id
-  (fixing the literal `<id>`/`<option>` placeholders). `factory-dispatch`
-  surfaces the HTML link at every pause; see
-  `skills/capabilities/references/decision-pages.md`.
+- **`/factory:do` — one entry point, your words.** A router command that
+  takes free-form intent ("dark mode is broken", "keep going", "go with
+  option b", a PRD path, or nothing at all for "do the next right thing"),
+  reads the pipeline state first, and hands the intent to the surface that
+  already owns it — bug intake, add, roadmap, research, dispatch,
+  autopilot, status, or the escape flow. It is a relay, not a new
+  pipeline: it never advances stages itself, only runs the human verbs
+  (`choice`/`waive`/`confirm`) when the human's own words carry the
+  decision (a waiver reason is never invented), asks one clarifying
+  question when two intents genuinely fit, and is never invoked by
+  unattended runs.
+
+### Changed
+
+- **README gains a command reference** — all eleven slash commands with
+  one-line descriptions, plus the four human-only CLI verbs (`choice`,
+  `confirm`, `waive`, `promote`) and where the rest of the engine CLI
+  lives.
+
+## [0.9.1] - 2026-07-17
+
+### Added
+
+- **Journey traceability closes its declared-shape gaps.** The
+  machine-readable impact declaration (`assurance-impact.schema.json`) now
+  carries what the spec prose already promised: scenario kinds gain
+  `empty` and `error` alongside happy/recovery/interruption; browser-borne
+  journeys declare their required `viewports`; and every journey answers
+  the adjacency question explicitly — `adjacent.upstream` /
+  `adjacent.downstream` name the surrounding nodes that need inspection
+  because expectations or state carry across (empty lists are a considered
+  no; an omitted key is not a no). factory-spec's Declare duty writes all
+  of it; factory-assure and the journey-reviewer walk it — every declared
+  viewport, every declared adjacent node. All additions are
+  schema-optional, so mid-flight items validate unchanged.
+- **Journey coverage debt is explicit.** `factory status` now prints the
+  honest remainder of the progressive-depth registry: how many journeys
+  are inventory-only (no contract) and how many hold only draft contracts.
+  Shallow coverage was always legitimate; silent shallow coverage no
+  longer is.
+- **DOM/a11y snapshots as first-class evidence.** The reviewer captures a
+  DOM or accessibility-tree snapshot into `assurance/dom/` where semantics
+  carry the evidence (labels, roles, focus order, announced state), typed
+  `dom` in verdicts — pixels alone can look right while the semantics are
+  wrong. Draft contracts now also record trust-and-reassurance
+  requirements at commitment nodes and the required evidence per surface.
+- **Cross-screen coherence named as the verdict rule.** The walk judges
+  the journey as a whole: an expectation created on one screen that a
+  later screen contradicts or abandons is a fail at the later node, citing
+  the earlier node's evidence — isolated per-screen passes can no longer
+  compose into a passing journey.
+
+## [0.9.0] - 2026-07-16
+
+### Added
+
+- **DesignSync journeys — the journey model meets the linked design
+  project.** Three additions riding the existing `mcp__claude-design__*`
+  capability, inheriting its doctrine unchanged (interactive sessions only,
+  probe-don't-ask, degrade-never-block, proxy spend, repo files canonical —
+  never a second source of truth). (1) **Visual journey map:** the three
+  surfaces that mutate `docs/factory/journeys/` — intake at seeding end,
+  factory-spec on registering a journey or drafting a contract, and
+  `/factory:escape` after a `contract:` promotion — regenerate a
+  self-contained `factory-journeys.html` flow view (nodes, transitions,
+  criticality, contract status) in the linked project, best-effort and
+  never blocking. (2) **Greenfield frame-pull:** a greenfield repo has no
+  routes to mine, but a linked design project often holds the screens
+  before code exists — intake now pulls its frame/flow structure and emits
+  journey-inventory entries cited `(source: claude-design
+  <project>/<file>)` with `(assumption)`-tagged criticality, which the init
+  interview then puts in front of the owner automatically. (3)
+  **Node-annotated design gate:** pushed mockup options and the
+  chosen-direction note carry the journey nodes their screens serve (from
+  `impact.json`), and a recorded pick may refresh the touched nodes'
+  expectation text in still-draft contracts — never approved ones, which
+  amend only through the council-judgement firewall. No engine changes; the
+  assure stage is untouched (design artifacts never substitute for
+  running-product evidence). Suite: 532 → 536 tests.
+
+## [0.8.0] - 2026-07-16
+
+### Added
+
+- **Parallel Codex workers on the ChatGPT subscription, not just API keys.**
+  A new `workers.codex.auth` key in `.factory/config.json` — `"key"`
+  (default, unchanged: `OPENAI_API_KEY`/`ANTHROPIC_API_KEY` in the
+  environment) or `"chatgpt"`: `factory provision` copies
+  `~/.codex/auth.json` into each worker's isolated `CODEX_HOME` with the
+  refresh token stripped, so no worker can rotate the login — the pool fans
+  out on one subscription token at any parallelism without racing it, and
+  the engine never writes the real `~/.codex`. Provision fail-closes when
+  the access token wouldn't outlive the run (`timeout_seconds` + margin),
+  naming the fix (log in with `codex` interactively, then retry); mid-run
+  expiry is classified `reason: auth` → exit 1, the same honest pool-stop a
+  bad key already triggers, never a silent retry loop. Chatgpt-mode worker
+  environments have `OPENAI_API_KEY` popped so billing can't silently flip
+  to the API mid-run. `factory doctor --json` → `workers` gains `codex_auth`
+  (the configured mode) and `codex_login` (remaining access-token TTL in
+  seconds). Default mode is `"key"` — existing configs are unaffected.
+
+Suite: 505 → 532 tests.
+
+## [0.7.0] - 2026-07-16
+
+### Added
+
+- **Journey assurance — a first-class `assure` stage between verify and
+  ship.** The pipeline is now `idea → triage → spec → design → plan →
+  implement → review → verify → assure → ship → done`. Review asks "is the
+  code sound," verify asks "do the checks pass" — assure asks "can the
+  customer get through it." Every spec must now declare journey impact: a
+  `## Journey impact` section in `spec.md` plus a `journeys` frontmatter
+  field set via the new `factory journeys <id> <none|J-004,...>` verb — the
+  hardened spec-exit gates (design and plan) refuse to advance an item
+  without both. `journeys: none` is a valid, explicit answer that skips
+  assure through the engine's `stage_sequence` (the same mechanism backend
+  items use to skip design); an *absent* declaration never is. An assurance
+  failure routes back to implement on a second bounded rework edge
+  (`assure.rejected`, lifetime cap 2, then blocked with a packet).
+
+- **A round-scoped ship gate over schema-validated evidence.** For
+  journey-affecting items, ship requires
+  `.factory/items/<id>/assurance/verdicts.json` that schema-validates,
+  covers every declared journey and every scenario `impact.json` requires,
+  references evidence files that actually exist under the item dir, and
+  contains no fail or unresolved ambiguity — plus an `assure.passed` (or
+  `assure.waived`) event logged *after* the latest `implement.completed`:
+  the engine's first round-scoped evidence check, so after a rework bounce
+  stale assurance no longer satisfies ship. When the config `gates` list
+  includes `"assure"`, ship additionally requires an equally round-scoped
+  `assure.confirmed` — a recorded waiver is authoritative and satisfies the
+  gate on its own.
+
+- **A durable journey model.** `docs/factory/journeys/`, sibling to the
+  brain: `inventory.md` + `graph.json` are roadmap-like — stage skills
+  maintain them directly — while `contracts/` are brain-like: a stage skill
+  may author a *draft* contract directly, but amending an *approved* one
+  goes through the council-judgement firewall. Brownfield `factory-intake`
+  infers inventory entries from the routes/screens/tests mining it already
+  performs (every entry cited, criticality tagged `(assumption)`), and the
+  init interview harvests the placeholder and those assumptions
+  automatically — zero interview changes. `factory-spec` gains three
+  mechanical duties: **map** the item's behavior onto journey nodes
+  (drafting a contract where an affected journey lacks one), **declare**
+  the impact in `spec.md` and its machine-readable twin `impact.json`, and
+  **set** `factory journeys` — and `factory-bug` seeds `## Journey impact`
+  at intake from the replicated broken node, carried into spec verbatim.
+
+- **A fresh-context journey reviewer + the Browser drive capability.** The
+  assure stage dispatches one fresh journey-reviewer subagent per affected
+  journey — no implementer transcript, no review/verify conclusions, no
+  "this is complete" framing — which walks the journey node by node against
+  the *running product*, writing expectations before acting and capturing
+  screenshot, console, and network evidence. Browser journeys need a
+  browser-automation tool (Playwright MCP, chrome-devtools MCP, or
+  Claude-in-Chrome — a behavioral probe, not tool-pinned); absent, the item
+  parks `waiting-human` with a blocker packet, never a silent pass. CLI/API
+  journeys are driven through the real commands a caller would run, with
+  typed transcripts in place of screenshots. Depth scales with materiality
+  via the tier profiles' new `assure` key: a bug re-walks the broken node,
+  a feature the affected journeys, an epic the full journey surface
+  (`node | affected | full`).
+
+- **Two human-only verbs, engine-enforced.** `factory waive <id> --reason
+  "..."` records a waiver (writes `assurance/waiver.md`, refuses an empty
+  reason); `factory confirm <id>` records the confirmation
+  (`assurance/human-confirmation.md`) when the assure gate is configured.
+  Both are single-writer at the engine level — `factory log` refuses to
+  record `assure.waived`/`assure.confirmed` events, so no skill or
+  autopilot path can fake them — and dispatch auto-resumes a parked item
+  when the waiver or confirmation file appears, exactly like a design
+  choice.
+
+- **The escape register.** A fourth append-only ledger
+  (`.factory/ledgers/escapes.jsonl`, schema-validated per line) for
+  anything a human still finds after assurance: `/factory:escape`
+  classifies the miss conversationally and files it via `factory escape`;
+  the record stays **open** until `factory promote` links it to a contract
+  amendment, regression test, acceptance oracle, council review rule, or
+  brain decision — and `factory status` surfaces the open count until then.
+  That's the compounding loop: escape → improved contract or check → future
+  assurance catches it → fewer human discoveries.
+
+**Migration note.** Items already past spec never hit the hardened
+spec-exit gates, but any pre-existing item reaching assure without a
+journeys declaration parks `waiting-human` with a packet. Unblock it with
+`factory journeys <id> none` — valid even while parked; the engine falls
+back to the unfiltered stage sequence so the item can advance out — or
+with `factory waive <id> --reason "..."`.
+
+Suite: 434 → 505 tests.
 
 ## [0.6.0] - 2026-07-14
 

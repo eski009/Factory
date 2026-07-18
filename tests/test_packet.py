@@ -71,6 +71,13 @@ class TestPacket(unittest.TestCase):
         self.assertNotIn("$0", text)
         self.assertNotIn("≈$", text)
 
+    def test_packet_lists_assurance_artifacts_and_verbs(self):
+        text = packet.render_packet(self.repo, "0001-thing")
+        self.assertIn("assurance/verdicts.json", text)
+        self.assertIn("assurance/impact.json", text)
+        self.assertIn("factory confirm", text)
+        self.assertIn("factory waive", text)
+
     def test_packet_renders_with_corrupt_log_line(self):
         log = self.repo / ".factory/items/0001-thing/log.jsonl"
         with log.open("a", encoding="utf-8") as f:

@@ -13,8 +13,10 @@ text, you do not edit brain surfaces or council files.
 
 You are given the item body, `items/<id>/triage.md`, and excerpts from the
 brain surfaces (`docs/factory/brain/vision.md`, `users.md`, `constraints.md`,
-and for `ui`/`mixed` items, `design-system.md`). Treat these excerpts as the
-only source of truth — do not infer product intent from outside knowledge.
+and for `ui`/`mixed` items, `design-system.md`), and excerpts from
+docs/factory/journeys/graph.json + inventory.md for the journeys the item
+plausibly touches. Treat these excerpts as the only source of truth — do not
+infer product intent from outside knowledge.
 
 ## Spec structure
 
@@ -22,6 +24,14 @@ Produce `items/<id>/spec.md` with these sections, in order:
 
 - `## Purpose` — what this item is for and why it matters, one paragraph.
 - `## Behavior` — what the system does, concrete enough to build from.
+- `## Journey impact` — affected journey ids, nodes changed, transitions
+  changed, new states introduced, required assurance scenarios (happy,
+  empty, error, interruption and recovery paths as the change warrants),
+  required variants and viewports where the surface is a browser, and
+  whether adjacent upstream/downstream nodes need inspection — or
+  exactly `None — no customer journey affected.` plus a one-line
+  justification. Name any affected journey that lacks a contract so the
+  orchestrator can draft it.
 - `## Non-goals` — what this item explicitly does not cover.
 - `## Assumptions (brain gaps)` — one entry per question the brain excerpts
   don't answer; omit the section only if there were none.

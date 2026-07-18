@@ -7,6 +7,8 @@ research: off | inputs-only | web | deep  — the ceiling on focus-group/market
 research (deep = the focus group runs; features/bugs never trigger it).
 review:  light | full — full = the six-seat council; light = the inward
 correctness seats only (a bug fix needs correctness review, not a market read).
+assure: node | affected | full — how much of the journey surface the assure
+stage walks (changed node only / all affected journeys / affected plus core).
 """
 
 import json
@@ -14,9 +16,9 @@ import json
 from . import paths
 
 DEFAULTS = {
-    "epic": {"research": "deep", "review": "full"},
-    "feature": {"research": "web", "review": "full"},
-    "bug": {"research": "off", "review": "light"},
+    "epic": {"research": "deep", "review": "full", "assure": "full"},
+    "feature": {"research": "web", "review": "full", "assure": "affected"},
+    "bug": {"research": "off", "review": "light", "assure": "node"},
 }
 
 
@@ -36,5 +38,6 @@ def profile(repo, tier):
                     block = override
         except json.JSONDecodeError:
             block = {}
-    base.update({k: v for k, v in block.items() if k in ("research", "review")})
+    base.update({k: v for k, v in block.items()
+                if k in ("research", "review", "assure")})
     return base

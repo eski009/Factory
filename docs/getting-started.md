@@ -81,12 +81,13 @@ reports its id — it does not start work.
 skill, which drives one item stage by stage:
 
 ```
-idea → triage → spec → design → plan → implement → review → verify → ship → done
+idea → triage → spec → design → plan → implement → review → verify → assure → ship → done
 ```
 
 Each stage maps to its own skill (`factory-triage` covers idea→triage→spec,
 then `factory-spec`, `factory-design`, `factory-plan`, `factory-implement`,
-`factory-review`, `factory-verify`, `factory-ship`). The dispatcher runs
+`factory-review`, `factory-verify`, `factory-assure`, `factory-ship`). The
+dispatcher runs
 `factory validate` before every transition and stops immediately on any
 validation error rather than guessing at corrupt state.
 
@@ -103,6 +104,17 @@ factory choice 0001-dark-mode b --notes "wizard flow reads clearer"
 The next `/factory:run` notices the recorded choice and auto-resumes the
 item back through `design`, which advances it straight to `plan`. `backend`
 items skip the design stage entirely — there's nothing to render.
+
+**The assurance stage.** Between verify and ship, journey-affecting items
+get a fresh-context walk of the affected customer journeys against the
+running product (browser journeys need a browser-automation tool — absent,
+the item parks for you rather than silently passing). Failures route back
+to implement; judgement calls park with a packet. Your two verbs:
+`factory waive <id> --reason "..."` (override with a recorded reason) and
+`factory confirm <id>` (when you've configured `"assure"` in the config
+`gates` list, items pause for your confirmation after passing). Anything
+you still find after shipping: `/factory:escape` files it, and it stays
+open until promoted into a contract, test, oracle, or review rule.
 
 ## 4. The autonomy dial
 
@@ -137,6 +149,12 @@ permit — it's a bigger wrapper, not a bigger hammer.
   (`brain/*.md`), council role docs, `roadmap.md`, and review `packets/`
   waiting for a decision.
 
+Not sure which command you want? `/factory:do "…what you want, in your own
+words…"` reads the pipeline state and routes to the right one — bug intake,
+add, roadmap, run, an answer to a waiting packet — asking one clarifying
+question when your intent genuinely fits two. With no arguments it does the
+next right thing (surfaces a waiting packet, or dispatches the next item).
+
 To check in on a running factory from any session:
 
 ```
@@ -144,7 +162,11 @@ To check in on a running factory from any session:
 ```
 
 which reports items by priority, the next actionable item, memory health,
-and any packets waiting under `docs/factory/packets/`.
+and any packets waiting under `docs/factory/packets/`. The CLI's
+`factory status` also prints the open-escape count and the journey
+coverage debt — how many registered journeys are still inventory-only or
+hold only draft contracts. Shallow coverage is legitimate (deep contracts
+exist only where they earn their keep); unnamed shallow coverage is not.
 
 For a lower-level readout of the repo's integration state (whether the
 state tree validates, whether design-system tokens and a DesignSync

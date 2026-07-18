@@ -14,9 +14,9 @@ from .validate import validate
 _INSTALL_ROOT = Path(__file__).resolve().parents[3]
 TEMPLATES = _INSTALL_ROOT / "templates" / "docs-factory"
 SCHEMAS = _INSTALL_ROOT / "schemas"
-LEDGERS = ("bids", "judgements", "reputation")
+LEDGERS = ("bids", "judgements", "reputation", "escapes")
 LEDGER_SCHEMAS = {"bids": "escalation-bid", "judgements": "orchestrator-judgement",
-                  "reputation": "reputation-event"}
+                  "reputation": "reputation-event", "escapes": "escape"}
 DEFAULT_CONFIG = {"version": 1, "merge": "auto", "gates": ["design"],
                   "research": {"depth": "web"}}
 
@@ -153,6 +153,18 @@ def validate_tree(repo):
                     if event.get("event") == "spend":
                         errors.extend(spend_event_errors(
                             event.get("data"), f"{sub.name}/log.jsonl:{lineno}"))
+            for rel, schema_name in (("assurance/impact.json", "assurance-impact"),
+                                     ("assurance/verdicts.json", "assurance-verdicts")):
+                apath = sub / rel
+                if apath.exists():
+                    try:
+                        data = json.loads(apath.read_text(
+                            encoding="utf-8", errors="replace"))
+                    except json.JSONDecodeError as exc:
+                        errors.append(f"{sub.name}/{rel}: invalid JSON ({exc})")
+                        continue
+                    errors.extend(validate(data, load_schema(schema_name),
+                                           f"{sub.name}/{rel}"))
             if meta is not None and not schema_errors and log_valid:
                 expected = "idea"
                 for event in log_events:
@@ -164,6 +176,15 @@ def validate_tree(repo):
                     errors.append(
                         f"{sub.name}: stage {meta['stage']!r} does not match "
                         f"log (expected {expected!r})")
+    graph_path = paths.docs_root(repo) / "journeys" / "graph.json"
+    if graph_path.exists():
+        try:
+            graph = json.loads(graph_path.read_text(
+                encoding="utf-8", errors="replace"))
+            errors.extend(validate(graph, load_schema("journey-graph"),
+                                   "journeys/graph.json"))
+        except json.JSONDecodeError as exc:
+            errors.append(f"journeys/graph.json: invalid JSON ({exc})")
     entries = {}
     clean = {}
     for name in LEDGERS:
@@ -187,6 +208,17 @@ def validate_tree(repo):
                     line_errors = True
                 else:
                     parsed.append(entry)
+                    if name == "escapes":
+                        if entry.get("status") == "promoted" and not entry.get("promotion"):
+                            errors.append(
+                                f"ledgers/escapes.jsonl:{lineno}: promoted escape "
+                                "missing promotion reference")
+                            line_errors = True
+                        if entry.get("status") == "open" and entry.get("promotion"):
+                            errors.append(
+                                f"ledgers/escapes.jsonl:{lineno}: open escape must "
+                                "not carry a promotion")
+                            line_errors = True
         entries[name] = parsed
         clean[name] = not line_errors
     if all(clean.values()):
@@ -252,4 +284,15 @@ def _check_ledger_consistency(entries):
             errors.append(
                 f"ledgers/consistency: reputation for {jdg['id']} "
                 f"has wrong delta/agent/topic")
+
+    counts = {}
+    for entry in entries.get("escapes", []):
+        counts.setdefault(entry.get("id"), []).append(entry.get("status"))
+    for esc_id, statuses in counts.items():
+        if len(statuses) > 2:
+            errors.append(f"ledgers/consistency: escape {esc_id} has "
+                          f"{len(statuses)} entries (max 2: open then promoted)")
+        elif statuses not in (["open"], ["open", "promoted"]):
+            errors.append(f"ledgers/consistency: escape {esc_id} entries must "
+                          "be open, then promoted")
     return errors

@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "assurance-verdicts",
+  "type": "object",
+  "required": ["item", "journeys"],
+  "additionalProperties": false,
+  "properties": {
+    "item": {"type": "string", "minLength": 1},
+    "ts": {"type": "string"},
+    "journeys": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "surface", "scenarios"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "pattern": "^J-[0-9]{3}$"},
+          "surface": {"type": "string", "enum": ["browser", "cli", "api"]},
+          "contract_status": {"type": "string", "enum": ["draft", "approved"]},
+          "scenarios": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "verdict", "expected", "actual"],
+              "additionalProperties": false,
+              "properties": {
+                "id": {"type": "string", "minLength": 1},
+                "verdict": {"type": "string",
+                            "enum": ["pass", "fail", "ambiguity", "blocker"]},
+                "expected": {"type": "string", "minLength": 1},
+                "actual": {"type": "string", "minLength": 1},
+                "notes": {"type": "string"},
+                "evidence": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["type", "path"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "type": {"type": "string",
+                               "enum": ["screenshot", "dom", "console",
+                                        "network", "transcript"]},
+                      "path": {"type": "string", "minLength": 1}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -13,12 +13,12 @@ factory work <id> [--backend claude|codex|stub] [--model M]
 ```
 
 Exit codes: `0` succeeded (result `done`, `implement.completed` logged);
-`1` usage/internal; `2` precondition refusal (not at `implement`, or no
-unticked plan tasks); `3` worker attempted but failed — read `result.json`'s
-typed `reason`. Phase A actually emits
-`crash|timeout|no_changes|red_tests|rate_limited`; `auth` and `prep_failed`
-are reserved for a later phase (auth-failure classification and the
-dependency-prep step are not wired up yet).
+`1` usage/internal — includes `reason: auth` (a bad/expired key or, in
+`chatgpt` mode, an expired login); `2` precondition refusal (not at
+`implement`, or no unticked plan tasks); `3` worker attempted but failed —
+read `result.json`'s typed `reason`:
+`crash|timeout|no_changes|red_tests|rate_limited|blocked`. `prep_failed` is a
+`factory provision` outcome, not a `factory work` one — see Scheduler below.
 
 ## Config (`.factory/config.json` → `workers`)
 
@@ -26,11 +26,30 @@ Off by default. Keys: `enabled`, `backend` (default `claude`), `max_parallel`
 (default 2), `timeout_seconds`, `network` (default `off`), `prep`,
 `test_command`, `models.{claude,codex}`, `codex.sandbox`, `retry`.
 
-## Auth (environment only)
+## Auth
 
-Fleet/unattended mode uses **API keys**, not subscription tokens (which race
-and expire mid-run): `ANTHROPIC_API_KEY` for `claude`, `OPENAI_API_KEY` for
-`codex`. `factory doctor` reports presence without printing values.
+Two modes per repo, `workers.codex.auth` in `.factory/config.json`:
+
+- **`"key"` (default):** `OPENAI_API_KEY` in the environment; stateless, safe at
+  any parallelism. `ANTHROPIC_API_KEY` for the claude backend, unchanged.
+- **`"chatgpt"`:** workers run on the ChatGPT-subscription login. `factory
+  provision` copies `~/.codex/auth.json` into each worker's isolated
+  `CODEX_HOME` **with the refresh token stripped** — workers cannot rotate the
+  token, so parallel runs cannot race the login, and the engine never writes
+  the real `~/.codex`. Provision fail-closes unless the access token outlives
+  `timeout_seconds` + margin (the message says to run `codex` interactively
+  and retry); mid-run expiry is classified `auth` → exit 1 → pool-stop when
+  codex reports it recognizably (401/403, "token expired", "not logged in");
+  an unrecognized failure shape surfaces as `crash` and burns the two-strikes
+  retry instead — either way the run fails loudly, never a silent pass. All
+  workers share the plan rate limits — the pool's staggered launch and
+  backoff already pace that bucket. The engine removes `OPENAI_API_KEY` from
+  chatgpt-mode worker environments so billing never silently flips to the
+  API. `factory doctor
+  --json` → workers reports `codex_auth` and `codex_login` (remaining token
+  seconds). Running `factory work` without provisioning uses your real
+  `~/.codex` like an interactive session — fine for one process; the pool
+  path always provisions.
 
 ## Autonomy / network
 
@@ -45,7 +64,8 @@ run time (design spec open-question 1).
 ## Trust
 
 Worker output is untrusted until it clears Factory's existing review +
-verify + green-tests gates. `factory work` only fills the `implement`
+verify + green-tests gates (plus assure, for journey-affecting items).
+`factory work` only fills the `implement`
 station; nothing about the gates changes. Set `workers.test_command` so the
 implement station has a real green-check: without it, a worker's plan-tick
 happens with no independent test gate at this stage, and partial or broken
@@ -80,7 +100,7 @@ factory cleanup <id> [--json]
   cannot fix a broken prep offline.
 - **`factory cleanup <id>`** removes the worktree (`git worktree remove
   --force` + `prune`) and the per-worker config dir. The **branch is kept**,
-  so `review`/`verify`/`ship` still operate on `factory/<id>`.
+  so `review`/`verify`/`assure`/`ship` still operate on `factory/<id>`.
 
 **Isolation invariant:** one branch ↔ one worktree ↔ one worker ↔ one config
 dir. `factory provision` guarantees it.

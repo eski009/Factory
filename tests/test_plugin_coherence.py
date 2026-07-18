@@ -24,7 +24,7 @@ class TestPluginCoherence(unittest.TestCase):
         # factory-dispatch maps stages to factory-<stage> skills; each must exist.
         dispatch = read(ROOT / "skills/factory-dispatch/SKILL.md")
         mapped = set(re.findall(r"factory-(triage|spec|design|plan|implement|"
-                                r"review|verify|ship)", dispatch))
+                                r"review|verify|assure|ship)", dispatch))
         skills = skill_names()
         for stage in mapped:
             self.assertIn(f"factory-{stage}", skills,
@@ -168,6 +168,26 @@ class TestPluginCoherence(unittest.TestCase):
         self.assertIn("light", council)
         research = read(ROOT / "skills/factory-research/SKILL.md")
         self.assertIn("epic", research)
+
+    def test_spec_section_lists_stay_synced(self):
+        # the spec.md section order is defined in two places; Journey impact
+        # must sit between Behavior and Non-goals in BOTH.
+        for rel in ("skills/factory-spec/SKILL.md", "agents/spec-writer.md"):
+            text = read(ROOT / rel)
+            # anchor on the dash-bullet form so prose mentions of the section
+            # names elsewhere in the file cannot satisfy the ordering check
+            b = text.index("- `## Behavior`")
+            j = text.index("- `## Journey impact`")
+            n = text.index("- `## Non-goals`")
+            self.assertTrue(b < j < n, f"{rel}: Journey impact must sit between Behavior and Non-goals")
+
+    def test_dispatch_maps_assure_between_verify_and_ship(self):
+        dispatch = read(ROOT / "skills/factory-dispatch/SKILL.md")
+        self.assertIn("| assure | factory-assure |", dispatch)
+        self.assertLess(dispatch.index("| verify | factory-verify |"),
+                        dispatch.index("| assure | factory-assure |"))
+        self.assertLess(dispatch.index("| assure | factory-assure |"),
+                        dispatch.index("| ship | factory-ship |"))
 
 
 if __name__ == "__main__":

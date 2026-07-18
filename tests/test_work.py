@@ -330,5 +330,39 @@ class ChangeEnumTest(unittest.TestCase):
         self.assertEqual(errors, [])
 
 
+class WorkerEnvTest(unittest.TestCase):
+    def setUp(self):
+        # Save original env state
+        self.orig_openai_key = os.environ.get("OPENAI_API_KEY")
+        os.environ["OPENAI_API_KEY"] = "test-key"
+
+    def tearDown(self):
+        # Restore original env state
+        if self.orig_openai_key is None:
+            os.environ.pop("OPENAI_API_KEY", None)
+        else:
+            os.environ["OPENAI_API_KEY"] = self.orig_openai_key
+
+    def test_codex_chatgpt_mode_removes_openai_key(self):
+        env = work._worker_env({"codex": {"auth": "chatgpt"}}, "codex")
+        self.assertNotIn("OPENAI_API_KEY", env)
+
+    def test_codex_non_chatgpt_keeps_openai_key(self):
+        env = work._worker_env({"codex": {"auth": "key"}}, "codex")
+        self.assertEqual(env.get("OPENAI_API_KEY"), "test-key")
+
+    def test_claude_backend_keeps_openai_key(self):
+        env = work._worker_env({"codex": {"auth": "chatgpt"}}, "claude")
+        self.assertEqual(env.get("OPENAI_API_KEY"), "test-key")
+
+    def test_empty_config_keeps_openai_key(self):
+        env = work._worker_env({}, "codex")
+        self.assertEqual(env.get("OPENAI_API_KEY"), "test-key")
+
+    def test_codex_missing_auth_uses_default(self):
+        env = work._worker_env({"codex": {}}, "codex")
+        self.assertEqual(env.get("OPENAI_API_KEY"), "test-key")
+
+
 if __name__ == "__main__":
     unittest.main()

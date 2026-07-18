@@ -10,7 +10,7 @@ This skill runs in a forked context (`context: fork`): nothing from the invoking
 
 ## Contract
 
-- **Entry stage:** `ship`. The gate into `ship` already required `verify.green` to be logged.
+- **Entry gate:** for journey-affecting items, `assure.passed` (or a recorded human waiver) after the latest implementation round — plus `assure.confirmed` (equally round-scoped) when the repo's config gates include `assure` and no waiver is recorded, a waiver being authoritative; for `journeys: none` items, `verify.green`. The engine's `_gate_ship` is the authority.
 - **Artifacts produced:** the merge or PR itself, a `ship.merged` (or `ship.failed`) event, an updated `docs/factory/roadmap.md` line, an appended line in `docs/factory/brain/decisions.md`, `items/<id>/verify.md`'s companion shipped packet.
 - **Exit — success:** `factory log ITEM ship.merged --data '{"mode": "<auto|queue|tiered>", "ref": "<sha-or-pr>"}'` then `factory advance ITEM done`. The `done` gate checks only for `ship.merged`.
 - **Exit — merge or post-merge failure:** revert the merge, `factory log ITEM ship.failed --data '{"mode": "<auto|queue|tiered>", "reason": "<what failed>"}'`, no advance, report to the dispatcher.

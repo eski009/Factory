@@ -6,7 +6,8 @@ import re
 from . import cost, items, logs, paths
 
 ARTIFACTS = ("triage.md", "spec.md", "plan.md", "design/choice.md",
-             "reviews/synthesis.md")
+             "reviews/synthesis.md", "assurance/impact.json",
+             "assurance/verdicts.json")
 URL_RE = re.compile(r"https?://[^\s<>\"']+")
 
 
@@ -57,13 +58,12 @@ def render_packet(repo, item_id):
                      + (f" {event['data']}" if "data" in event else ""))
     lines += ["", "## Spend"]
     lines += cost.render_receipt(cost.summarize(repo, item_id)).splitlines()
-    lines += ["", "## Respond", "Reply in session, or use the factory CLI."]
-    if meta.get("paused-from") == "design":
-        lines += [f"For this design pause: `factory choice {meta['id']} <option>`,",
-                  "then run `/factory:run` to resume."]
-    else:
-        lines.append("Run `/factory:run` to resume.")
-    lines.append("")
+    lines += ["", "## Respond",
+              "Reply in session, or use the factory CLI to record your",
+              f"decision (design pause: `factory choice {meta['id']} <option>`;",
+              f"assurance pause: `factory confirm {meta['id']}` or",
+              f'`factory waive {meta["id"]} --reason "..."`),',
+              "then run `/factory:run` to resume.", ""]
     return "\n".join(lines)
 
 

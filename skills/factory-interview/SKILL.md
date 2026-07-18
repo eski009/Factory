@@ -30,12 +30,15 @@ path, unchanged.
 Build one question set from four sources:
 
 1. `docs/factory/brain/open-questions.md` — the gaps intake/research couldn't source.
-2. `(assumption)`-tagged claims in `personas.md` / `market.md` — research's
-   guesses, each turned into a confirm-or-correct question.
-3. Brain surfaces still showing the `_Not yet written.` marker (every brain
-   template's placeholder text begins with it — whole-surface placeholders
-   continue with a sentence, personas/market field stubs end at the period —
-   so the prefix is a reliable signal).
+2. `(assumption)`-tagged claims in `personas.md` / `market.md` and
+   `docs/factory/journeys/inventory.md` (e.g. `(assumption)`-tagged
+   criticality) — research's guesses, each turned into a confirm-or-correct
+   question.
+3. Brain surfaces and `docs/factory/journeys/inventory.md` still showing the
+   `_Not yet written.` marker (every brain template's placeholder text begins
+   with it — whole-surface placeholders continue with a sentence,
+   personas/market field stubs end at the period — so the prefix is a
+   reliable signal).
 4. `docs/factory/packets/taste.md` questionnaire items (brownfield only; absent
    in a greenfield scaffold).
 
@@ -110,6 +113,9 @@ When the human gives a real answer:
   "awaiting review," and update any brain citations of
   `docs/factory/packets/taste.md` to the `answered/` path so they don't dangle.
   A partially answered packet stays where it is.
+- **Journey answers** land in `docs/factory/journeys/inventory.md` and
+  `graph.json` (same citation), the one non-brain surface this interview
+  seeds — contracts/ stays untouched.
 
 A skipped / "not sure" answer changes nothing — the item stays parked.
 
@@ -139,4 +145,8 @@ after it rather than after research): "A human reviews the seeded brain before t
 
 Report: how many questions were asked, how many resolved (with where each answer
 landed), how many skipped or parked, and whether the taste packet was fully or
-partially consumed. Then present the assembled brain for review and stop.
+partially consumed. If journey answers changed the inventory and any
+`mcp__claude-design__*` tool is present with `designsync_project` configured,
+regenerate the linked project's `factory-journeys.html` map (capabilities
+skill's `references/designsync.md` `## Journeys`) — best-effort, never
+blocking. Then present the assembled brain for review and stop.

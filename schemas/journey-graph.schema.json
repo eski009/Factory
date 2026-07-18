@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "journey-graph",
+  "type": "object",
+  "required": ["version", "journeys"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {"type": "integer", "enum": [1]},
+    "journeys": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "slug", "title", "criticality", "status"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "pattern": "^J-[0-9]{3}$"},
+          "slug": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+          "title": {"type": "string", "minLength": 1},
+          "persona": {"type": "string"},
+          "trigger": {"type": "string"},
+          "outcome": {"type": "string"},
+          "criticality": {"type": "string", "enum": ["core", "high", "standard"]},
+          "status": {"type": "string", "enum": ["inventory", "draft", "approved"]},
+          "links": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "routes": {"type": "array", "items": {"type": "string"}},
+              "screens": {"type": "array", "items": {"type": "string"}},
+              "apis": {"type": "array", "items": {"type": "string"}},
+              "tests": {"type": "array", "items": {"type": "string"}}
+            }
+          },
+          "contract": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

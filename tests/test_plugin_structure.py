@@ -28,7 +28,7 @@ class TestPluginStructure(unittest.TestCase):
     def test_commands_have_frontmatter(self):
         commands = sorted((ROOT / "commands").glob("*.md"))
         self.assertEqual([p.stem for p in commands],
-                         ["add", "autopilot", "bug", "init", "packet", "research", "roadmap", "run", "status"])
+                         ["add", "autopilot", "bug", "do", "escape", "init", "packet", "research", "roadmap", "run", "status"])
         for path in commands:
             self.assertRegex(path.read_text(), FRONTMATTER, path.name)
 
@@ -76,6 +76,42 @@ class TestPluginStructure(unittest.TestCase):
         text = skill.read_text()
         self.assertRegex(text, FRONTMATTER, str(skill))
         self.assertIn("never answers its own human gates", text.lower())
+        self.assertIn("never waives or confirms assurance", text.lower())
+        self.assertIn("never files or promotes escapes", text.lower())
+
+    def test_do_command_routes_to_owning_surfaces(self):
+        cmd = ROOT / "commands/do.md"
+        self.assertTrue(cmd.exists())
+        text = cmd.read_text()
+        self.assertRegex(text, FRONTMATTER, str(cmd))
+        # a router, not a new pipeline: every route lands on an existing owner
+        for owner in ("factory-bug", "factory-roadmap", "factory-research",
+                      "factory-dispatch", "factory-autopilot",
+                      "factory add", "commands/escape.md"):
+            self.assertIn(owner, text, owner)
+        # it never advances stages itself
+        self.assertIn("never run `factory advance` yourself", text)
+        # human verbs are relays of an expressed decision, never guesses
+        self.assertIn("ONLY when the human's own words carry the decision",
+                      text)
+        for verb in ("factory choice", "factory waive", "factory confirm"):
+            self.assertIn(verb, text, verb)
+        self.assertIn("never invented", text)
+        # ambiguity goes to the present human, not the nearest match
+        self.assertIn("ask ONE clarifying question", text)
+        # unattended runs never route through it
+        self.assertIn("never invoke it at all", text)
+
+    def test_escape_command_wraps_cli_and_links_bugs(self):
+        cmd = ROOT / "commands/escape.md"
+        self.assertTrue(cmd.exists())
+        text = cmd.read_text()
+        self.assertRegex(text, FRONTMATTER, str(cmd))
+        self.assertIn("factory escape", text)
+        self.assertIn("factory promote", text)
+        self.assertIn("factory-bug", text)
+        self.assertIn("miss", text)
+        self.assertIn("missing-journey", text)
 
     def test_roadmap_skill_mentions_factory_add_and_priority(self):
         skill = ROOT / "skills/factory-roadmap/SKILL.md"
@@ -99,7 +135,7 @@ class TestPluginStructure(unittest.TestCase):
 
     def test_capability_upgrade_references_exist_and_are_linked(self):
         skill_text = (ROOT / "skills/capabilities/SKILL.md").read_text()
-        for name in ("workflow-fanout", "artifact-hosting", "scheduling", "designsync", "orchestration-patterns", "model-tiering", "browser-read", "visual-verify"):
+        for name in ("workflow-fanout", "artifact-hosting", "scheduling", "designsync", "orchestration-patterns", "model-tiering", "browser-read", "browser-drive", "visual-verify"):
             ref = ROOT / f"skills/capabilities/references/{name}.md"
             self.assertTrue(ref.exists(), str(ref))
             self.assertIn(f"references/{name}.md", skill_text, name)
@@ -150,6 +186,7 @@ class TestPluginStructure(unittest.TestCase):
         self.assertIn(
             "A human reviews the seeded brain before the first council run "
             "treats it as ground truth", text)
+        self.assertIn("journeys/inventory.md", text)
 
     def test_spec_and_design_reason_against_persona(self):
         self.assertIn("personas.md", (ROOT / "skills/factory-spec/SKILL.md").read_text())
@@ -248,6 +285,10 @@ class TestPluginStructure(unittest.TestCase):
                      "write_files", "render_preview"):
             self.assertIn(f"mcp__claude-design__{tool}", text, tool)
         self.assertIn("presence of any tool in the family", text)
+        # built-in variant satisfies the same probe; writes are plan-locked
+        self.assertIn("Built-in variant.", text)
+        self.assertIn("`finalize_plan`", text)
+        self.assertIn("the built-in `DesignSync` tool counts", text)
         # canonical-mirror rule; interactive-only survives (AC 5)
         self.assertIn("never a second source of truth", text)
         self.assertIn("items/<id>/design/", text)
@@ -280,7 +321,7 @@ class TestPluginStructure(unittest.TestCase):
         text = (ROOT / "skills/capabilities/SKILL.md").read_text()
         self.assertIn(
             "| DesignSync | any `mcp__claude-design__*` tool present "
-            "in tool list |", text)
+            "in tool list, or the built-in `DesignSync` tool |", text)
         self.assertIn("references/designsync.md", text)
         self.assertIn("Never let a missing optional tool fail a stage",
                       text)
@@ -340,6 +381,20 @@ class TestPluginStructure(unittest.TestCase):
         ref = (ROOT / "skills/capabilities/references/designsync.md").read_text()
         self.assertIn("replaces", ref)
         self.assertIn("fallback tokens", ref)
+
+    def test_designsync_journeys_section(self):
+        ref = (ROOT / "skills/capabilities/references/designsync.md").read_text()
+        self.assertIn("## Journeys", ref)
+        self.assertIn("factory-journeys.html", ref)
+        self.assertIn("(source: claude-design", ref)
+        self.assertIn("never contracts/", ref)
+        self.assertIn("never a second source of truth", ref)
+
+    def test_intake_greenfield_frame_pull(self):
+        text = (ROOT / "skills/factory-intake/SKILL.md").read_text()
+        self.assertIn("designsync_project", text)
+        self.assertIn("(source: claude-design", text)
+        self.assertIn("factory-journeys.html", text)
 
     def test_factory_design_entry_check_three_way_branch(self):
         text = (ROOT / "skills/factory-design/SKILL.md").read_text()
@@ -411,6 +466,134 @@ class TestPluginStructure(unittest.TestCase):
         self.assertIn("no server, no daemon", ref)
         self.assertIn(
             "requires a judgement amending the zero-network rule first", ref)
+
+    def test_journeys_templates_exist_and_validate(self):
+        inv = ROOT / "templates/docs-factory/journeys/inventory.md"
+        graph = ROOT / "templates/docs-factory/journeys/graph.json"
+        self.assertTrue(inv.exists())
+        self.assertTrue(graph.exists())
+        self.assertIn("_Not yet written.", inv.read_text())
+        import json as _json
+        from scripts.factory.lib.initrepo import load_schema
+        from scripts.factory.lib.validate import validate
+        data = _json.loads(graph.read_text())
+        self.assertEqual(validate(data, load_schema("journey-graph"), "graph"), [])
+
+    def test_intake_journeys_collector_and_license(self):
+        text = (ROOT / "skills/factory-intake/SKILL.md").read_text()
+        self.assertIn("journeys/inventory.md", text)
+        self.assertIn("graph.json", text)
+        self.assertIn("(assumption)", text)
+        self.assertIn("never contracts/", text)
+        self.assertIn("docs/factory/journeys/", text)
+
+    def test_spec_skill_journey_impact_duties(self):
+        text = (ROOT / "skills/factory-spec/SKILL.md").read_text()
+        self.assertIn("## Journey impact", text)
+        self.assertIn("assurance/impact.json", text)
+        self.assertIn("factory journeys", text)
+        self.assertIn("None — no customer journey affected.", text)
+        self.assertIn("status: draft", text)
+        self.assertIn("Run & fixtures", text)
+
+    def test_bug_intake_seeds_journey_impact(self):
+        text = (ROOT / "skills/factory-bug/SKILL.md").read_text()
+        self.assertIn("## Journey impact (seeded at bug intake — carry into spec.md verbatim)", text)
+        self.assertIn("immediate transition", text)
+
+    def test_assure_skill_contract_and_discipline(self):
+        skill = ROOT / "skills/factory-assure/SKILL.md"
+        self.assertTrue(skill.exists())
+        text = skill.read_text()
+        self.assertRegex(text, FRONTMATTER, str(skill))
+        self.assertIn("never the implementer transcript", text)
+        self.assertIn("expectations.md", text)
+        self.assertIn("run-manifest.json", text)
+        self.assertIn("pass | fail | ambiguity | blocker", text)
+        self.assertIn("assure.passed", text)
+        self.assertIn("assure.rejected", text)
+        self.assertIn("never runs `factory waive` or `factory confirm`", text)
+        self.assertIn("Browser drive", text)
+        self.assertIn("never a silent pass", text)
+        self.assertIn("one fresh journey-reviewer subagent per affected journey", text)
+        self.assertIn("agents/journey-reviewer.md", text)
+        self.assertIn("-assure.md", text)
+        self.assertIn("Fresh round", text)
+        self.assertIn("journey impact undeclared", text)
+
+    def test_journey_reviewer_agent_discipline(self):
+        agent = ROOT / "agents/journey-reviewer.md"
+        self.assertTrue(agent.exists())
+        text = agent.read_text()
+        self.assertRegex(text, FRONTMATTER, str(agent))
+        self.assertIn("pass | fail | ambiguity | blocker", text)
+        self.assertIn("before acting", text.lower())
+        self.assertIn("only under `.factory/items/<id>/assurance/`", text)
+        self.assertIn("never edit product code", text.lower())
+        self.assertIn("not told this feature is complete", text.lower())
+        self.assertIn("expectations.md", text)
+        self.assertIn("APPEND it to `assurance/expectations.md` BEFORE acting", text)
+
+    def test_verify_exit_routes_to_assure(self):
+        text = (ROOT / "skills/factory-verify/SKILL.md").read_text()
+        self.assertIn("factory advance ITEM assure", text)
+        self.assertIn("journeys: none", text)
+
+    def test_dispatch_recognizes_assure_pauses(self):
+        text = (ROOT / "skills/factory-dispatch/SKILL.md").read_text()
+        self.assertIn("assurance/waiver.md", text)
+        self.assertIn("assurance/human-confirmation.md", text)
+
+    def test_assure_skill_entry_check_short_circuits(self):
+        text = (ROOT / "skills/factory-assure/SKILL.md").read_text()
+        self.assertIn("## Entry check", text)
+        self.assertIn("waiver.md", text)
+        self.assertIn("do not re-walk", text)
+
+    def test_ship_entry_names_assurance(self):
+        text = (ROOT / "skills/factory-ship/SKILL.md").read_text()
+        self.assertIn("assure.passed", text)
+        self.assertIn("journeys: none", text)
+
+    def test_browser_drive_capability_row_and_reference(self):
+        skill = (ROOT / "skills/capabilities/SKILL.md").read_text()
+        self.assertIn("| Browser drive |", skill)
+        self.assertIn("references/browser-drive.md", skill)
+        ref = (ROOT / "skills/capabilities/references/browser-drive.md").read_text()
+        self.assertIn("navigate, click, type, screenshot, and read console/network", ref)
+        self.assertIn("park", ref)
+        self.assertIn("silent pass", ref)
+        self.assertIn("factory waive", ref)
+        self.assertIn("Parking is not failing", ref)
+
+    def test_factory_workers_skill_auth_reason_carve_out(self):
+        text = (ROOT / "skills/factory-workers/SKILL.md").read_text()
+        self.assertIn("a provision refusal with reason `auth`", text)
+        self.assertIn(
+            "Unless the result's reason is `auth` (a chatgpt-mode login "
+            "refusal): that is a setup fault for the whole pool", text)
+
+    def test_headless_workers_reference_documents_auth_modes(self):
+        ref = (ROOT / "skills/capabilities/references/headless-workers.md").read_text()
+        self.assertIn('workers.codex.auth', ref)
+        self.assertIn('"chatgpt"', ref)
+        self.assertIn("refresh token", ref)
+        self.assertIn("never writes", ref)
+        self.assertIn("plan rate limits", ref)
+        self.assertIn("factory work` without provisioning", ref)
+
+    def test_spec_and_escape_push_journey_map(self):
+        spec = (ROOT / "skills/factory-spec/SKILL.md").read_text()
+        self.assertIn("factory-journeys.html", spec)
+        esc = (ROOT / "commands/escape.md").read_text()
+        self.assertIn("factory-journeys.html", esc)
+
+    def test_design_gate_journey_annotations(self):
+        text = (ROOT / "skills/factory-design/SKILL.md").read_text()
+        self.assertIn("impact.json", text)
+        self.assertIn("journey node", text)
+        self.assertIn("still-draft contract", text)
+        self.assertIn("never an approved contract", text)
 
 
 if __name__ == "__main__":

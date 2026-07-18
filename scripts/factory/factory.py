@@ -9,9 +9,9 @@ import sys
 if __package__ in (None, ""):
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool
+    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod
 else:
-    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool
+    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod
 
 
 def _require_factory_repo(repo):
@@ -85,6 +85,17 @@ def cmd_status(args):
             print(f"corrupt log lines: {corrupt_total} across "
                   f"{corrupt_items} items (skipped; run factory validate)",
                   file=sys.stderr)
+        open_esc = escapes_mod.open_escapes(args.repo)
+        if open_esc:
+            print(f"open escapes: {len(open_esc)} "
+                  "(promote each into a contract/test/oracle/rule/decision)")
+        debt = journeys_mod.coverage_debt(args.repo)
+        if debt and (debt["inventory_only"] or debt["draft"]):
+            print(f"journey coverage debt: {debt['inventory_only']} of "
+                  f"{debt['total']} journeys inventory-only, "
+                  f"{debt['draft']} draft contracts "
+                  "(deep contracts exist only where they earn their keep; "
+                  "this line is the honest remainder)")
     for error in errors:
         print(error, file=sys.stderr)
     return 2 if errors else 0
@@ -175,6 +186,10 @@ def cmd_log(args):
         except json.JSONDecodeError as exc:
             print(f"--data is not valid JSON: {exc}", file=sys.stderr)
             return 1
+    if args.event in ("assure.waived", "assure.confirmed"):
+        print(f"{args.event} is written only by its human verb "
+              "(factory waive / factory confirm)", file=sys.stderr)
+        return 1
     try:
         items.load_item(args.repo, args.item)
     except items.ItemError as exc:
@@ -293,6 +308,53 @@ def cmd_choice(args):
     return 0
 
 
+def cmd_waive(args):
+    try:
+        assure_mod.record_waiver(args.repo, args.item, args.reason)
+    except (machine.GateError, items.ItemError) as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    print(f"{args.item} assurance waived")
+    return 0
+
+
+def cmd_confirm(args):
+    try:
+        path = assure_mod.record_confirmation(args.repo, args.item)
+    except (machine.GateError, items.ItemError) as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    print(path)
+    return 0
+
+
+def cmd_escape(args):
+    if not _require_factory_repo(args.repo):
+        return 2
+    try:
+        entry = escapes_mod.file_escape(
+            args.repo, args.journey, args.finding, args.miss_type,
+            item=args.item or "", node=args.node or "",
+            evidence=args.evidence or [])
+    except escapes_mod.EscapeError as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    print(entry["id"])
+    return 0
+
+
+def cmd_promote(args):
+    if not _require_factory_repo(args.repo):
+        return 2
+    try:
+        escapes_mod.promote(args.repo, args.escape, args.via)
+    except escapes_mod.EscapeError as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    print(f"{args.escape} promoted -> {args.via}")
+    return 0
+
+
 def cmd_priority(args):
     if not _require_factory_repo(args.repo):
         return 2
@@ -314,6 +376,18 @@ def cmd_tier(args):
         print(f"refused: {exc}", file=sys.stderr)
         return 2
     print(f"{args.item} tier {args.tier}")
+    return 0
+
+
+def cmd_journeys(args):
+    if not _require_factory_repo(args.repo):
+        return 2
+    try:
+        items.set_journeys(args.repo, args.item, args.value)
+    except items.ItemError as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    print(f"{args.item} journeys {args.value}")
     return 0
 
 
@@ -435,6 +509,33 @@ def main(argv=None):
     p.add_argument("--notes")
     p.set_defaults(func=cmd_choice)
 
+    p = sub.add_parser("waive",
+                       help="record a human assurance waiver (requires a reason)")
+    p.add_argument("item")
+    p.add_argument("--reason", required=True)
+    p.set_defaults(func=cmd_waive)
+
+    p = sub.add_parser("confirm",
+                       help="record human confirmation of a passed assurance")
+    p.add_argument("item")
+    p.set_defaults(func=cmd_confirm)
+
+    p = sub.add_parser("escape", help="file a post-assurance human discovery")
+    p.add_argument("journey")
+    p.add_argument("finding")
+    p.add_argument("--miss-type", required=True, dest="miss_type",
+                   choices=list(escapes_mod.MISS_TYPES))
+    p.add_argument("--item", default="")
+    p.add_argument("--node", default="")
+    p.add_argument("--evidence", action="append")
+    p.set_defaults(func=cmd_escape)
+
+    p = sub.add_parser("promote",
+                       help="close an escape by naming its durable promotion")
+    p.add_argument("escape")
+    p.add_argument("--via", required=True)
+    p.set_defaults(func=cmd_promote)
+
     p = sub.add_parser("priority", help="set an item's priority (1+)")
     p.add_argument("item")
     p.add_argument("priority", type=int)
@@ -444,6 +545,12 @@ def main(argv=None):
     p.add_argument("item")
     p.add_argument("tier")
     p.set_defaults(func=cmd_tier)
+
+    p = sub.add_parser("journeys",
+                       help="declare an item's journey impact (none or J-ids)")
+    p.add_argument("item")
+    p.add_argument("value")
+    p.set_defaults(func=cmd_journeys)
 
     p = sub.add_parser("doctor", help="readout of repo integration state")
     p.add_argument("--json", action="store_true")

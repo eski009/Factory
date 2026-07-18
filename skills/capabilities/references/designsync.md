@@ -13,6 +13,8 @@ The concrete tool family is `mcp__claude-design__*`. The probe is presence of an
 
 Conversation, sharing, and membership tools in the family are not part of this pattern.
 
+**Built-in variant.** Some Claude Code sessions expose the same claude.ai/design capability as a single built-in `DesignSync` tool that dispatches on a `method` field instead of an MCP family. Its presence satisfies this capability's probe identically — wherever a stage skill or command probes for "any `mcp__claude-design__*` tool", the built-in `DesignSync` tool counts. Method mapping: `get_project`/`list_files` keep their names, `read_file` → `get_file`, and `list_projects` resolves candidate projects when no `designsync_project` is linked yet. Two differences to respect: writes are plan-locked — a `finalize_plan` call naming the exact paths (and the local directory uploads are read from) must precede `write_files`/`delete_files`, so a journey-map or mockup push is finalize-then-write, never a bare write; and there is no `render_preview`. The tool only reads/writes design-system-type projects the user can write to. Everything else in this reference — repo files canonical, firewall mirror bids, single-writer choice rule, proxy spend, interactive-only, degrade-never-block — applies to the built-in variant unchanged.
+
 ## Linking a project
 
 Linking is a one-time, per-repo manual step: resolve the Claude Design project id — via `mcp__claude-design__get_project` in an interactive session, or by reading it from claude.ai/design — and record it in `.factory/config.json` as `designsync_project`. That key already exists in `schemas/config.schema.json`, so this is pure reuse: no new key, no new command, and no schema diff. The config root schema is closed (`additionalProperties: false`), so any claude-design-specific key would require an engine schema change — see `docs/factory/brain/open-questions.md`, "Should skills get a config extension point?". Once set, every later session (with or without the MCP available) can see that the repo intends to use a linked design system, via `factory doctor`'s readout of that config key.
@@ -50,3 +52,37 @@ Provenance is `proxy` with no `tokens` key, because main-loop MCP calls surface 
 ## Interactive-only
 
 The `mcp__claude-design__*` family depends on an interactive claude.ai login, so it is never attempted in headless, scheduled, or autopilot runs (see `references/scheduling.md`) — those runs don't have a session to log in with, and pull/push semantics assume a human is available to reconcile the interaction if it comes back oddly. Autopilot and other unattended runs skip the pull/push entirely and rely on `design-system.md`, same as any session where the MCP simply isn't present. A missing tool, a missing `designsync_project` link, or a failed MCP call falls through silently to `design-system.md` — the degraded path is the tested contract, not an error state.
+
+## Journeys
+
+The journey model (`docs/factory/journeys/`) gets the same convenience-mirror
+treatment as design tokens — repo files canonical, the linked project never a
+second source of truth:
+
+- **Visual map (push).** The pipeline surfaces that mutate the journey model —
+  factory-intake at the end of seeding, factory-spec when it registers a
+  journey or drafts a contract, and `/factory:escape` after a `contract:`
+  promotion — regenerate `factory-journeys.html` in the linked project via
+  `mcp__claude-design__write_files`: one self-contained HTML flow view built
+  from `graph.json` (nodes, transitions, criticality, contract status),
+  replacing the previous file. Strictly best-effort: a failed push never
+  blocks the stage. A round-trip logs one proxy spend event when an item
+  is in scope (factory-spec's push, or an escape carrying `--item`);
+  item-less pushes — intake's seeding-end regen — skip the spend log,
+  since spend events are item-scoped.
+- **Greenfield frame-pull (intake only).** A greenfield repo has no routes to
+  mine, but a linked design project often holds the product's screens before
+  any code exists. When the tool family is present and `designsync_project`
+  is set, factory-intake reads the project's frame/flow structure
+  (`mcp__claude-design__list_files` + `read_file`) and emits journey-inventory
+  entries (inventory.md plus matching graph.json records, same J-NNN ids)
+  from screen sequences — each cited
+  `(source: claude-design <project>/<file>)`, criticality tagged
+  `(assumption)`, `status: inventory`, never contracts/. Frames are
+  hypotheses, not evidence: the init interview's normal assumption-harvest
+  puts every inferred journey in front of the human. Without the capability,
+  greenfield intake is unchanged.
+- **What never happens here:** no pull ever touches `contracts/` (drafts are
+  the spec stage's job; approved contracts amend only through the
+  council-judgement firewall), and no design artifact ever substitutes for
+  the assure stage's running-product evidence.

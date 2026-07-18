@@ -101,5 +101,5 @@ the suite is green, log:
 factory log ITEM verify.green --data '{"tests":"<counts>","criteria":"<n>/<n>","visual":{"mode":"blind-observer","shots":["items/<id>/verify-shots/<file>"]}}'
 ```
 
-then advance to `ship` per the Contract. The `visual` key is evidence for the audit trail;
+then advance per the Contract. The `visual` key is evidence for the audit trail;
 its absence on a `human-confirmed` item is itself a red flag that this branch was skipped.

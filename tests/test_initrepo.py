@@ -30,6 +30,10 @@ class InitTest(unittest.TestCase):
         self.assertEqual(config["product"], "demo")
         self.assertEqual(created, sorted(created))
 
+    def test_init_creates_escapes_ledger(self):
+        initrepo.init(self.repo)
+        self.assertTrue((self.repo / ".factory" / "ledgers" / "escapes.jsonl").exists())
+
     def test_init_is_idempotent_and_never_clobbers(self):
         initrepo.init(self.repo)
         marker = self.repo / "docs/factory/brain/vision.md"
@@ -199,6 +203,12 @@ class InitTest(unittest.TestCase):
         self.assertTrue((self.repo / "docs/factory/brain/personas.md").exists())
         self.assertTrue((self.repo / "docs/factory/brain/market.md").exists())
 
+    def test_init_scaffolds_journeys_and_tree_validates(self):
+        initrepo.init(self.repo)
+        self.assertTrue((self.repo / "docs" / "factory" / "journeys" / "inventory.md").exists())
+        self.assertTrue((self.repo / "docs" / "factory" / "journeys" / "graph.json").exists())
+        self.assertEqual(initrepo.validate_tree(self.repo), [])
+
     def test_validate_flags_undecodable_config(self):
         # Item spec 0009 §1: byte corruption lands in the existing
         # invalid-JSON flag path — validate never tracebacks.
@@ -255,6 +265,82 @@ class InitTest(unittest.TestCase):
             any("log.jsonl:1: invalid event" in e for e in errors), errors)
         self.assertTrue(
             any("log.jsonl:2: invalid event" in e for e in errors), errors)
+
+    def test_validate_flags_bad_assurance_artifacts(self):
+        initrepo.init(self.repo)
+        meta = {"id": "0001-a", "title": "A", "stage": "assure", "kind": "ui",
+                "journeys": "J-001",
+                "created": "2026-07-15T10:00:00Z", "updated": "2026-07-15T10:00:00Z"}
+        items.save_item(self.repo, meta, "# A\n")
+        adir = paths.item_dir(self.repo, "0001-a") / "assurance"
+        adir.mkdir(parents=True)
+        (adir / "verdicts.json").write_text('{"nope": true}', encoding="utf-8")
+        (adir / "impact.json").write_text('not json', encoding="utf-8")
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any("verdicts.json" in e for e in errors))
+        self.assertTrue(any("impact.json" in e for e in errors))
+
+    def test_validate_accepts_full_shape_impact(self):
+        initrepo.init(self.repo)
+        meta = {"id": "0001-a", "title": "A", "stage": "assure", "kind": "ui",
+                "journeys": "J-001",
+                "created": "2026-07-15T10:00:00Z", "updated": "2026-07-15T10:00:00Z"}
+        items.save_item(self.repo, meta, "# A\n")
+        adir = paths.item_dir(self.repo, "0001-a") / "assurance"
+        adir.mkdir(parents=True)
+        impact = {"item": "0001-a", "journeys": [{
+            "id": "J-001", "viewports": ["desktop-1280"],
+            "adjacent": {"upstream": [], "downstream": ["N3"]},
+            "scenarios": [
+                {"id": "empty-1", "kind": "empty", "description": "d"},
+                {"id": "error-1", "kind": "error", "description": "d"}]}]}
+        (adir / "impact.json").write_text(json.dumps(impact), encoding="utf-8")
+        errors = initrepo.validate_tree(self.repo)
+        self.assertFalse([e for e in errors if "impact.json" in e], errors)
+
+    def test_validate_flags_unknown_scenario_kind_and_bad_adjacent(self):
+        initrepo.init(self.repo)
+        meta = {"id": "0001-a", "title": "A", "stage": "assure", "kind": "ui",
+                "journeys": "J-001",
+                "created": "2026-07-15T10:00:00Z", "updated": "2026-07-15T10:00:00Z"}
+        items.save_item(self.repo, meta, "# A\n")
+        adir = paths.item_dir(self.repo, "0001-a") / "assurance"
+        adir.mkdir(parents=True)
+        impact = {"item": "0001-a", "journeys": [{
+            "id": "J-001", "adjacent": {"upstream": []},
+            "scenarios": [
+                {"id": "s1", "kind": "sideways", "description": "d"}]}]}
+        (adir / "impact.json").write_text(json.dumps(impact), encoding="utf-8")
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any("kind" in e for e in errors), errors)
+        self.assertTrue(any("downstream" in e for e in errors), errors)
+
+    def test_validate_flags_bad_journey_graph(self):
+        initrepo.init(self.repo)
+        graph = paths.docs_root(self.repo) / "journeys" / "graph.json"
+        graph.parent.mkdir(parents=True, exist_ok=True)
+        graph.write_text('{"journeys": [{"id": "banana"}]}', encoding="utf-8")
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any("graph.json" in e for e in errors))
+
+    def test_validate_accepts_workers_codex_auth_chatgpt(self):
+        initrepo.init(self.repo)
+        cfg = self.repo / ".factory/config.json"
+        data = json.loads(cfg.read_text())
+        data["workers"] = {"codex": {"auth": "chatgpt"}}
+        cfg.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n",
+                       encoding="utf-8")
+        self.assertEqual(initrepo.validate_tree(self.repo), [])
+
+    def test_validate_rejects_bad_workers_codex_auth(self):
+        initrepo.init(self.repo)
+        cfg = self.repo / ".factory/config.json"
+        data = json.loads(cfg.read_text())
+        data["workers"] = {"codex": {"auth": "bogus"}}
+        cfg.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n",
+                       encoding="utf-8")
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any("auth" in e for e in errors), errors)
 
     def test_validate_flags_event_dict_missing_keys(self):
         # A dict line missing the required "event"/"ts" keys (append_event
@@ -330,6 +416,12 @@ class SpendValidateTest(unittest.TestCase):
         self.assertTrue(any(
             "0001-x/log.jsonl:1" in e and "must be an object" in e
             for e in errors))
+
+    def test_spend_event_stage_assure_valid(self):
+        errors = initrepo.spend_event_errors(
+            {"provenance": "proxy", "stage": "assure", "source": "factory-assure",
+             "dispatches": 1}, "x")
+        self.assertEqual(errors, [])
 
     def test_valid_spend_and_unknown_events_stay_clean(self):
         self.log_spend({"provenance": "measured", "stage": "review",

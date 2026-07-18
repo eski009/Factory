@@ -216,7 +216,8 @@ def _looks_auth(obj, raw):
     blob = (json.dumps(obj) + " " + stderr).lower()
     return any(term in blob for term in
                ("invalid api key", "invalid_api_key", "unauthorized",
-                "authentication"))
+                "authentication", "token expired", "not logged in",
+                "codex login"))
 
 
 def _claude_argv(brief, worktree, model, network):
@@ -430,6 +431,16 @@ def _log_spend(repo, item_id, backend, model, usage):
     logs.append_event(repo, item_id, "spend", data)
 
 
+def _worker_env(cfg, backend):
+    """Prepare environment for a worker run. Removes OPENAI_API_KEY only when
+    running codex backend with chatgpt auth mode (chatgpt mode uses the Codex
+    CLI's own login, not an OpenAI key)."""
+    env = dict(os.environ)
+    if backend == "codex" and (cfg.get("codex") or {}).get("auth", "key") == "chatgpt":
+        env.pop("OPENAI_API_KEY", None)
+    return env
+
+
 def run_work(repo, item_id, backend=None, model=None, timeout=None,
              network=None, worktree=None):
     cfg = worker_config(repo)
@@ -462,7 +473,7 @@ def run_work(repo, item_id, backend=None, model=None, timeout=None,
     worker_dir.mkdir(parents=True, exist_ok=True)
     (worker_dir / "brief.md").write_text(brief, encoding="utf-8")
 
-    env = dict(os.environ)
+    env = _worker_env(cfg, backend)
     model = model or (cfg.get("models") or {}).get(backend)
     sandbox = (cfg.get("codex") or {}).get("sandbox", "workspace-write")
     base_sha = git_head(work_tree)

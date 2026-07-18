@@ -41,6 +41,20 @@ class TestE2ECli(unittest.TestCase):
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(text, encoding="utf-8")
 
+    def _write_assurance(self, item, verdict="pass", journey="J-001",
+                         scenario="happy-1"):
+        """Stub assurance artifacts under the item dir. Duplicated from
+        tests/test_machine.py's helper of the same name -- test files
+        here do not import from each other."""
+        self.art(item, "assurance/screenshots/s1.txt", "evidence\n")
+        verdicts = {"item": item, "journeys": [{
+            "id": journey, "surface": "browser",
+            "scenarios": [{"id": scenario, "verdict": verdict,
+                           "expected": "welcome screen", "actual": "welcome screen",
+                           "evidence": [{"type": "screenshot",
+                                        "path": "assurance/screenshots/s1.txt"}]}]}]}
+        self.art(item, "assurance/verdicts.json", json.dumps(verdicts, indent=2))
+
     def test_full_cli_lifecycle(self):
         # init + validate
         self.cli("init", "--product", "demo")
@@ -60,10 +74,12 @@ class TestE2ECli(unittest.TestCase):
         # set priority through the CLI (Phase 7), then confirm the tree still
         # validates -- priority.set is gate-neutral -- before the spec gate reads it
         self.cli("priority", item, "1")
+        self.cli("journeys", item, "J-001")
         self.cli("validate")
         self.cli("advance", item, "spec")
         # spec -> design
-        self.art(item, "spec.md")
+        self.art(item, "spec.md", "# Spec\n\n## Journey impact\n"
+                 "J-001: affects the onboarding welcome screen.\n")
         self.cli("advance", item, "design")
         # design gate: pause, choice, resume
         self.cli("advance", item, "waiting-human", "--reason", "pick a design")
@@ -83,8 +99,15 @@ class TestE2ECli(unittest.TestCase):
         self.art(item, "reviews/synthesis.md")
         self.cli("log", item, "review.approved")
         self.cli("advance", item, "verify")
-        # verify -> ship -> done
+        # verify -> assure (declared journey; gate: verify.green)
         self.cli("log", item, "verify.green")
+        self.cli("advance", item, "assure")
+        # ship gate refuses without assurance evidence yet
+        self.cli("advance", item, "ship", expect=2)
+        # assure -> ship (gate: verdicts.json covering J-001 with a passing
+        # verdict and evidence on disk, plus assure.passed)
+        self._write_assurance(item)
+        self.cli("log", item, "assure.passed")
         self.cli("advance", item, "ship")
         self.cli("log", item, "ship.merged")
         self.cli("advance", item, "done")
@@ -115,12 +138,59 @@ class TestE2ECli(unittest.TestCase):
         item_md.write_text(item_md.read_text().replace(
             "kind: backend", "kind: backend\npriority: 1"), encoding="utf-8")
         self.cli("advance", item, "spec")
-        self.art(item, "spec.md")
+        self.art(item, "spec.md", "# Spec\n\n## Journey impact\nNone - no customer journey affected.\n")
+        self.cli("journeys", item, "none")
         # backend jumps spec -> plan (no design); design is an illegal transition
         self.cli("advance", item, "design", expect=2)
         self.cli("advance", item, "plan")
         # choice refused for a backend item
         self.cli("choice", item, "a", expect=2)
+        # plan -> implement -> review -> verify -> ship -> done: a
+        # `journeys: none` item skips assure entirely, verify -> ship direct
+        self.art(item, "plan.md", "- [ ] Task 1\n")
+        self.cli("advance", item, "implement")
+        subprocess.run(["git", "branch", f"factory/{item}"], cwd=self.target, check=True)
+        self.cli("log", item, "implement.completed")
+        self.cli("advance", item, "review")
+        self.art(item, "reviews/synthesis.md")
+        self.cli("log", item, "review.approved")
+        self.cli("advance", item, "verify")
+        self.cli("log", item, "verify.green")
+        self.cli("advance", item, "ship")     # verify -> ship directly, no assure
+        self.cli("log", item, "ship.merged")
+        self.cli("advance", item, "done")
+        self.cli("validate")
+        log_path = self.target / ".factory/items" / item / "log.jsonl"
+        events = [json.loads(line) for line in log_path.read_text().splitlines() if line.strip()]
+        advances = [e for e in events if e["event"] == "stage.advance"]
+        self.assertTrue(advances)
+        for event in advances:
+            self.assertNotIn("assure", (event["data"]["from"], event["data"]["to"]))
+
+    def test_migration_undeclared_item_waived_via_cli(self):
+        # A legacy item that reached verify before journey-assurance
+        # existed: no `journeys` frontmatter field at all (distinct from
+        # an item that explicitly opted out with "none"). Simulated by
+        # hand-editing the fixture the way a pre-existing repo would look,
+        # then driving the rest of the walk through the real CLI.
+        self.cli("init")
+        item = self.cli("add", "Legacy checkout fix", "--kind", "ui").stdout.strip()
+        item_md = self.target / ".factory/items" / item / "item.md"
+        item_md.write_text(item_md.read_text().replace(
+            "stage: idea", "stage: verify"), encoding="utf-8")
+        self.cli("log", item, "stage.advance",
+                 "--data", json.dumps({"from": "idea", "to": "verify"}))
+        self.cli("log", item, "verify.green")
+        self.cli("validate")
+        # the engine still forces the undeclared item through assure
+        self.cli("advance", item, "assure")
+        # ship refuses: no assurance evidence at all yet
+        self.cli("advance", item, "ship", expect=2)
+        self.cli("waive", item, "--reason", "pre-assurance item")
+        self.cli("advance", item, "ship")
+        self.cli("log", item, "ship.merged")
+        self.cli("advance", item, "done")
+        self.cli("validate")
 
 
 if __name__ == "__main__":

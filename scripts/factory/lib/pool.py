@@ -11,9 +11,12 @@ Nothing here advances an item's stage — the caller (factory-workers) owns
 every `factory advance`, consistent with the factory work contract.
 """
 
+import base64
 import json
+import os
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 from . import logs, paths, work
@@ -21,6 +24,46 @@ from . import logs, paths, work
 
 class PoolError(Exception):
     pass
+
+
+class CodexAuthError(ValueError):
+    """chatgpt-mode provisioning refused: no usable subscription token."""
+
+
+_REFRESH_KEYS = ("refresh_token",)
+
+
+def _codex_login_home():
+    return Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
+
+
+def _jwt_exp(token):
+    """The exp claim of a JWT, or None when unreadable. A freshness read
+    for TTL checks — never signature verification."""
+    try:
+        payload = token.split(".")[1]
+        padded = payload + "=" * (-len(payload) % 4)
+        claims = json.loads(base64.urlsafe_b64decode(padded))
+        exp = claims.get("exp")
+        return int(exp) if isinstance(exp, (int, float)) else None
+    except (IndexError, ValueError, TypeError, AttributeError, OverflowError):
+        return None
+
+
+def _access_token(auth):
+    tokens = auth.get("tokens")
+    if isinstance(tokens, dict) and tokens.get("access_token"):
+        return tokens["access_token"]
+    return auth.get("access_token")
+
+
+def _strip_refresh(node):
+    if isinstance(node, dict):
+        return {key: _strip_refresh(value) for key, value in node.items()
+                if key not in _REFRESH_KEYS}
+    if isinstance(node, list):
+        return [_strip_refresh(value) for value in node]
+    return node
 
 
 def _git(cwd, *args):
@@ -109,6 +152,37 @@ def seed_config_dir(repo, item_id, backend, worktree):
             json.dumps(cfg, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         return {"CLAUDE_CONFIG_DIR": str(home)}
     if backend == "codex":
+        cfg = work.worker_config(repo)
+        if (cfg.get("codex") or {}).get("auth", "key") == "chatgpt":
+            src = _codex_login_home() / "auth.json"
+            try:
+                auth = json.loads(src.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                raise CodexAuthError(
+                    "codex auth 'chatgpt': no readable auth.json at "
+                    f"{src} - run `codex` interactively to log in, then retry")
+            token = _access_token(auth) if isinstance(auth, dict) else None
+            exp = _jwt_exp(token) if token else None
+            if exp is None:
+                raise CodexAuthError(
+                    "codex auth 'chatgpt': no decodable access token - run "
+                    "`codex` interactively to refresh the login, then retry")
+            remaining = exp - int(time.time())
+            needed = int(cfg.get("timeout_seconds") or 1800) + 300
+            if remaining < needed:
+                raise CodexAuthError(
+                    f"codex auth 'chatgpt': access token expires in {remaining}s "
+                    f"but the run needs {needed}s - run `codex` interactively to "
+                    "refresh the login, then retry")
+            os.chmod(home, 0o700)
+            stripped = _strip_refresh(auth)
+            if isinstance(stripped, dict):
+                stripped.pop("OPENAI_API_KEY", None)
+            auth_path = home / "auth.json"
+            auth_path.write_text(
+                json.dumps(stripped, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8")
+            os.chmod(auth_path, 0o600)
         return {"CODEX_HOME": str(home)}
     return {}
 
@@ -189,7 +263,15 @@ def provision(repo, item_id, backend=None, cfg=None):
                               {"reason": "prep_failed", "stage": "implement",
                                "detail": detail[:500]})
             return result
-    result["config_env"] = seed_config_dir(repo, item_id, backend, wt)
+    try:
+        result["config_env"] = seed_config_dir(repo, item_id, backend, wt)
+    except CodexAuthError as exc:
+        result["reason"] = "auth"
+        result["detail"] = str(exc)
+        logs.append_event(repo, item_id, "prep.failed",
+                          {"reason": "auth", "stage": "implement",
+                           "detail": str(exc)[:500]})
+        return result
     result["prepared"] = True
     logs.append_event(repo, item_id, "prep.completed",
                       {"worktree": wt, "prep": prep,

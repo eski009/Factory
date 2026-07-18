@@ -185,6 +185,19 @@ class AuthReasonTest(unittest.TestCase):
                           '"session_id": "42911111-0000-4000-8000-000000000000"}')}
         self.assertEqual(work._claude_parse(raw)["reason"], "crash")
 
+    def test_codex_token_expired_is_auth(self):
+        raw = {"exit_code": 1, "timed_out": False,
+               "stderr": "ERROR: token expired, please run `codex login`",
+               "stdout": ""}
+        self.assertEqual(work._codex_parse(raw)["reason"], "auth")
+
+    def test_codex_tokenizer_is_not_auth(self):
+        # "token" is a marker substring of "token expired" — a stray
+        # "tokenizer" mention must not false-positive into auth.
+        raw = {"exit_code": 1, "timed_out": False,
+               "stderr": "building tokenizer", "stdout": ""}
+        self.assertEqual(work._codex_parse(raw)["reason"], "crash")
+
 
 if __name__ == "__main__":
     unittest.main()
