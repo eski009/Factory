@@ -1,9 +1,12 @@
 ---
 name: council-review
 description: Use when a factory stage needs the council's bounded multi-agent review (triage or code review) - runs the two-round protocol without group-chat drift
+context: fork
 ---
 
 Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.py" --repo .`.
+
+This skill runs in a forked context (`context: fork`): nothing from the invoking session is visible here. The skill argument names the mode (`triage`, `review`, or `research`) and the item id (or, for research mode, the research root); every other input is read from disk per the mode list below. Your final message is the report the invoking stage acts on: the synthesis file path, the headline verdict, and the blocking-finding count — a few lines, never the report bodies.
 
 Bounded two-round council protocol (spec §6), ported from superpowers-council. Runs identically for both council moments — triage and review — only the seed content differs. No group chat: agents never see each other's notes, only the seed and the synthesis.
 

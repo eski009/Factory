@@ -1,9 +1,12 @@
 ---
 name: factory-review
 description: Use when a factory item is at stage review - council reviews the diff against spec and brain before verification
+context: fork
 ---
 
 Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.py" --repo .`. Item paths like `items/<id>/...` live under `.factory/` — the full path is `.factory/items/<id>/...`.
+
+This skill runs in a forked context (`context: fork`): nothing from the invoking session is visible here. The item id arrives as the skill argument; everything else is read from disk — `factory status --json`, `.factory/items/<id>/...`, and the brain surfaces this skill names below. Your final message is the report the dispatcher acts on: state the outcome (the stage advanced to, or the failure/pause reason, verbatim where a gate refused), name the key artifact paths written, and keep it to a few lines — never paste file contents into it.
 
 ## Contract
 
@@ -15,7 +18,7 @@ Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.p
 ## Steps
 
 1. **Diff.** Compute the branch diff: `git diff <default-branch>...factory/<item-id>` (or against the merge-base) plus `git log --oneline` for the commit list. Summarize it — the council seed carries a summary, not the raw diff dump.
-2. **Run the council.** Use the `council-review` skill in **review mode**: seed = the diff summary + `items/<id>/spec.md` + its `## Acceptance criteria`. Don't restate that skill's two-round protocol here — follow it as written, through to its own `reviews/synthesis.md` output.
+2. **Run the council.** Use the `council-review` skill in **review mode** (pass `mode: review`, the item id, and the review depth as the skill argument): seed = the diff summary + `items/<id>/spec.md` + its `## Acceptance criteria`. Don't restate that skill's two-round protocol here — follow it as written, through to its own `reviews/synthesis.md` output.
    - **Review depth by tier.** Read the item's `tier` (from `factory status --json`) and the tier profiles (from `factory doctor --json` → `tiers`). If the tier's `review` is `light` (default for `bug`), tell `council-review` to run its **light review** seat set — the inward correctness seats only — instead of the full six. `full` (features and epics) runs the whole council as today. The end-to-end walk in this step is NOT skipped for a light review — a bug fix still gets its flow walked; only the market/persona seats drop.
    - **Beyond council findings, WALK the change end-to-end.** Council seats review in parallel and each sees the diff, not the running system — that structurally cannot catch an integration failure that only shows up when one real flow crosses multiple layers. Pick the primary flow to walk as the flow behind the spec's first acceptance criterion; if none fits, walk the user-visible path the diff most changes. Before writing the final synthesis, trace that flow through the actual change — entry point → data → output — across every layer it touches (engine and prose both, where relevant). Only an orchestrator already running on the most-capable tier walks this inline; an orchestrator on any lower tier (mid included) must dispatch the walk to a most-capable-tier subagent — a read-only reviewer — and merge its returned trace into `reviews/synthesis.md` (see the capabilities skill's `references/model-tiering.md`). Record in `reviews/synthesis.md`'s walk section: the flow chosen, the hops taken (file/function at each), what data or state was checked at each hop, and what was actually executed versus statically read. Never skip this because every council finding came back clean; that's exactly when a whole-branch seam is most likely to be the only thing left uncaught. See the capabilities skill's `references/orchestration-patterns.md`, pattern 4.
 3. **Judge blocking vs. clean.** A finding is blocking only if the council marked it severity **high** *and* it contradicts the spec, a brain surface, or the test evidence — taste disagreements and low/medium findings never block.

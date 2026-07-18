@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.10.0] - 2026-07-18
+
+### Changed
+
+- **Stage skills now run in forked contexts.** The pipeline stage skills
+  (`factory-triage`, `factory-spec`, `factory-design`, `factory-plan`,
+  `factory-implement`, `factory-review`, `factory-verify`, `factory-ship`,
+  `council-review`) carry `context: fork`: each executes in an isolated
+  subagent context and returns only a compact outcome report to the
+  dispatcher, so a `/factory:run loop` or `/factory:autopilot` session no
+  longer accumulates every stage's working context (council report
+  round-trips, generated `options.html`, per-task implementer output). The
+  fork boundary is explicit in each skill's contract — item id in via the
+  skill argument, outcome report out via the final message, all other state
+  via files — and `factory-dispatch` logs one measured spend event per
+  returned stage fork.
+
 ## [0.9.2] - 2026-07-17
 
 ### Added

@@ -1,9 +1,12 @@
 ---
 name: factory-triage
 description: Use when a factory item is at stage idea or triage - council decides build/priority/scope and writes the roadmap
+context: fork
 ---
 
 Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.py" --repo .`. Item paths like `items/<id>/...` live under `.factory/` — the full path is `.factory/items/<id>/...`.
+
+This skill runs in a forked context (`context: fork`): nothing from the invoking session is visible here. The item id arrives as the skill argument; everything else is read from disk — `factory status --json`, `.factory/items/<id>/...`, and the brain surfaces this skill names below. Your final message is the report the dispatcher acts on: state the outcome (the stage advanced to, or the failure/pause reason, verbatim where a gate refused), name the key artifact paths written, and keep it to a few lines — never paste file contents into it.
 
 ## Contract
 
@@ -15,7 +18,7 @@ Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.p
 ## Steps
 
 1. If the item is at `idea`, advance it first: `factory advance ITEM triage`. (This is a sequential move with no gate — the item must simply be at `idea`.)
-2. Run the `council-review` skill in **triage mode**: should this be built, at what priority, with what scope cuts. The council also proposes new items from brain surfaces (open questions, decisions, scan findings) during this pass — file each proposal with `factory add "title" --kind ...`.
+2. Run the `council-review` skill in **triage mode** (pass `mode: triage` and the item id as the skill argument): should this be built, at what priority, with what scope cuts. The council also proposes new items from brain surfaces (open questions, decisions, scan findings) during this pass — file each proposal with `factory add "title" --kind ...`.
 3. From the council's `reviews/synthesis.md`, write `items/<id>/triage.md`: the build/don't-build decision, the chosen priority number, any scope cuts, and confirmation of the item's `kind`.
 4. Set priority: edit `item.md` frontmatter to add or update `priority: N` (integer; lower runs first, matching roadmap order).
 5. If the council disagrees with the item's `kind` (`ui`/`backend`/`mixed`), fix it directly in `item.md` frontmatter — `kind` is a plain frontmatter field, not CLI-settable.
