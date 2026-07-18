@@ -59,9 +59,8 @@ three duties run for every item, in order:
    (exact launch commands, fixture setup, credentials through safe fixture
    mechanisms), empty/error/interruption/recovery paths, and a default
    **polish battery** of AI judgement questions seeded on every touched
-   node — density: "what on this screen is not needed for what the
-   customer is doing at this node?"; craft: "what would a first-time
-   customer visually notice as unfinished?"; consistency: "does this
+   node — density: "what on this screen is not needed for what the customer is doing at this node?";
+   craft: "what would a first-time customer visually notice as unfinished?"; consistency: "does this
    screen read as the same product as the previous node (type, color,
    spacing rhythm — against `design-system.md` where seeded)?"; trust:
    "would a first-time customer trust this screen with their data or
