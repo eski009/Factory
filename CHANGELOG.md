@@ -4,6 +4,32 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.10.0] - 2026-07-18
+
+### Added
+
+- **The polish battery — a written world-class bar for the journey
+  reviewer.** Journey-contract "AI judgement questions" are now
+  operationalized end to end: factory-spec seeds four default questions on
+  every touched node (density — "what on this screen is not needed for
+  what the customer is doing at this node?"; craft — "what would a
+  first-time customer visually notice as unfinished?"; consistency — "does
+  this screen read as the same product as the previous node?"; trust —
+  "would a first-time customer trust this screen with their data or
+  money?"; authors add more, never fewer), and the journey reviewer
+  answers them at an explicit standard: a demanding first-time customer of
+  a world-class product, never softened because the product "mostly
+  works." Findings split cleanly: **objective craft defects** (clipping,
+  broken imagery, unstyled error/empty states, placeholder content,
+  viewport collapse) are ordinary fails that drive the rework loop —
+  brownfield gets pulled toward production-ready by the gate itself —
+  while **nameable-but-subjective findings** land in the assure packet's
+  new `## Polish` section as advisories: never failing the gate, never
+  parking the item, surfaced every run as the punch list the human
+  adjudicates at confirmation. A ratified advisory promotes (escape
+  promotion or contract amendment) and binds the next run. No engine
+  changes. Suite: 542 → 545 tests (the 0.9.1–0.9.2
+  hardening landed six more in parallel).
 ## [0.9.2] - 2026-07-17
 
 ### Added
