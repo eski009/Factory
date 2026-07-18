@@ -65,11 +65,19 @@ The reviewer returns a structured report and writes ONLY evidence files under `i
 - `verdicts.json` — per journey, per scenario: verdict, expected, actual, typed evidence refs (`screenshot | dom | console | network | transcript`, paths relative to the item dir). Shape: `schemas/assurance-verdicts.schema.json`; every declared journey and every impact.json scenario must be covered — the ship gate refuses gaps, missing evidence files, and any non-pass verdict.
 - On an all-pass verdict, `docs/factory/packets/<id>-assure.md` — the confirmation packet from the Contract Exit (journeys walked, per-scenario verdict summary, evidence links, draft-contract flags, unresolved judgement calls, a recommended confirmation walkthrough), always produced, never skipped.
 
+The packet always carries a `## Polish` section: every advisory the
+reviewers returned (the contract's judgement-question answers), grouped
+by journey and node. Advisories never fail the gate and never park the item
+— they are the world-class punch list the human adjudicates at
+confirmation: ratify one — promote it (an escape promotion or a
+contract amendment) — and it binds the next run; a question the contract
+now settles stops being advisory.
+
 Then take the Exit branch that matches the verdicts. A draft contract never blocks assurance, but flag it in the packet: "contract is draft — confirm it reflects intent." This skill **never runs `factory waive` or `factory confirm`** — those are the human's verbs, exactly like `factory choice`; an unattended run leaves parked items parked.
 
 ## Failure discipline
 
-- **fail** = the product objectively did not meet the contract's expectation at a node (wrong outcome, dead end, material console/network error). Rework: `assure.rejected` + back to implement with the failing scenario named in the log data.
+- **fail** = the product objectively did not meet the contract's expectation at a node (wrong outcome, dead end, material console/network error, or an objective craft defect — clipping, broken imagery, unstyled error/empty states, placeholder content, viewport collapse). Rework: `assure.rejected` + back to implement with the failing scenario named in the log data.
 - **ambiguity** = the walk completed but a judgement call the contract doesn't settle remains (is this copy clear enough? is this next action obvious?). Park for the human with the reviewer's question quoted verbatim in the packet.
 - **blocker** = the walk could not run (app won't launch, fixture missing, browser capability absent). Record in `assurance/blockers.md`, park. Environment fixed → the stage simply re-runs; blockers are never converted to passes by inspection.
 

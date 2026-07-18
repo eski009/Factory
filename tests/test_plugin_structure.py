@@ -595,6 +595,27 @@ class TestPluginStructure(unittest.TestCase):
         self.assertIn("still-draft contract", text)
         self.assertIn("never an approved contract", text)
 
+    def test_contract_drafting_seeds_polish_battery(self):
+        text = (ROOT / "skills/factory-spec/SKILL.md").read_text()
+        self.assertIn("polish battery", text)
+        self.assertIn("not needed for what the customer is doing", text)
+        self.assertIn("read as the same product", text)
+        self.assertIn("trust this screen", text)
+        self.assertIn("add more, never fewer", text)
+
+    def test_reviewer_bar_and_advisory_split(self):
+        text = (ROOT / "agents/journey-reviewer.md").read_text()
+        self.assertIn("demanding first-time customer of a world-class product", text)
+        self.assertIn("judgement question", text)
+        self.assertIn("advisory", text)
+        self.assertIn("never soften", text)
+
+    def test_assure_packet_polish_section(self):
+        text = (ROOT / "skills/factory-assure/SKILL.md").read_text()
+        self.assertIn("## Polish", text)
+        self.assertIn("never fail the gate and never park the item", text)
+        self.assertIn("promote", text)
+
 
 if __name__ == "__main__":
     unittest.main()

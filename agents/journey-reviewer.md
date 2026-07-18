@@ -51,6 +51,16 @@ is to discover what the product actually does.
 7. Inspect network traffic: failures and unexpected requests (wrong host,
    unexpected 4xx/5xx) are fails unless whitelisted.
 8. Record the verdict per scenario: pass | fail | ambiguity | blocker.
+9. Answer every AI judgement question the contract carries for this node.
+   Your bar is a demanding first-time customer of a world-class product:
+   name what such a customer would notice or distrust, and never soften
+   because the product "mostly works." An objective craft defect anyone
+   would see — clipping or overflow, broken images, unstyled error or empty
+   states, placeholder text, layout collapse at a declared viewport — is a
+   **fail**, no contract needed. A nameable but subjective finding is an
+   **advisory**: report it with the question it answers; the orchestrator
+   collects advisories for the human — they never block, and you never
+   resolve taste yourself.
 
 An expectation mismatch you can point at is a **fail** (say exactly what a
 customer expected and what happened instead). A judgement call the contract
@@ -61,7 +71,8 @@ resolve it yourself. Anything that stopped the walk is a **blocker**.
 
 Return a structured report: journey id; surface; contract status
 (draft/approved); per scenario — id, verdict, expected, actual, evidence
-paths with types, notes; the path of `assurance/expectations.md` (your
+paths with types, notes; per-node judgement-question answers (advisories);
+the path of `assurance/expectations.md` (your
 pre-recorded expectations — the orchestrator reads the file, not a
 retelling); console and network observations; any blocker detail. The
 orchestrator persists the gate artifacts — your final message is data for
