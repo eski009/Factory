@@ -4,6 +4,28 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.8.1] - 2026-07-18
+
+### Fixed
+
+- **Visual bugs no longer get a false `verify.green`.** A `mode: human-confirmed`
+  (visual) bug reaching the forked, unattended `verify` stage had no runnable
+  command to exercise, but could still read the seeded acceptance criteria (the
+  expected-after state) in `spec.md`. With the answer key visible and nothing to
+  run, verify would read the diff, decide "the fix looks applied," and log
+  `verify.green` — a confirmation-biased false "done" (recorded as bug-intake
+  residual seam #2). `factory-verify` now routes any visual / human-confirmed
+  criterion through a **blind observer** protocol: a fresh subagent drives the app
+  and reports what it factually sees — blind to the diagnosis, diff, and expected
+  outcome — and verify judges that independent report against the criteria,
+  requiring both that the original failure is absent AND that the expected state
+  is present. Observation and judgment are separated so the party that knows the
+  answer never looks at the app and the party that looks at the app never knows
+  the answer. Gated on a new **App visual capture** capability
+  (`skills/capabilities/references/visual-verify.md`); when no screenshot-capable
+  driver is available, verify does not self-attest — the item pauses
+  `waiting-human` for the human to confirm the repro.
+
 ## [0.8.0] - 2026-07-17
 
 ### Changed
