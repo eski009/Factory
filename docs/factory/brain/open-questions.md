@@ -166,6 +166,19 @@
   authorized: judgement on bid-0048). Resolved by: treating (1)–(3) as
   binding consumer requirements when 0005 unblocks, and a one-line add.md
   wording tweak for (4) in any commands-touching item.
+  **Update 2026-07-18: seam (2) closed directly.** The observed failure mode —
+  a forked, unattended verify reading a `mode: human-confirmed` bug's diff and
+  self-attesting `verify.green` because it can see the expected-after state in
+  spec.md — is now structurally prevented in `factory-verify`. Rather than only
+  "pause to the human", verify routes any visual / human-confirmed criterion
+  through a **blind observer** protocol (capabilities skill's
+  `references/visual-verify.md`, gated on a new **App visual capture** capability
+  row): a fresh subagent drives the app and reports what it factually sees, blind
+  to the diagnosis/diff/expected, and verify judges that independent report
+  against the criteria — requiring both original-failure-absent AND
+  expected-present. Human confirmation remains the fail-closed fallback when no
+  capture driver is available. Separating observation from judgment removes the
+  confirmation bias that produced the false "done".
 - **Never-bricks residual corners (from 0009 review, none blocking).**
   reputation_table TypeError on wrong-typed delta values; health._role_stats
   strict read of council/*.md; validate quieter than runtime on body-only
