@@ -4,6 +4,28 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.11.0] - 2026-07-19
+
+### Added
+
+- **Design principles — a seeded, overridable UI baseline.** A new brain
+  surface, `brain/design-principles.md`, ships content-bearing with seven
+  defaults (KISS — one job per screen; progressive disclosure; visual
+  hierarchy; consistency, internal and platform; feedback and visible
+  state; error prevention over error messages; accessible by default)
+  under a "defaults, not dogma" header: strike or amend any of them per
+  product, and where a principle conflicts with the product's
+  `design-system.md` or a recorded decision, the product wins. The single
+  `(assumption)` tag makes the init interview ask one confirm-or-strike
+  question for the set. Three consumers give it force: factory-design
+  generates every mockup direction against it; the polish battery's
+  density/consistency questions anchor to it (the journey reviewer never
+  cites a principle the product struck); and the ui-taste council seat
+  reads it alongside `design-system.md`, citing principles in bids until
+  the product's own accumulated taste supersedes them. No engine changes —
+  principles bind through generation, advisories, and bids, never through
+  a gate. Suite: 545 → 547 tests.
+
 ## [0.10.0] - 2026-07-18
 
 ### Added
