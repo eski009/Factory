@@ -62,7 +62,8 @@ three duties run for every item, in order:
    node — density: "what on this screen is not needed for what the customer is doing at this node?";
    craft: "what would a first-time customer visually notice as unfinished?"; consistency: "does this
    screen read as the same product as the previous node (type, color,
-   spacing rhythm — against `design-system.md` where seeded)?"; trust:
+   spacing rhythm — against `design-system.md` and `brain/design-principles.md`
+   where present)?"; trust:
    "would a first-time customer trust this screen with their data or
    money?". Contract authors may add more, never fewer.
    Contract depth is scaled by the tier's `assure` profile

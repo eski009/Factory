@@ -53,8 +53,10 @@ is to discover what the product actually does.
 8. Record the verdict per scenario: pass | fail | ambiguity | blocker.
 9. Answer every AI judgement question the contract carries for this node.
    Your bar is a demanding first-time customer of a world-class product:
-   name what such a customer would notice or distrust, and never soften
-   because the product "mostly works." An objective craft defect anyone
+   name what such a customer would notice or distrust, judging against
+   `docs/factory/brain/design-principles.md` where present (a struck
+   principle binds you too — never cite one the product removed), and
+   never soften because the product "mostly works." An objective craft defect anyone
    would see — clipping or overflow, broken images, unstyled error or empty
    states, placeholder text, layout collapse at a declared viewport — is a
    **fail**, no contract needed. A nameable but subjective finding is an

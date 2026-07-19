@@ -616,6 +616,30 @@ class TestPluginStructure(unittest.TestCase):
         self.assertIn("never fail the gate and never park the item", text)
         self.assertIn("promote", text)
 
+    def test_design_principles_template(self):
+        t = ROOT / "templates/docs-factory/brain/design-principles.md"
+        self.assertTrue(t.exists())
+        text = t.read_text()
+        self.assertIn("Defaults, not dogma", text)
+        self.assertIn("(assumption)", text)
+        self.assertIn("one job per screen", text)
+        self.assertIn("Progressive disclosure", text)
+        self.assertIn("Error prevention over error messages", text)
+        self.assertIn("Accessible by default", text)
+        self.assertIn("the product wins", text)
+
+    def test_design_principles_consumers_wired(self):
+        design = (ROOT / "skills/factory-design/SKILL.md").read_text()
+        self.assertIn("design-principles.md", design)
+        spec = (ROOT / "skills/factory-spec/SKILL.md").read_text()
+        self.assertIn("design-principles.md", spec)
+        reviewer = (ROOT / "agents/journey-reviewer.md").read_text()
+        self.assertIn("design-principles.md", reviewer)
+        seat = (ROOT / "agents/council-ui-taste.md").read_text()
+        self.assertIn("design-principles.md", seat)
+        interview = (ROOT / "skills/factory-interview/SKILL.md").read_text()
+        self.assertIn("design-principles.md", interview)
+
 
 if __name__ == "__main__":
     unittest.main()
