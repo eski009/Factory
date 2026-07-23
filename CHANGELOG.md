@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.10.1] - 2026-07-23
+
+### Added
+
+- **Fork-local model routing.** `skills/capabilities/references/model-routing.md`
+  resolves the abstract cheapest/mid/most-capable tiers in `references/model-tiering.md`
+  to this operator's concrete fleet: Fable orchestrates, Opus is the default subagent
+  (reviewer floor plus the most-capable walks and audits), Codex codes above the trivial
+  bar (with the trivial-vs-Codex bar spelled out), Sonnet drives tests, Haiku runs
+  commands. Encodes the hard rules (evaluation judgment never below mid, reviewer ≠
+  implementer, `model:` set explicitly per dispatch to defeat the omitted-model
+  inheritance trap). `model-tiering.md` stays model-agnostic and cross-links to it.
+
 ## [0.10.0] - 2026-07-18
 
 Integration release: merges the upstream line (through 0.9.2 — codex
