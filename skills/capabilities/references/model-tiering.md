@@ -2,6 +2,8 @@
 
 These patterns assume nothing about the orchestrating model — they are how the factory gets strong-model outcomes from any model. Tiering is the other half of `references/orchestration-patterns.md`: the patterns describe *how* to structure work so weaker models can execute it; this doc says *which* tier to point at which task shape, and it applies to every model choice a stage skill or dispatch makes, not just the orchestrator's own.
 
+The tiers here are abstract on purpose. For the concrete fleet this operator runs — which real model resolves to each tier — see `references/model-routing.md` (fork-local; advisory, not read by the engine).
+
 ## The table
 
 | Tier | Use it for | Never use it for |
