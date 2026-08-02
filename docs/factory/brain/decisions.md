@@ -327,3 +327,56 @@
   pre-change engine (golden suite). Assure passed round 2 with 2 pre-existing
   non-blocking findings re-routed to owners 0025 and 0023. Merged-tree suite:
   815 tests OK.
+- **2026-08-02, 0015 triage (BUILD 6/6, p3):** three constraints appended to
+  `brain/constraints.md` under `# Constraints`: (1) build order — 0025 lands
+  before 0015 with the binding "entry into implement" round-scoping key, and
+  0025 was promoted onto the ranked roadmap (priority 2, ahead of 0015)
+  (jdg-0096); (2) new gate caps (`MAX_APPROACH_REJECTIONS`, the
+  `verify -> implement` cap) count engine-written backward `stage.advance`
+  edges, never skill-logged events — the existing event-counted caps remain a
+  named live defect no new spec may copy (jdg-0097); (3) engine-auto-written
+  cost-answers are a pause-consuming miss-path — redesign coverage comes from
+  an operator answer or a bid-0065-contracted pause, and breaker
+  `rework_edges` is never reset (jdg-0098). Full triage synthesis:
+  `.factory/items/0015-approach-rejected-a-redesign-loop-back-t/reviews/synthesis.md`.
+- **2026-08-02, judged 0015's spec-stage bids** (bid-0099…0106, all accepted):
+  seven recorded assumptions to open-questions.md (artifact path, answer verb,
+  edge request path, append-only lifecycle, minimum content, continue-at-cap
+  watermark, spec-freshness token) and the required J-002 amendment landed
+  ahead of 0015's assure walk — the one-rework-figure oracle now names the
+  labelled `rework edges since last redesign` companion as permitted, derived
+  and numerically-agreeing (judgement on bid-0106).
+- **2026-08-02, triage of 0025 (BUILD 6/6, priority 2, tier bug, kind
+  backend):** council unanimous — the fix shape is one shared postdating
+  predicate (evidence log-index strictly after the latest engine-written
+  `stage.advance` into implement), the item body's "latest backward edge"
+  parenthetical is dropped, and `_gate_ship` migrates to the shared
+  primitive. Five blocking findings bind the spec (B1 index-not-timestamp
+  comparator with frozen-clock tie test; B2 stale-evidence refusals must
+  not say "not logged"; B3 full postdating-site enumeration incl. the
+  journeys-none branch and assure.py:42; B4 fail-closed on no findable
+  entry-into-implement; B5 SPECIAL-`from` resumes excluded from the round
+  key — resolved by orchestrator ruling after the round-2 seats crossed
+  positions; a third round was warranted but skipped per the hard stop).
+  constraints.md gained the jdg-0107 refinement annotating the bid-0096
+  scoping key ("any non-SPECIAL-`from` entry") and the jdg-0108
+  postdating-site-enumeration rule. Full synthesis:
+  .factory/items/0025-round-scope-all-rework-gates-implement-c/reviews/synthesis.md.
+- **2026-08-02, judged 0025's triage bids** (bid-0107, bid-0108, both
+  accepted): the bid-0096 round-scoping key wording is refined in place —
+  "any entry" means any entry whose `from`-stage is not in `SPECIAL`,
+  expressed via the existing `SPECIAL` set inside the one shared primitive
+  (jdg-0107); and the postdating migration must cover every site, not only
+  the three entry gates — `_gate_ship`'s main key and its journeys-none
+  `verify.green` early-return, plus `assure.py:42`'s `record_confirmation`
+  comparison, all route through the one shared helper (jdg-0108). Full
+  triage synthesis:
+  `.factory/items/0025-round-scope-all-rework-gates-implement-c/reviews/synthesis.md`.
+- **2026-08-02, shipped 0025-round-scope-all-rework-gates-implement-c** (mode
+  auto, merge 9e5b014 into main): all three rework entry gates plus
+  `_gate_ship`'s main key, its journeys-none `verify.green` early-return, and
+  `assure.py:42`'s `record_confirmation` comparison now route through one
+  shared log-index postdating predicate keyed on the latest engine-written
+  non-SPECIAL-`from` `stage.advance` into implement, fail-closed with a
+  distinct stale-evidence refusal. Assure passed round 1, 0 non-blocking
+  fails; merged-tree suite 838 tests OK. Branch deleted.
