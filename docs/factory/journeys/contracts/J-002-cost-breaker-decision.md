@@ -66,7 +66,7 @@ more spend on an item they did not watch, against a backlog they did not audit.
 | park | `item.md` frontmatter `stage: waiting-human`, `paused-from: implement`, `paused-reason` starting `cost breaker:` |
 | one rework figure | count of digit-bearing rework lines in the rendered packet == 1 |
 | provenance | every cost-bearing line in the packet matches `^\s*[-•]?\s*\[(measured\|proxy\|unmeasured)\]` |
-| recommendation | the `Recommended:` line names `defer` when `backlog.at_or_above >= 1`, `narrow` otherwise, and never `continue` |
+| recommendation | the `Recommended:` line names `defer` when `backlog.at_or_above >= 1`, `narrow` when it is `0`, and — when it is `None`, i.e. the item carries no priority so the comparison is impossible — names neither, directing the operator to `factory priority <id> <n>`; never `continue` in any case |
 | one action | count of `factory ` command lines under `## Respond` == 1, and that line names `factory cost-answer` |
 | answer written | `breaker.record_answer` returns the path; `cost/answer.md` contains `- answer:`, `- rework-edges:`, `- ts:` |
 | single writer | `factory log <id> cost.answered` is refused |

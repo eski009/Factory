@@ -323,7 +323,7 @@ def summarize_all(repo):
     spend-event classes measure different quantities (bid-0063), so a
     cross-item total has no provenance class and would be a constraint
     violation rather than an inaccuracy."""
-    metas, _errors = items.list_items_safe(repo)
+    metas, errors = items.list_items_safe(repo)
     metas = sorted(metas, key=lambda m: m["id"])
     rows = []
     items_with_spend = 0
@@ -351,6 +351,11 @@ def summarize_all(repo):
             "advances_total": advances_total,
             "done_items": done_items,
             "done_with_tier": done_with_tier,
+            # N4: list_items_safe's dropped items are reported, not
+            # discarded — the coverage denominator names what it could
+            # not read rather than passing the survivors off as the
+            # whole population.
+            "unreadable_items": len(errors),
         },
     }
 
@@ -377,10 +382,16 @@ def render_all_text(summary):
         lines.append(f"[proxy] {item['item']}: advances {item['advances']}, "
                      f"rework edges {item['rework_edges']}")
     cov = summary["coverage"]
-    lines.append(f"[coverage] spend events present for "
-                 f"{cov['items_with_spend']} of {cov['items_total']} items; "
-                 f"{cov['advances_with_spend']} of {cov['advances_total']} "
-                 "stage advances carry one")
+    coverage = (f"[coverage] spend events present for "
+                f"{cov['items_with_spend']} of {cov['items_total']} items; "
+                f"{cov['advances_with_spend']} of {cov['advances_total']} "
+                "stage advances carry one")
+    # Conditional, so the line is byte-unchanged when every item read.
+    dropped = cov.get("unreadable_items", 0)
+    if dropped:
+        coverage += (f"; {dropped} item{'' if dropped == 1 else 's'} "
+                     "unreadable and excluded")
+    lines.append(coverage)
     lines.append(f"[unmeasured] UNMEASURED: {UNMEASURED_NOTE}; per-tier "
                  f"medians ({cov['done_with_tier']} of {cov['done_items']} "
                  "done items carry a tier) — no cross-item total or median "

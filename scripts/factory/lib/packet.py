@@ -55,31 +55,61 @@ def cost_decision_lines(repo, item_id, meta, summary=None):
     priority = meta.get("priority", "-")
     at_or_above = v["backlog"]["at_or_above"]
     total = v["backlog"]["actionable_total"]
-    recommended = "defer" if at_or_above >= 1 else "narrow"
-    why = {
-        "defer": ("work at this priority or higher is waiting behind an item "
-                  "already reworked past the threshold."),
-        "narrow": ("nothing else is waiting at this priority, so a smaller "
-                   "next round costs less than another full one."),
-    }[recommended]
+    unreadable = v["backlog"]["unreadable"]
+    # B1: `at_or_above is None` means the comparison is impossible, not
+    # empty. brain/constraints.md forbids rendering an incomparable
+    # population as a number, so all three surfaces that read it — the
+    # backlog line, the recommendation and the continue consequence —
+    # take the same branch. A remedy on the recommendation alone would
+    # leave the other two false statements on screen.
+    comparable = at_or_above is not None
+    # N4: the items list_items_safe could not read are named rather than
+    # dropped, so `total` is never an unqualified denominator.
+    dropped = (f"; {unreadable} item{'' if unreadable == 1 else 's'} "
+               "unreadable and excluded" if unreadable else "")
+    if comparable:
+        backlog_line = (f"- backlog: {at_or_above} actionable items at "
+                        f"priority ≤ {priority}, {total} actionable in "
+                        f"total{dropped}")
+        recommended = "defer" if at_or_above >= 1 else "narrow"
+        why = {
+            "defer": ("work at this priority or higher is waiting behind an "
+                      "item already reworked past the threshold."),
+            "narrow": ("nothing else is waiting at this priority, so a "
+                       "smaller next round costs less than another full "
+                       "one."),
+        }[recommended]
+        recommendation = f"Recommended: {recommended} — {why}"
+        waiting = (f"the {at_or_above} items at priority ≤ {priority} keep "
+                   "waiting; ")
+    else:
+        backlog_line = ("- backlog: comparison unavailable — this item has "
+                        f"no priority; {total} actionable in total{dropped}")
+        # The packet is a static file (`write_packet`), so setting a
+        # priority does not rewrite it: the second verb must be the
+        # re-render, never "re-read this packet".
+        recommendation = ("Recommended: set a priority first — what this item "
+                          "is blocking cannot be compared until it has one; "
+                          f"run factory priority {item_id} <n>, then factory "
+                          f"packet {item_id} to re-render this decision.")
+        waiting = ""
     return [
         f"- [proxy] rework edges: {edges} (backward stage.advance edges into "
         f"implement; threshold {v['threshold']})",
         f"- [proxy] active {cost.format_duration(summary['active_seconds'])}, "
         f"{summary['advances']} advances, {entries} implement entries",
         "- " + cost.render_lower_bound(summary),
-        f"- backlog: {at_or_above} actionable items at priority ≤ {priority}, "
-        f"{total} actionable in total",
+        backlog_line,
         "",
-        f"Recommended: {recommended} — {why}",
+        recommendation,
         "",
         # Deviation from plan Task 10 step 4: the loop-mode clause is joined
         # with a semicolon, not a full stop, so the M9 sentence reads as one
         # lower-case clause exactly as the AC12 test asserts it.
         f"- continue — the item returns to implement; the next rework edge "
-        f"parks it again at {edges + 1}; the {at_or_above} items at priority "
-        f"≤ {priority} keep waiting; in loop mode the next actionable item "
-        "runs while this one waits; in item/step mode the run stops here.",
+        f"parks it again at {edges + 1}; {waiting}in loop mode the next "
+        "actionable item runs while this one waits; in item/step mode the "
+        "run stops here.",
         f"- narrow — records the decision; edit plan.md, then factory advance "
         f"{item_id} implement. v1 does not narrow scope for you.",
         f"- defer — records the decision and leaves the item parked; drop its "

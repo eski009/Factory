@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.factory.lib import initrepo, items, logs, packet
+from scripts.factory.lib import initrepo, items, logs, packet, paths
 
 
 class TestPacketHtml(unittest.TestCase):
@@ -106,6 +106,41 @@ class TestCostDecisionHtml(unittest.TestCase):
         page = packet.render_packet_html(self.repo, "0001-runaway")
         return page.split('<section id="cost-decision">', 1)[1].split(
             "</section>", 1)[0]
+
+    def unprioritise(self):
+        """B1 against the HTML render: packet.py renders its own section,
+        so the markdown-only guards leave this path unchecked."""
+        meta, body = items.load_item(self.repo, "0001-runaway")
+        meta.pop("priority", None)
+        items.save_item(self.repo, meta, body)
+        for item_id, priority in (("0002-p1", 1), ("0003-p9", 9)):
+            items.save_item(self.repo, {
+                "id": item_id, "title": item_id, "stage": "plan",
+                "kind": "backend", "priority": priority,
+                "created": "2026-08-02T00:00:00Z",
+                "updated": "2026-08-02T00:00:00Z"}, "")
+
+    def test_html_backlog_line_names_the_items_it_could_not_read(self):
+        """N4 on the HTML render: packet.py builds its own section, so
+        the markdown assertion leaves this surface unguarded."""
+        for item_id in ("0008-corrupt", "0009-corrupt"):
+            bad = paths.items_dir(self.repo) / item_id
+            bad.mkdir(parents=True, exist_ok=True)
+            (bad / "item.md").write_bytes(b"\xff\xfe not utf-8")
+        self.assertIn("0 actionable in total; 2 items unreadable and excluded",
+                      self.section())
+
+    def test_html_backlog_line_is_unqualified_when_every_item_reads(self):
+        self.assertNotIn("unreadable and excluded", self.section())
+
+    def test_html_claims_no_number_for_an_impossible_comparison(self):
+        self.unprioritise()
+        section = self.section()
+        # `≤` is not an HTML-special character, so it escapes to itself.
+        self.assertNotIn("≤ -", section)
+        self.assertNotIn("0 actionable items", section)
+        self.assertNotIn("nothing else is waiting at this priority", section)
+        self.assertIn("factory priority", section)
 
     def test_html_section_leads_with_the_proxy_substrate(self):
         section = self.section()

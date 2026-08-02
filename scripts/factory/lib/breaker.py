@@ -56,18 +56,26 @@ def backlog_counts(repo, meta):
     """What this item is blocking. Actionable means dispatch's own
     definition (everything except done/blocked/waiting-human); the item
     itself is excluded — it does not block itself. Items with no numeric
-    priority count only in actionable_total."""
-    metas, _errors = items.list_items_safe(repo)
+    priority count only in actionable_total.
+
+    `at_or_above` is None — never 0 — when this item carries no numeric
+    priority: the comparison is not empty, it is impossible, and
+    brain/constraints.md forbids rendering an incomparable population as
+    a number. `unreadable` carries list_items_safe's dropped items so no
+    caller can present the survivors as an unqualified denominator."""
+    metas, errors = items.list_items_safe(repo)
     actionable = [m for m in metas
                   if m["stage"] not in dispatch.NOT_ACTIONABLE
                   and m["id"] != meta["id"]]
     mine = meta.get("priority")
-    at_or_above = 0
+    at_or_above = None
     if isinstance(mine, int):
         at_or_above = sum(1 for m in actionable
                           if isinstance(m.get("priority"), int)
                           and m["priority"] <= mine)
-    return {"at_or_above": at_or_above, "actionable_total": len(actionable)}
+    return {"at_or_above": at_or_above,
+            "actionable_total": len(actionable),
+            "unreadable": len(errors)}
 
 
 def verdict(repo, item_id, meta, to, summary=None):

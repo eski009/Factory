@@ -168,6 +168,29 @@ class VerdictTest(BreakerTestCase):
         self.assertEqual(v["backlog"]["actionable_total"], 1)
         self.assertEqual(v["backlog"]["at_or_above"], 0)
 
+    def test_backlog_counts_is_none_not_zero_when_priority_unset(self):
+        meta = self.put()
+        meta.pop("priority", None)
+        items.save_item(self.repo, meta, "")
+        meta, _ = items.load_item(self.repo, ITEM)
+        self.install_fixture()
+        self.put("0002-p1", stage="plan", priority=1)
+        self.put("0003-p5", stage="plan", priority=5)
+        v = breaker.verdict(self.repo, ITEM, meta, "implement")
+        self.assertIsNone(v["backlog"]["at_or_above"])
+        self.assertEqual(v["backlog"]["actionable_total"], 2)
+
+    def test_backlog_counts_reports_unreadable_items_it_dropped(self):
+        # N4: list_items_safe's error list is no longer discarded.
+        meta = self.put(priority=1)
+        self.install_fixture()
+        self.put("0002-p1", stage="plan", priority=1)
+        bad = paths.items_dir(self.repo) / "0009-corrupt"
+        bad.mkdir(parents=True, exist_ok=True)
+        (bad / "item.md").write_bytes(b"\xff\xfe not utf-8")
+        v = breaker.verdict(self.repo, ITEM, meta, "implement")
+        self.assertEqual(v["backlog"]["unreadable"], 1)
+
 
 class InvarianceTest(BreakerTestCase):
     """AC17 / M5: the verdict is a function of the engine-written edges

@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from scripts.factory.lib import cost, initrepo, items, logs, packet
+from scripts.factory.lib import cost, initrepo, items, logs, packet, paths
 
 
 class TestPacket(unittest.TestCase):
@@ -125,6 +125,105 @@ class TestCostDecisionPacket(unittest.TestCase):
 
     def section(self, text):
         return text.split("## Cost decision\n", 1)[1].split("\n## ", 1)[0]
+
+    def unprioritise(self):
+        meta, body = items.load_item(self.repo, "0001-runaway")
+        meta.pop("priority", None)
+        items.save_item(self.repo, meta, body)
+        self.other("0002-p1", priority=1)
+        self.other("0003-p9", priority=9)
+
+    def corrupt(self, *item_ids):
+        """Sibling item.md files list_items_safe cannot decode. The
+        backlog line must name what it dropped rather than passing the
+        survivors off as the whole population (N4)."""
+        for item_id in item_ids:
+            bad = paths.items_dir(self.repo) / item_id
+            bad.mkdir(parents=True, exist_ok=True)
+            (bad / "item.md").write_bytes(b"\xff\xfe not utf-8")
+
+    def test_backlog_line_names_the_one_item_it_could_not_read(self):
+        self.other("0002-p1", priority=1)
+        self.corrupt("0009-corrupt")
+        section = self.section(packet.render_packet(self.repo, "0001-runaway"))
+        backlog = [l for l in section.splitlines()
+                   if l.startswith("- backlog:")]
+        self.assertEqual(len(backlog), 1, backlog)
+        self.assertEqual(
+            backlog[0],
+            "- backlog: 1 actionable items at priority ≤ 2, 1 actionable in "
+            "total; 1 item unreadable and excluded")
+
+    def test_backlog_line_pluralises_the_items_it_could_not_read(self):
+        self.other("0002-p1", priority=1)
+        self.corrupt("0008-corrupt", "0009-corrupt")
+        section = self.section(packet.render_packet(self.repo, "0001-runaway"))
+        self.assertIn("1 actionable in total; 2 items unreadable and excluded",
+                      section)
+
+    def test_backlog_line_names_dropped_items_when_priority_unset(self):
+        self.unprioritise()
+        self.corrupt("0009-corrupt")
+        section = self.section(packet.render_packet(self.repo, "0001-runaway"))
+        self.assertIn("- backlog: comparison unavailable — this item has no "
+                      "priority; 2 actionable in total; 1 item unreadable and "
+                      "excluded", section)
+
+    def test_backlog_line_carries_no_qualifier_when_every_item_reads(self):
+        self.other("0002-p1", priority=1)
+        section = self.section(packet.render_packet(self.repo, "0001-runaway"))
+        self.assertNotIn("unreadable and excluded", section)
+
+    def test_backlog_line_does_not_claim_a_number_when_priority_unset(self):
+        self.unprioritise()
+        section = self.section(packet.render_packet(self.repo, "0001-runaway"))
+        self.assertNotIn("≤ -", section)
+        self.assertNotIn("0 actionable items", section)
+        self.assertIn("2 actionable in total", section)
+
+    def test_no_recommendation_asserts_an_empty_backlog_when_priority_unset(self):
+        self.unprioritise()
+        section = self.section(packet.render_packet(self.repo, "0001-runaway"))
+        self.assertNotIn("nothing else is waiting at this priority", section)
+        recommended = [l for l in section.splitlines()
+                       if l.startswith("Recommended:")]
+        self.assertEqual(len(recommended), 1, recommended)
+        self.assertIn("factory priority", recommended[0])
+        self.assertNotIn("defer —", recommended[0])
+        self.assertNotIn("narrow —", recommended[0])
+        self.assertNotIn("continue", recommended[0])
+
+    def test_recommendation_points_at_the_re_render_not_a_stale_file(self):
+        """The packet is a static file (`write_packet`): setting a
+        priority does not rewrite it, so the action named must be the
+        re-render, never "re-read this packet"."""
+        self.unprioritise()
+        section = self.section(packet.render_packet(self.repo, "0001-runaway"))
+        recommended = [l for l in section.splitlines()
+                       if l.startswith("Recommended:")]
+        self.assertEqual(
+            recommended[0],
+            "Recommended: set a priority first — what this item is blocking "
+            "cannot be compared until it has one; run factory priority "
+            "0001-runaway <n>, then factory packet 0001-runaway to re-render "
+            "this decision.")
+        self.assertNotIn("re-read this packet", section)
+
+    def test_continue_consequence_carries_no_priority_sentinel(self):
+        self.unprioritise()
+        section = self.section(packet.render_packet(self.repo, "0001-runaway"))
+        cont = [l for l in section.splitlines() if l.startswith("- continue —")]
+        self.assertEqual(len(cont), 1, cont)
+        self.assertNotIn("≤ -", cont[0])
+        self.assertNotIn("keep waiting", cont[0])
+
+    def test_all_three_options_still_carry_one_consequence_when_unset(self):
+        self.unprioritise()
+        section = self.section(packet.render_packet(self.repo, "0001-runaway"))
+        for option in ("- continue —", "- narrow —", "- defer —"):
+            self.assertEqual(
+                len([l for l in section.splitlines() if l.startswith(option)]),
+                1, option)
 
     def test_section_absent_for_a_non_breaker_pause(self):
         meta, body = items.load_item(self.repo, "0001-runaway")

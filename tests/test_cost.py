@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.factory.lib import cost, initrepo, items, logs
+from scripts.factory.lib import cost, initrepo, items, logs, paths
 
 ITEM = "0001-x"
 
@@ -616,7 +616,8 @@ class AggregateModeTest(unittest.TestCase):
         self.assertEqual(
             set(summary["coverage"]),
             {"items_with_spend", "items_total", "advances_with_spend",
-             "advances_total", "done_items", "done_with_tier"})
+             "advances_total", "done_items", "done_with_tier",
+             "unreadable_items"})
 
     def test_coverage_figures_are_scanned_not_hardcoded(self):
         """AC8: seeded counts differ from this repo's 9/17."""
@@ -634,6 +635,42 @@ class AggregateModeTest(unittest.TestCase):
         self.assertIn("[coverage] spend events present for 2 of 3 items; "
                       "2 of 4 stage advances carry one", text)
         self.assertNotIn("9 of 17", text)
+
+    def test_coverage_line_reports_items_it_could_not_read(self):
+        # N4: a corrupt item.md is dropped by list_items_safe; the
+        # [coverage] line must not present the survivors as an
+        # unqualified denominator.
+        self.seed()
+        bad = paths.items_dir(self.repo) / "0009-corrupt"
+        bad.mkdir(parents=True, exist_ok=True)
+        (bad / "item.md").write_bytes(b"\xff\xfe not utf-8")
+        summary = cost.summarize_all(self.repo)
+        self.assertEqual(summary["coverage"]["unreadable_items"], 1)
+        line = [l for l in cost.render_all_text(summary).splitlines()
+                if l.startswith("[coverage]")][0]
+        self.assertIn("1 item unreadable and excluded", line)
+
+    def test_coverage_line_pluralises_the_items_it_could_not_read(self):
+        self.seed()
+        for item_id in ("0008-corrupt", "0009-corrupt"):
+            bad = paths.items_dir(self.repo) / item_id
+            bad.mkdir(parents=True, exist_ok=True)
+            (bad / "item.md").write_bytes(b"\xff\xfe not utf-8")
+        summary = cost.summarize_all(self.repo)
+        self.assertEqual(summary["coverage"]["unreadable_items"], 2)
+        line = [l for l in cost.render_all_text(summary).splitlines()
+                if l.startswith("[coverage]")][0]
+        self.assertIn("2 items unreadable and excluded", line)
+
+    def test_coverage_line_is_byte_unchanged_when_every_item_reads(self):
+        summary = self.seed()
+        self.assertEqual(summary["coverage"]["unreadable_items"], 0)
+        line = [l for l in cost.render_all_text(summary).splitlines()
+                if l.startswith("[coverage]")][0]
+        self.assertEqual(
+            line,
+            "[coverage] spend events present for 2 of 3 items; "
+            "2 of 4 stage advances carry one")
 
     def test_measured_line_only_for_items_with_measured_spend(self):
         text = cost.render_all_text(self.seed())
