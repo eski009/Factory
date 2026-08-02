@@ -15,3 +15,17 @@
 - [-] 0009-finish-the-never-bricks-promise-crash-pr Finish the never-bricks promise: crash-proof validate/items on item.md/config.json corruption, ledger key filter, text-status notice, copy pass (done)
 - [8] 0010-factory-bug-command-understand-replicate factory:bug command: understand, replicate, branch, fix, regression-test, and prove-fixed bug pipeline (done)
 - [-] 0011-create-factory-bug-command-understand-th Create /factory:bug command (blocked — rejected: duplicate of 0010)
+
+## Field-report batch (ParkSnap p1 non-convergence, 2026-08-02)
+
+<!-- Ranked relative to each other by 0013's triage council: 0016 is the
+     measuring instrument for 0013's business case, so it moves ahead of the
+     approach-gate pair. 0016's own triage council (6/6) then took it to p1 and
+     0013 to p2, matching the human's 2026-08-02 sequencing; 0013 unparks at
+     0016's per-stage-attribution merge, not at 0016 reaching done. -->
+
+- [1] 0016-cost-circuit-breaker-on-engine-authorita Cost circuit breaker on engine-authoritative rework counts (triage — build, rescoped)
+- [2] 0013-assure-attribution-gate-only-on-regressi Assure attribution: gate only on regressions this item caused (waiting-human — parked from implement, Task 9 struck)
+- [3] 0015-approach-rejected-a-redesign-loop-back-t approach.rejected: a redesign loop back to spec with forbidden approaches recorded (idea)
+- [4] 0014-approach-gate-at-plan-judge-convergence- Approach gate at plan: judge convergence before implementation spend (idea)
+- [-] 0017-factory-scope-engine-validated-scope-nar factory scope: engine-validated scope narrowing as a first-class artifact (idea — split out of 0013; sequence after it ships)
