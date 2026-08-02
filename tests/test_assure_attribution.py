@@ -1,6 +1,7 @@
 """Item 0013 - assure attribution: merge-base primitives and the ship
 gate's ordered attribution rules."""
 
+import inspect
 import json
 import os
 import subprocess
@@ -417,6 +418,78 @@ class TestAttributionOn(GateTest):
             message = self.refusal()
             self.assertNotIn(message, seen, message)
             seen.add(message)
+
+
+class TestReportedRunReplay(GateTest):
+    """AC17: replaying the reported field run with attribution enabled
+    merges the item without consuming an assure.rejected rework round."""
+
+    def test_seven_scenarios_two_pre_existing_ships_with_no_rework(self):
+        self.enable()
+        self.make_item()
+        self.make_owner(item_id="0002-stale-restriction-values")
+        self.make_owner(item_id="0003-card-gated-on-length")
+        before = logs.count_events(self.repo, ITEM, "assure.rejected")
+        self.assertEqual(before, 0)
+        scenarios = [self.scenario(id=f"S{n}", verdict="pass")
+                     for n in range(1, 6)]
+        scenarios.append(self.scenario(
+            id="S6", attribution="pre-existing",
+            owner="0002-stale-restriction-values", base=self.base()))
+        scenarios.append(self.scenario(
+            id="S7", attribution="pre-existing",
+            owner="0003-card-gated-on-length", base=self.base()))
+        self.write_verdicts(*scenarios)
+        self.assertEqual(self.ship()["stage"], "ship")
+        self.assertEqual(
+            logs.count_events(self.repo, ITEM, "assure.rejected"), before)
+
+
+class TestGateBoundary(GateTest):
+    """AC18: the engine's attribution checks are exactly the seven named
+    ones, and none of them reads a free-text expected/actual string."""
+
+    def test_check_set_is_exactly_the_seven_named_checks(self):
+        self.assertEqual(
+            set(machine.ATTRIBUTION_CHECKS),
+            {"shape", "presence", "path-containment", "existence",
+             "non-emptiness", "sha-match", "owner-resolution"})
+
+    def test_no_attribution_check_reads_expected_or_actual(self):
+        source = inspect.getsource(machine._attribution_error)
+        for token in ('"expected"', "'expected'", '"actual"', "'actual'"):
+            self.assertNotIn(token, source, token)
+
+    def test_free_text_never_changes_the_gate_outcome(self):
+        self.enable()
+        self.make_item()
+        self.make_owner()
+        for expected, actual in (("card shows", "card missing"),
+                                 ("totally different", "also different"),
+                                 ("x", "y")):
+            self.write_verdicts(self.scenario(
+                expected=expected, actual=actual,
+                attribution="pre-existing", owner=OWNER, base=self.base()))
+            meta, body = items.load_item(self.repo, ITEM)
+            meta["stage"] = "assure"
+            items.save_item(self.repo, meta, body)
+            self.assertEqual(self.ship()["stage"], "ship")
+
+    def test_fabricated_base_evidence_is_the_named_residual(self):
+        # The accepted H4 hole, asserted so it is a decision and not a
+        # surprise: branch-run bytes copied under assurance/base/<sha>/
+        # satisfy every engine check.
+        self.enable()
+        self.make_item()
+        self.make_owner()
+        rel = f"assurance/base/{self.base_sha}/copied-from-branch.txt"
+        path = paths.item_dir(self.repo, ITEM) / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("branch walk\n", encoding="utf-8")
+        self.write_verdicts(self.scenario(
+            attribution="pre-existing", owner=OWNER,
+            base=self.base(evidence=[{"type": "transcript", "path": rel}])))
+        self.assertEqual(self.ship()["stage"], "ship")
 
 
 if __name__ == "__main__":
