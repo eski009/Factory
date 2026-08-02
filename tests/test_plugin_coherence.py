@@ -214,6 +214,32 @@ class TestPluginCoherence(unittest.TestCase):
         self.assertNotIn("run total", text)
         self.assertIn("no run-total line", text)
 
+    def test_assure_base_walk_contract_is_stated(self):
+        # AC11: the base walk's four load-bearing properties must be
+        # written down in the skill, not left to the orchestrator's memory.
+        text = read(ROOT / "skills/factory-assure/SKILL.md")
+        # (a) conditional fresh-round exemption
+        self.assertIn("assurance/base/<sha>/", text)
+        self.assertIn("conditional on `<sha>` still equalling the current "
+                      "merge base", text)
+        self.assertIn("deleted at the start of a fresh round", text)
+        # (b) the allowlist exclusion
+        self.assertIn("never the branch walk's verdicts, expectations, "
+                      "evidence, or any attribution", text)
+        # (c) journey-scoped, once per round, config-gated trigger
+        self.assertIn("exactly **one** base walk per assure round", text)
+        self.assertIn("journey-scoped", text)
+        self.assertIn("`assure_attribution: true`", text)
+        # (d) its own spend event
+        self.assertIn("factory-assure-base", text)
+        self.assertIn('"stage":"assure"', text)
+
+    def test_assure_skill_routes_non_blocking_fails_to_real_items(self):
+        text = read(ROOT / "skills/factory-assure/SKILL.md")
+        self.assertIn("factory file-base-defect", text)
+        self.assertIn("Factory never ignores a failure; it files it.", text)
+        self.assertIn("packets/reports", text)
+
 
 if __name__ == "__main__":
     unittest.main()

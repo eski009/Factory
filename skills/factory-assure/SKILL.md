@@ -9,7 +9,7 @@ Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.p
 
 - **Entry stage:** `assure` (the engine's gate already required `verify.green`).
 - **Artifacts produced:** `items/<id>/assurance/` — `run-manifest.json`, `expectations.md`, `verdicts.json`, evidence files (`screenshots/`, `console.ndjson`, `network.ndjson`, transcripts), `blockers.md` when blocked.
-- **Exit:** all scenarios pass → `factory log ITEM assure.passed`, then always write a confirmation packet `docs/factory/packets/<id>-assure.md` (journeys walked, per-scenario verdict summary, evidence links, draft-contract flags, unresolved judgement calls, the `## Polish` advisory section, and a recommended confirmation walkthrough). If `"assure"` is in the config `gates` list, the packet stays in `docs/factory/packets/` and `factory advance ITEM waiting-human --reason "assurance passed - awaiting human confirmation (factory confirm ITEM)"` — the item parks for `factory confirm`; otherwise move the packet to `docs/factory/packets/reports/<id>-assure.md` (the non-nagging home) and `factory advance ITEM ship`. Any objective fail → `factory log ITEM assure.rejected --data '{"round": <n>}'` + `factory advance ITEM implement` (the engine caps rework at 2, then blocked). Ambiguity or blocker → park: `factory advance ITEM waiting-human --reason "<what needs a human>"` + `factory packet ITEM` — never a silent pass, never a self-answered judgement call.
+- **Exit:** **no blocking verdicts** — all `pass`, or non-`pass` only where the scenario is `pre-existing` with validated base evidence and a filed open owner → `factory log ITEM assure.passed --data '{"non_blocking_fails": <n>}'`, then always write a confirmation packet `docs/factory/packets/<id>-assure.md` (journeys walked, per-scenario verdict summary, evidence links, draft-contract flags, unresolved judgement calls, the `## Polish` advisory section, and a recommended confirmation walkthrough). If `"assure"` is in the config `gates` list, the packet stays in `docs/factory/packets/` and `factory advance ITEM waiting-human --reason "assurance passed - awaiting human confirmation (factory confirm ITEM)"` — the item parks for `factory confirm`; otherwise, on an **all-pass** run move the packet to `docs/factory/packets/reports/<id>-assure.md` (the non-nagging home) and `factory advance ITEM ship`. A **mixed-verdict** run's packet **stays in top-level `docs/factory/packets/`** and never moves to `packets/reports/` — it carries known fails a human should see. Any `regression`, or any fail on a repo where attribution is off → `factory log ITEM assure.rejected --data '{"round": <n>}'` + `factory advance ITEM implement` (the engine caps rework at 2, then blocked). Ambiguity or blocker → park: `factory advance ITEM waiting-human --reason "<what needs a human>"` + `factory packet ITEM` — never a silent pass, never a self-answered judgement call.
 
 ## Entry check
 
@@ -40,7 +40,12 @@ Review asked "is the code sound"; verify asked "do the checks pass"; this stage 
 `run-manifest.json`, `expectations.md`, `verdicts.json`, `screenshots/`,
 `console.ndjson`, `network.ndjson`, `blockers.md` (keep `impact.json`; only
 the spec stage rewrites it) — so no stale evidence can satisfy this round's
-gate.
+gate. `assurance/base/<sha>/` is also kept, but
+**conditional on `<sha>` still equalling the current merge base**
+(`git merge-base <integration branch> factory/<id>`): a base directory
+whose sha no longer matches is deleted at the start of a fresh round,
+because without that condition the "keep" becomes the staleness hazard
+instead of a saving.
 
 Dispatch `agents/journey-reviewer.md` once per affected journey, sequentially, at the most-capable model tier (references/model-tiering.md) — and on a different model from the one that ran implement when the session supports model overrides. Compose each reviewer's prompt ONLY from this input allowlist:
 
@@ -57,12 +62,26 @@ For every node in scope it: (1) states what the customer currently knows, (2) pr
 
 **Surface drivers.** Browser-borne journeys require the **Browser drive** capability (capabilities skill; references/browser-drive.md — Playwright MCP, chrome-devtools MCP, or Claude-in-Chrome, matched behaviorally). Capability absent → the journey is a blocker → park; the parked packet names `factory waive ITEM --reason "..."` as the human's override. CLI/API journeys need no browser: the reviewer runs the real commands a customer or caller would run and captures typed transcript evidence instead of screenshots.
 
+## The base walk — attribution, when the repo opted in
+
+An item must not be gated on a defect it never caused. After the branch walk, if any journey has ≥1 `fail` **and** `factory doctor --json` reports `assure_attribution: true`, run exactly **one** base walk per assure round — journey-scoped, never per retry, never per scenario.
+
+- **Journey-scoped.** For each journey that had ≥1 fail, the same required scenarios are walked at the merge base. A per-scenario base replay is exactly the delta-scoping this stage forbids: a verdict is drawn across a journey's screens, not per screen. Honest cost is roughly one extra full assure walk per assure round that has any fail — **UNMEASURED**: no surface in the engine attributes tokens per stage, so no saving claimed for this mechanism is measured.
+- **Mechanics.** Check the merge base out into a Superpowers-managed worktree and launch the app there (execution discipline — worktrees, verification — comes from the companion plugin). The engine owns no worktree lifecycle.
+- **Blindness.** The base walk uses a fresh `agents/journey-reviewer.md` subagent under the same input allowlist as the branch walk, plus one explicit exclusion: **never the branch walk's verdicts, expectations, evidence, or any attribution**. Attribution is an orchestrator/engine reconciliation performed *after* both walks, and is never an input to either.
+- **Reconciliation.** For each branch `fail`: the base walk also fails that scenario ⇒ `pre-existing`; the base walk passes it ⇒ `regression`; the base walk returns `ambiguity`, `blocker`, or did not cover it ⇒ `regression` (fail closed).
+- **Evidence layout.** Base evidence goes under `items/<id>/assurance/base/<merge_base-sha>/` (evidence files plus the base walk's own `verdicts.json`), and `run-manifest.json` records the resolved integration branch and the merge-base sha.
+- **Re-routing.** Before writing `verdicts.json`, every `pre-existing` fail is filed: `factory file-base-defect ITEM --journey J-NNN --scenario <sid> --fingerprint <hex> --title "..." --expected "..." --actual "..."`, where `<hex>` is the lowercase sha256 of `"<journey id>\n<scenario id>\n<normalised failing expectation text>"`. The verb is idempotent — it prints the owning item's id whether it created one or deduped to an existing open one. Write that id into the scenario's `owner`. **Factory never ignores a failure; it files it.**
+- **Spend.** The base walk logs its own spend event: `factory log ITEM spend --data '{"provenance":"measured","stage":"assure","source":"factory-assure-base","dispatches":<n>,"tokens":{"total":<n>}}'`, or `"provenance":"proxy"` with no `tokens` key when the harness reports none.
+
+The engine validates shape, presence, path-containment, existence, non-emptiness, sha-match and owner-resolution — never the truth of a walk. It re-computes the merge base at ship, so base evidence recorded against a merge base that has since moved is refused as stale.
+
 ## Orchestrator composes the gate artifacts
 
 The reviewer returns a structured report and writes ONLY evidence files under `items/<id>/assurance/`. This session (the orchestrator) then writes:
 
 - `run-manifest.json` — what was launched and driven, per journey (commands, urls, fixture state, reviewer model).
-- `verdicts.json` — per journey, per scenario: verdict, expected, actual, typed evidence refs (`screenshot | dom | console | network | transcript`, paths relative to the item dir). Shape: `schemas/assurance-verdicts.schema.json`; every declared journey and every impact.json scenario must be covered — the ship gate refuses gaps, missing evidence files, and any non-pass verdict.
+- `verdicts.json` — per journey, per scenario: verdict, expected, actual, typed evidence refs (`screenshot | dom | console | network | transcript`, paths relative to the item dir). Shape: `schemas/assurance-verdicts.schema.json`; every declared journey and every impact.json scenario must be covered — the ship gate refuses gaps and missing evidence files, and refuses any non-pass verdict that is not a validated `pre-existing` (attribution, sha-matched `base` evidence under `assurance/base/<sha>/`, and an `owner` naming an open item).
 - On an all-pass verdict, `docs/factory/packets/<id>-assure.md` — the confirmation packet from the Contract Exit (journeys walked, per-scenario verdict summary, evidence links, draft-contract flags, unresolved judgement calls, the `## Polish` advisory section, and a recommended confirmation walkthrough), always produced, never skipped.
 
 The packet always carries a `## Polish` section: every advisory the
