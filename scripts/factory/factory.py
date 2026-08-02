@@ -102,6 +102,20 @@ def cmd_status(args):
 
 
 def cmd_cost(args):
+    # Neither given, or both given, is the same refusal: an aggregate view
+    # and an item view answer different questions and never merge.
+    if bool(args.all) == bool(args.item):
+        print("give an item id or --all", file=sys.stderr)
+        return 2
+    if args.all:
+        if not _require_factory_repo(args.repo):
+            return 2
+        summary = cost.summarize_all(args.repo)
+        if args.json:
+            print(json.dumps(summary, indent=2, sort_keys=True))
+        else:
+            print(cost.render_all_text(summary))
+        return 0
     try:
         summary = cost.summarize(args.repo, args.item)
     except items.ItemError as exc:
@@ -423,7 +437,9 @@ def main(argv=None):
     p.set_defaults(func=cmd_status)
 
     p = sub.add_parser("cost", help="per-item spend summary, provenance-tagged")
-    p.add_argument("item")
+    p.add_argument("item", nargs="?")
+    p.add_argument("--all", action="store_true",
+                   help="aggregate mode: every item, no cross-item totals")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_cost)
 

@@ -194,6 +194,48 @@ class CliTest(unittest.TestCase):
         self.assertIsNone(summary["measured"])
         self.assertEqual(summary["window"]["end"], "2026-07-03T12:00:00Z")
 
+    def test_cost_all_renders_three_permitted_things_plus_unmeasured(self):
+        self.run_cli("init")
+        self.run_cli("add", "Thing")
+        self.run_cli("add", "Other")
+        code, out, _ = self.run_cli("cost", "--all")
+        self.assertEqual(code, 0)
+        self.assertIn("[proxy] 0001-thing: advances ", out)
+        self.assertIn("[proxy] 0002-other: advances ", out)
+        self.assertIn("[coverage] spend events present for 0 of 2 items;", out)
+        self.assertIn("[unmeasured] UNMEASURED: orchestrator main-loop "
+                      "tokens; per-tier medians", out)
+
+    def test_cost_all_json_returns_exactly_items_and_coverage(self):
+        self.run_cli("init")
+        self.run_cli("add", "Thing")
+        code, out, _ = self.run_cli("cost", "--all", "--json")
+        self.assertEqual(code, 0)
+        payload = json.loads(out)
+        self.assertEqual(set(payload), {"items", "coverage"})
+        self.assertEqual(len(payload["items"]), 1)
+
+    def test_cost_with_neither_item_nor_all_is_refused(self):
+        self.run_cli("init")
+        code, _out, err = self.run_cli("cost")
+        self.assertEqual(code, 2)
+        self.assertIn("give an item id or --all", err)
+
+    def test_cost_with_both_item_and_all_is_refused(self):
+        self.run_cli("init")
+        self.run_cli("add", "Thing")
+        code, _out, err = self.run_cli("cost", "0001-thing", "--all")
+        self.assertEqual(code, 2)
+        self.assertIn("give an item id or --all", err)
+
+    def test_cost_single_item_path_unchanged(self):
+        self.run_cli("init")
+        self.run_cli("add", "Thing")
+        code, out, _ = self.run_cli("cost", "0001-thing")
+        self.assertEqual(code, 0)
+        self.assertIn("item: 0001-thing", out)
+        self.assertNotIn("[coverage]", out)
+
     def test_status_json_rows_carry_spend_without_stages(self):
         self.run_cli("init")
         self.run_cli("add", "Thing")
