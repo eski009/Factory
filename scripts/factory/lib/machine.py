@@ -159,6 +159,108 @@ def _merge_base(repo, branch, item_id):
     return out if out and _SHA_RE.match(out) else None
 
 
+# Item 0013 §1/§5: the complete, exhaustive list of what the engine checks
+# about an attribution. It never checks the TRUTH of a walk - it reads no
+# `expected` or `actual` free-text string anywhere in the ladder below.
+ATTRIBUTION_CHECKS = ("shape", "presence", "path-containment", "existence",
+                      "non-emptiness", "sha-match", "owner-resolution")
+
+_OWNER_RE = re.compile(r"^[0-9]{4}-[a-z0-9-]+$")
+
+
+def _path_escape_error(rel):
+    """Relative, no '..' - the same containment rule the branch evidence
+    already uses (machine.py:134-144). Returns a message suffix or None."""
+    parts = PurePosixPath(rel).parts
+    if not rel or PurePosixPath(rel).is_absolute() or ".." in parts:
+        return f"evidence path escapes the item dir: {rel}"
+    return None
+
+
+def _attribution_error(repo, meta, item_dir, journey_id, s, attr_on):
+    """The ordered attribution rules of item 0013 §5. Returns a message
+    suffix when the scenario BLOCKS the advance to ship, or None when it
+    does not block - a pass, or a validated non-blocking pre-existing fail.
+
+    Every inability to classify falls through to a block; there is no path
+    from 'unclassifiable' to 'ships', and none to a park."""
+    verdict = s.get("verdict")
+    attribution = s.get("attribution")
+    base = s.get("base")
+    tagged = "attribution" in s or "base" in s
+
+    # 1. attribution recorded on a passing scenario
+    if verdict == "pass":
+        if tagged:
+            return ("attribution recorded on a passing scenario "
+                    "(attribution classifies fails only)")
+        return None
+    # 2. attribution fields present while the config key is off - rejected,
+    #    never ignored: a skill cannot emit pre-existing where no base walk
+    #    was authorised.
+    if not attr_on and tagged:
+        return ("unsolicited attribution: `assure.attribution` is not "
+                "enabled for this repo (remove the attribution/base fields "
+                "or enable the config key)")
+    # 3. attribution off: today's refusal, today's wording, byte for byte
+    if not attr_on:
+        return f"verdict {verdict!r} is not pass"
+    # 4. absent attribution is never a pass
+    if attribution is None:
+        return (f"verdict {verdict!r} is not pass and carries no "
+                "attribution (an unclassified fail always blocks)")
+    # 5. the one class this item exists to block
+    if attribution == "regression":
+        return (f"verdict {verdict!r} is attributed 'regression' - a defect "
+                "this change caused blocks ship")
+    # 6. attribution classifies objective fails only; ambiguity and blocker
+    #    keep today's park-or-block semantics untouched
+    if verdict != "fail":
+        return (f"attribution 'pre-existing' on verdict {verdict!r}: only "
+                "an objective 'fail' can be attributed")
+    # 7. presence and non-emptiness of base evidence
+    if not isinstance(base, dict) or not base.get("evidence"):
+        return "pre-existing without base evidence is an ordinary non-pass"
+    # 8. sha-match, recomputed here at ship - never trusted from write time
+    branch = _default_branch(repo)
+    sha = _merge_base(repo, branch, meta["id"])
+    recorded = base.get("merge_base")
+    if branch is None or sha is None:
+        return (f"base evidence is stale: recorded {recorded}, merge base "
+                "is now unresolvable (no integration branch, or no merge "
+                f"base for factory/{meta['id']})")
+    if recorded != sha or base.get("branch") != branch:
+        return (f"base evidence is stale: recorded {recorded} on branch "
+                f"{base.get('branch')!r}, merge base is now {sha} on branch "
+                f"{branch!r}")
+    # 9. base evidence is keyed by the sha structurally
+    prefix = f"assurance/base/{sha}/"
+    for ev in base.get("evidence", []):
+        rel = ev.get("path", "")
+        escape = _path_escape_error(rel)
+        if escape:
+            return "base " + escape
+        if not rel.startswith(prefix):
+            return f"base evidence path is not under {prefix}: {rel}"
+        if not (item_dir / rel).exists():
+            return f"base evidence missing on disk: {rel}"
+    # 10. an unvalidated free-text id is a waiver wearing a filing's clothes
+    owner = s.get("owner") or ""
+    if not _OWNER_RE.match(owner):
+        return ("a pre-existing fail must name an open owning item "
+                f"(owner {owner!r} is absent or malformed)")
+    try:
+        owner_meta, _body = items.load_item(repo, owner)
+    except items.ItemError:
+        return ("a pre-existing fail must name an open owning item "
+                f"(no such item: {owner})")
+    if owner_meta.get("stage") == "done":
+        return ("a pre-existing fail must name an open owning item "
+                f"({owner} is at stage done)")
+    # 11. non-blocking: recorded, counted, surfaced - and it ships
+    return None
+
+
 def _validate_assurance_artifacts(repo, meta):
     from .initrepo import load_schema
     from .validate import validate as validate_schema
@@ -182,16 +284,18 @@ def _validate_assurance_artifacts(repo, meta):
     if missing:
         raise GateError("assurance verdicts missing journeys: " + ", ".join(missing))
     item_dir = paths.item_dir(repo, meta["id"])
+    attr_on = assure_attribution_enabled(repo)
     for j in verdicts.get("journeys", []):
         if not j.get("scenarios"):
             raise GateError(
                 f"journey {j.get('id')}: verdicts contain no scenarios — "
                 "nothing was exercised")
         for s in j.get("scenarios", []):
-            if s.get("verdict") != "pass":
+            problem = _attribution_error(
+                repo, meta, item_dir, j.get("id"), s, attr_on)
+            if problem:
                 raise GateError(
-                    f"journey {j.get('id')} scenario {s.get('id')}: "
-                    f"verdict {s.get('verdict')!r} is not pass")
+                    f"journey {j.get('id')} scenario {s.get('id')}: {problem}")
             for ev in s.get("evidence", []):
                 rel = ev.get("path", "")
                 parts = PurePosixPath(rel).parts
