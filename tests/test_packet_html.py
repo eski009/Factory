@@ -1,4 +1,5 @@
 import os
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -118,6 +119,28 @@ class TestCostDecisionHtml(unittest.TestCase):
         return page.split('<section id="cost-decision">', 1)[1].split(
             "</section>", 1)[0]
 
+    def unpriced(self, *item_ids):
+        """Actionable siblings with no numeric priority — the F6
+        population, arranged against the HTML render."""
+        for item_id in item_ids:
+            items.save_item(self.repo, {
+                "id": item_id, "title": item_id, "stage": "plan",
+                "kind": "backend", "created": "2026-08-02T00:00:00Z",
+                "updated": "2026-08-02T00:00:00Z"}, "")
+
+    def priced(self, item_id, priority):
+        items.save_item(self.repo, {
+            "id": item_id, "title": item_id, "stage": "plan",
+            "kind": "backend", "priority": priority,
+            "created": "2026-08-02T00:00:00Z",
+            "updated": "2026-08-02T00:00:00Z"}, "")
+
+    def corrupt(self, *item_ids):
+        for item_id in item_ids:
+            bad = paths.items_dir(self.repo) / item_id
+            bad.mkdir(parents=True, exist_ok=True)
+            (bad / "item.md").write_bytes(b"\xff\xfe not utf-8")
+
     def unprioritise(self):
         """B1 against the HTML render: packet.py renders its own section,
         so the markdown-only guards leave this path unchecked."""
@@ -198,6 +221,63 @@ class TestCostDecisionHtml(unittest.TestCase):
         self.assertNotIn("0 actionable items", section)
         self.assertNotIn("nothing else is waiting at this priority", section)
         self.assertIn("factory priority", section)
+
+    def test_html_renders_the_placeholder_commands_as_code(self):
+        """F8 on the HTML render: the decision section escaped its lines
+        wholesale, so a backticked command arrived as literal backticks
+        around an escaped `&lt;n&gt;`. `respond_action_lines`' renderer
+        already had the split; the two disagreeing on a command string is
+        the class of bug this item exists to stop."""
+        self.unprioritise()
+        section = self.section()
+        self.assertIn("<code>factory priority 0001-runaway &lt;n&gt;</code>",
+                      section)
+        self.assertIn("<code>factory packet 0001-runaway</code>", section)
+        self.assertNotIn("`", section)
+        # Every `&lt;n&gt;` on the page is inside a code span: splitting
+        # on the tags, the text between them is what a reader sees adrift
+        # in a paragraph.
+        outside = re.sub(r"<code>.*?</code>", "", section)
+        self.assertNotIn("&lt;n&gt;", outside)
+
+    def test_html_defer_consequence_renders_its_command_as_code(self):
+        section = self.section()
+        self.assertIn("<code>factory priority 0001-runaway &lt;n&gt;</code>",
+                      section)
+        self.assertNotIn("`", section)
+
+    def test_html_recommendation_does_not_claim_an_empty_backlog(self):
+        """F5/F6 against the HTML render. The sentence comes from the
+        shared `cost_decision_lines`, but `_inline_code` now post-processes
+        every decision line on this side (`packet.py:333`, `:340`), so the
+        two renders are no longer string-identical and the markdown guard
+        no longer covers this path."""
+        self.unpriced("0002-none", "0003-none")
+        self.corrupt("0009-corrupt")
+        section = self.section()
+        self.assertNotIn("nothing else is waiting at this priority", section)
+        self.assertIn(
+            "Recommended: narrow — nothing comparable is waiting at this "
+            "priority; 2 actionable items with no priority and 1 unreadable "
+            "item cannot be compared either way, so the backlog is not "
+            "established as empty; a smaller next round costs less than "
+            "another full one.", section)
+
+    def test_html_continue_consequence_names_what_it_cannot_compare(self):
+        self.unpriced("0002-none", "0003-none", "0004-none")
+        self.assertIn("the 0 items at priority ≤ 2 keep waiting, alongside "
+                      "3 actionable items with no priority that cannot be "
+                      "compared;", self.section())
+
+    def test_html_backlog_and_continue_lines_agree_in_number(self):
+        """F7 against the HTML render."""
+        self.priced("0002-p1", 1)
+        section = self.section()
+        self.assertIn("backlog: 1 actionable item at priority ≤ 2, "
+                      "1 actionable in total", section)
+        self.assertNotIn("1 actionable items", section)
+        self.assertIn("the 1 item at priority ≤ 2 keeps waiting", section)
+        self.assertNotIn("1 items at priority", section)
 
     def test_html_exactly_one_rework_figure_in_the_cost_decision_section(self):
         """B2 against the HTML render: packet.py builds its own section,

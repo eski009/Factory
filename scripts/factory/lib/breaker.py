@@ -62,7 +62,12 @@ def backlog_counts(repo, meta):
     priority: the comparison is not empty, it is impossible, and
     brain/constraints.md forbids rendering an incomparable population as
     a number. `unreadable` carries list_items_safe's dropped items so no
-    caller can present the survivors as an unqualified denominator."""
+    caller can present the survivors as an unqualified denominator.
+    `unpriced` carries the actionable siblings with no numeric priority,
+    for the same reason on the other side of the comparison (F6): they
+    fall out of `at_or_above` because they cannot be compared, not
+    because they are not waiting, so a caller that reports `at_or_above`
+    without them would state an emptiness it has not established."""
     metas, errors = items.list_items_safe(repo)
     actionable = [m for m in metas
                   if m["stage"] not in dispatch.NOT_ACTIONABLE
@@ -75,7 +80,9 @@ def backlog_counts(repo, meta):
                           and m["priority"] <= mine)
     return {"at_or_above": at_or_above,
             "actionable_total": len(actionable),
-            "unreadable": len(errors)}
+            "unreadable": len(errors),
+            "unpriced": sum(1 for m in actionable
+                            if not isinstance(m.get("priority"), int))}
 
 
 def verdict(repo, item_id, meta, to, summary=None):

@@ -22,10 +22,13 @@
      measuring instrument for 0013's business case, so it moves ahead of the
      approach-gate pair. 0016's own triage council (6/6) then took it to p1 and
      0013 to p2, matching the human's 2026-08-02 sequencing; 0013 unparks at
-     0016's per-stage-attribution merge, not at 0016 reaching done. -->
+     0016's `ship`, through the ordinary gates (amended 2026-08-02 — the
+     mid-item merge at Task 5 that this used to name was removed as a gate
+     bypass; see 0016's plan.md Task 5). -->
 
-- [1] 0016-cost-circuit-breaker-on-engine-authorita Cost circuit breaker on engine-authoritative rework counts (triage — build, rescoped)
+- [1] 0016-cost-circuit-breaker-on-engine-authorita Cost circuit breaker on engine-authoritative rework counts (implement — rework round 2, back from review)
 - [2] 0013-assure-attribution-gate-only-on-regressi Assure attribution: gate only on regressions this item caused (waiting-human — parked from implement, Task 9 struck)
 - [3] 0015-approach-rejected-a-redesign-loop-back-t approach.rejected: a redesign loop back to spec with forbidden approaches recorded (idea)
 - [4] 0014-approach-gate-at-plan-judge-convergence- Approach gate at plan: judge convergence before implementation spend (idea)
+- [5] 0018-wall-clock-trigger-arm-catch-the-spend-r Wall-clock trigger arm: catch the spend runaways the churn breaker misses (idea — measured on 0016's own run; sequence after 0016 ships)
 - [-] 0017-factory-scope-engine-validated-scope-nar factory scope: engine-validated scope narrowing as a first-class artifact (idea — split out of 0013; sequence after it ships)

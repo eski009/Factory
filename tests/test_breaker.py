@@ -100,6 +100,12 @@ class VerdictTest(BreakerTestCase):
             set(v),
             {"over_threshold", "fired", "reason", "rework_edges", "threshold",
              "gate", "answered_at", "priority", "backlog", "stage"})
+        # N2: the sub-dict is contract too. Pinned the same way
+        # `test_cost.py`'s `coverage` key set is, so a fourth key cannot
+        # be dropped or renamed without this test saying so.
+        self.assertEqual(
+            set(v["backlog"]),
+            {"at_or_above", "actionable_total", "unreadable", "unpriced"})
         self.assertEqual(v["reason"], "rework-threshold")
         self.assertEqual(v["threshold"], 2)
         self.assertEqual(v["stage"], "implement")
@@ -179,6 +185,9 @@ class VerdictTest(BreakerTestCase):
         v = breaker.verdict(self.repo, ITEM, meta, "implement")
         self.assertIsNone(v["backlog"]["at_or_above"])
         self.assertEqual(v["backlog"]["actionable_total"], 2)
+        # The subject is itself unpriced here, and `unpriced` counts what
+        # this item is blocking — never the item doing the blocking.
+        self.assertEqual(v["backlog"]["unpriced"], 0)
 
     def test_backlog_counts_reports_unreadable_items_it_dropped(self):
         # N4: list_items_safe's error list is no longer discarded.
@@ -190,6 +199,36 @@ class VerdictTest(BreakerTestCase):
         (bad / "item.md").write_bytes(b"\xff\xfe not utf-8")
         v = breaker.verdict(self.repo, ITEM, meta, "implement")
         self.assertEqual(v["backlog"]["unreadable"], 1)
+
+    def test_backlog_counts_reports_unpriced_actionable_siblings(self):
+        """F6: an actionable sibling carrying no numeric priority is not
+        'not waiting' — it is incomparable, the same population B1 forbids
+        rendering as a `0`. `at_or_above` cannot carry it, so the count
+        gets its own key rather than being silently dropped."""
+        meta = self.put(priority=2)
+        self.install_fixture()
+        self.put("0002-p1", stage="plan", priority=1)
+        for item_id in ("0003-none", "0004-none", "0005-none"):
+            items.save_item(self.repo, {
+                "id": item_id, "title": item_id, "stage": "plan",
+                "kind": "backend", "created": "2026-08-02T00:00:00Z",
+                "updated": "2026-08-02T00:00:00Z"}, "")
+        # Not actionable, and unpriced: it must not be counted either.
+        items.save_item(self.repo, {
+            "id": "0006-done", "title": "0006-done", "stage": "done",
+            "kind": "backend", "created": "2026-08-02T00:00:00Z",
+            "updated": "2026-08-02T00:00:00Z"}, "")
+        v = breaker.verdict(self.repo, ITEM, meta, "implement")
+        self.assertEqual(v["backlog"]["unpriced"], 3)
+        self.assertEqual(v["backlog"]["at_or_above"], 1)
+        self.assertEqual(v["backlog"]["actionable_total"], 4)
+
+    def test_backlog_counts_unpriced_is_zero_when_every_sibling_is_priced(self):
+        meta = self.put(priority=2)
+        self.install_fixture()
+        self.put("0002-p1", stage="plan", priority=1)
+        v = breaker.verdict(self.repo, ITEM, meta, "implement")
+        self.assertEqual(v["backlog"]["unpriced"], 0)
 
 
 class InvarianceTest(BreakerTestCase):

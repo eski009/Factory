@@ -78,6 +78,7 @@ def cost_decision_lines(repo, item_id, meta, summary=None):
     at_or_above = v["backlog"]["at_or_above"]
     total = v["backlog"]["actionable_total"]
     unreadable = v["backlog"]["unreadable"]
+    unpriced = v["backlog"]["unpriced"]
     # B1: `at_or_above is None` means the comparison is impossible, not
     # empty. brain/constraints.md forbids rendering an incomparable
     # population as a number, so all three surfaces that read it — the
@@ -89,31 +90,64 @@ def cost_decision_lines(repo, item_id, meta, summary=None):
     # dropped, so `total` is never an unqualified denominator.
     dropped = (f"; {unreadable} item{'' if unreadable == 1 else 's'} "
                "unreadable and excluded" if unreadable else "")
+    # F5 + F6: the two populations `at_or_above` cannot speak for. An
+    # unpriced sibling and an unreadable one are both incomparable, not
+    # absent, so any sentence that concludes "nothing is waiting" from a
+    # zero must name them — the backlog line already did, while the
+    # recommendation and the continue consequence did not.
+    unknown_bits = []
+    if unpriced:
+        unknown_bits.append(
+            f"{unpriced} actionable item{'' if unpriced == 1 else 's'} with "
+            "no priority")
+    if unreadable:
+        unknown_bits.append(
+            f"{unreadable} unreadable item{'' if unreadable == 1 else 's'}")
+    unknown = " and ".join(unknown_bits)
     if comparable:
-        backlog_line = (f"- backlog: {at_or_above} actionable items at "
+        at_s = "" if at_or_above == 1 else "s"
+        backlog_line = (f"- backlog: {at_or_above} actionable item{at_s} at "
                         f"priority ≤ {priority}, {total} actionable in "
                         f"total{dropped}")
         recommended = "defer" if at_or_above >= 1 else "narrow"
+        # AC11: the Recommended line is exactly one sentence, so every
+        # qualifier joins with a semicolon or an em dash — never a second
+        # full stop (`test_recommendation_is_defer_when_backlog_at_or_above`
+        # asserts `count(".") == 1`). `defer` needs none of this: it is
+        # reached only when at_or_above >= 1, so it asserts presence, not
+        # the emptiness an unknown population could falsify.
+        narrow_why = ("nothing else is waiting at this priority, so a smaller "
+                      "next round costs less than another full one.")
+        if unknown:
+            narrow_why = (f"nothing comparable is waiting at this priority; "
+                          f"{unknown} cannot be compared either way, so the "
+                          "backlog is not established as empty; a smaller "
+                          "next round costs less than another full one.")
         why = {
             "defer": ("work at this priority or higher is waiting behind an "
                       "item already reworked past the threshold."),
-            "narrow": ("nothing else is waiting at this priority, so a "
-                       "smaller next round costs less than another full "
-                       "one."),
+            "narrow": narrow_why,
         }[recommended]
         recommendation = f"Recommended: {recommended} — {why}"
-        waiting = (f"the {at_or_above} items at priority ≤ {priority} keep "
-                   "waiting; ")
+        waiting = (f"the {at_or_above} item{at_s} at priority ≤ {priority} "
+                   f"keep{'s' if at_or_above == 1 else ''} waiting"
+                   + (f", alongside {unknown} that cannot be compared"
+                      if unknown else "") + "; ")
     else:
         backlog_line = ("- backlog: comparison unavailable — this item has "
                         f"no priority; {total} actionable in total{dropped}")
         # The packet is a static file (`write_packet`), so setting a
         # priority does not rewrite it: the second verb must be the
-        # re-render, never "re-read this packet".
+        # re-render, never "re-read this packet". F8: both verbs are
+        # code-spanned — `<n>` matches CommonMark's inline raw-HTML
+        # open-tag production and is swallowed by markdown renderers,
+        # and for a no-priority item these commands are the operator's
+        # only route to a decision.
         recommendation = ("Recommended: set a priority first — what this item "
                           "is blocking cannot be compared until it has one; "
-                          f"run factory priority {item_id} <n>, then factory "
-                          f"packet {item_id} to re-render this decision.")
+                          f"run `factory priority {item_id} <n>`, then "
+                          f"`factory packet {item_id}` to re-render this "
+                          "decision.")
         waiting = ""
     return [
         f"- [proxy] rework edges: {edges} (backward stage.advance edges into "
@@ -135,7 +169,7 @@ def cost_decision_lines(repo, item_id, meta, summary=None):
         f"- narrow — records the decision; edit plan.md, then factory advance "
         f"{item_id} implement. v1 does not narrow scope for you.",
         f"- defer — records the decision and leaves the item parked; drop its "
-        f"priority with factory priority {item_id} <n>. v1 does not "
+        f"priority with `factory priority {item_id} <n>`. v1 does not "
         "re-prioritise for you.",
     ]
 
@@ -205,6 +239,25 @@ def _e(value):
 
 def _link(label, url):
     return f'<a href="{_e(url)}">{_e(label)}</a>'
+
+
+def _inline_code(text):
+    """Escape a markdown line for HTML, rendering its backtick code
+    spans as `<code>`. One definition, both renderers: the decision
+    block used to escape its lines wholesale while `## Respond` did the
+    split, and two renderers disagreeing on a command string is the
+    class of bug this item exists to stop (F8).
+
+    Assumes an even backtick count, and may: every caller passes a line
+    built by `cost_decision_lines` or `respond_action_lines`, whose only
+    interpolations are `item_id` (validated by `items`) and integers. No
+    operator-authored text — the `paused-reason` free text in particular
+    — reaches this function; `waiting_line`'s output is escaped with
+    `_e()` directly. Route operator text through here and an odd
+    backtick would wrap the tail of the line in `<code>`, so keep that
+    invariant if a caller is ever added."""
+    return "".join(f"<code>{_e(part)}</code>" if i % 2 else _e(part)
+                   for i, part in enumerate(text.split("`")))
 
 
 def render_packet_html(repo, item_id, summary=None):
@@ -285,13 +338,15 @@ def render_packet_html(repo, item_id, summary=None):
                 if not in_list:
                     out.append("    <ul>")
                     in_list = True
-                out.append(f"      <li>{_e(line.removeprefix('- '))}</li>")
+                out.append(
+                    f"      <li>{_inline_code(line.removeprefix('- '))}</li>")
                 continue
             if in_list:
                 out.append("    </ul>")
                 in_list = False
             if line.strip():
-                out.append(f"    <p><strong>{_e(line)}</strong></p>")
+                out.append(
+                    f"    <p><strong>{_inline_code(line)}</strong></p>")
         if in_list:
             out.append("    </ul>")
         out.append("  </section>")
@@ -330,12 +385,7 @@ def render_packet_html(repo, item_id, summary=None):
             "    <p>Reply in session, or use the factory CLI.</p>",
             "    <ul>"]
     for line in respond_action_lines(repo, item_id, meta):
-        body = line.removeprefix("- ")
-        parts = body.split("`")
-        rendered = "".join(
-            f"<code>{_e(part)}</code>" if i % 2 else _e(part)
-            for i, part in enumerate(parts))
-        out.append(f"      <li>{rendered}</li>")
+        out.append(f"      <li>{_inline_code(line.removeprefix('- '))}</li>")
     out.append("    </ul>")
     out += ["  </section>", "</main>", "</body>", "</html>", ""]
     return "\n".join(out)

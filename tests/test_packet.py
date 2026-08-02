@@ -160,6 +160,16 @@ class TestCostDecisionPacket(unittest.TestCase):
         self.other("0002-p1", priority=1)
         self.other("0003-p9", priority=9)
 
+    def unpriced(self, *item_ids):
+        """Actionable siblings carrying no numeric priority — the
+        population that falls out of `at_or_above` because it cannot be
+        compared, not because it is not waiting (F6)."""
+        for item_id in item_ids:
+            items.save_item(self.repo, {
+                "id": item_id, "title": item_id, "stage": "plan",
+                "kind": "backend", "created": "2026-08-02T00:00:00Z",
+                "updated": "2026-08-02T00:00:00Z"}, "")
+
     def corrupt(self, *item_ids):
         """Sibling item.md files list_items_safe cannot decode. The
         backlog line must name what it dropped rather than passing the
@@ -178,7 +188,7 @@ class TestCostDecisionPacket(unittest.TestCase):
         self.assertEqual(len(backlog), 1, backlog)
         self.assertEqual(
             backlog[0],
-            "- backlog: 1 actionable items at priority ≤ 2, 1 actionable in "
+            "- backlog: 1 actionable item at priority ≤ 2, 1 actionable in "
             "total; 1 item unreadable and excluded")
 
     def test_backlog_line_pluralises_the_items_it_could_not_read(self):
@@ -200,6 +210,126 @@ class TestCostDecisionPacket(unittest.TestCase):
         self.other("0002-p1", priority=1)
         section = self.section(packet.render_packet(self.repo, "0001-runaway"))
         self.assertNotIn("unreadable and excluded", section)
+
+    def recommended(self):
+        section = self.section(packet.render_packet(self.repo, "0001-runaway"))
+        lines = [l for l in section.splitlines()
+                 if l.startswith("Recommended:")]
+        self.assertEqual(len(lines), 1, lines)
+        return lines[0]
+
+    def continue_line(self):
+        section = self.section(packet.render_packet(self.repo, "0001-runaway"))
+        lines = [l for l in section.splitlines()
+                 if l.startswith("- continue — ")]
+        self.assertEqual(len(lines), 1, lines)
+        return lines[0]
+
+    def test_recommendation_does_not_claim_an_empty_backlog_when_siblings_are_unpriced(self):
+        """F6: three unprioritised actionable siblings render
+        `0 actionable items at priority ≤ 2` — correctly, they cannot be
+        compared — and the recommendation used to turn that `0` into
+        "nothing else is waiting at this priority". Same brain rule as
+        B1 (`constraints.md:110-118`): incomparable is not zero."""
+        self.unpriced("0002-none", "0003-none", "0004-none")
+        line = self.recommended()
+        self.assertNotIn("nothing else is waiting at this priority", line)
+        self.assertEqual(
+            line,
+            "Recommended: narrow — nothing comparable is waiting at this "
+            "priority; 3 actionable items with no priority cannot be compared "
+            "either way, so the backlog is not established as empty; a "
+            "smaller next round costs less than another full one.")
+        # AC11: the Recommended line is exactly one sentence.
+        self.assertEqual(line.count("."), 1, line)
+
+    def test_recommendation_does_not_claim_an_empty_backlog_when_items_are_unreadable(self):
+        """F5, verbatim from the orchestrator's fact-check: the backlog
+        line already said `2 items unreadable and excluded` while the
+        very next line said "nothing else is waiting at this priority"."""
+        self.corrupt("0008-corrupt", "0009-corrupt")
+        line = self.recommended()
+        self.assertNotIn("nothing else is waiting at this priority", line)
+        self.assertEqual(
+            line,
+            "Recommended: narrow — nothing comparable is waiting at this "
+            "priority; 2 unreadable items cannot be compared either way, so "
+            "the backlog is not established as empty; a smaller next round "
+            "costs less than another full one.")
+        self.assertEqual(line.count("."), 1, line)
+
+    def test_recommendation_names_both_unknown_populations_at_once(self):
+        self.unpriced("0002-none")
+        self.corrupt("0009-corrupt")
+        line = self.recommended()
+        self.assertIn("1 actionable item with no priority and 1 unreadable "
+                      "item cannot be compared either way", line)
+        self.assertEqual(line.count("."), 1, line)
+
+    def test_recommendation_is_unqualified_only_when_nothing_is_unknown(self):
+        """The qualifier is not unconditional: with every sibling priced
+        and readable the backlog really is established empty, and the
+        sentence says so."""
+        self.other("0002-p9", priority=9)
+        self.assertEqual(
+            self.recommended(),
+            "Recommended: narrow — nothing else is waiting at this priority, "
+            "so a smaller next round costs less than another full one.")
+
+    def test_recommendation_is_one_sentence_on_every_branch(self):
+        """AC11, swept rather than sampled: the qualifiers F5/F6 add and
+        the code spans F8 adds all land on this line, and a single stray
+        full stop in any one branch breaks the contract. The pre-existing
+        `count(".") == 1` guard only ever ran the `defer` branch."""
+        branches = {
+            "clean narrow": lambda: None,
+            "defer": lambda: self.other("0002-p1", priority=1),
+            "unpriced": lambda: self.unpriced("0002-none", "0003-none"),
+            "unreadable": lambda: self.corrupt("0009-corrupt"),
+            "both": lambda: (self.unpriced("0002-none"),
+                             self.corrupt("0009-corrupt")),
+            "no priority": self.unprioritise,
+            "defer with unknowns": lambda: (self.other("0002-p1", priority=1),
+                                            self.corrupt("0009-corrupt")),
+        }
+        for name, arrange in branches.items():
+            with self.subTest(branch=name):
+                # Each branch needs its own repo. Tearing down first and
+                # setting up second keeps the pairing balanced: the outer
+                # setUp owns the fixture the first iteration discards, and
+                # the outer tearDown owns the one the last leaves behind.
+                self.tearDown()
+                self.setUp()
+                arrange()
+                line = self.recommended()
+                self.assertEqual(line.count("."), 1, (name, line))
+
+    def test_continue_consequence_names_what_it_cannot_compare(self):
+        """F6 on the third surface: `waiting` asserted the same
+        unqualified conclusion the recommendation did."""
+        self.unpriced("0002-none", "0003-none", "0004-none")
+        self.assertIn("the 0 items at priority ≤ 2 keep waiting, alongside "
+                      "3 actionable items with no priority that cannot be "
+                      "compared;", self.continue_line())
+
+    def test_backlog_and_continue_lines_agree_in_number_at_one(self):
+        """F7: both sentences read `1 items` today while `dropped` in the
+        same function pluralises correctly."""
+        self.other("0002-p1", priority=1)
+        section = self.section(packet.render_packet(self.repo, "0001-runaway"))
+        self.assertIn("- backlog: 1 actionable item at priority ≤ 2, "
+                      "1 actionable in total", section)
+        self.assertNotIn("1 actionable items", section)
+        self.assertIn("the 1 item at priority ≤ 2 keeps waiting", section)
+        self.assertNotIn("1 items at priority", section)
+
+    def test_backlog_and_continue_lines_stay_plural_above_one(self):
+        self.other("0002-p1", priority=1)
+        self.other("0003-p2", priority=2)
+        section = self.section(packet.render_packet(self.repo, "0001-runaway"))
+        self.assertIn("- backlog: 2 actionable items at priority ≤ 2, "
+                      "2 actionable in total", section)
+        self.assertIn("the 2 items at priority ≤ 2 keep waiting", section)
 
     def test_backlog_line_does_not_claim_a_number_when_priority_unset(self):
         self.unprioritise()
@@ -231,10 +361,40 @@ class TestCostDecisionPacket(unittest.TestCase):
         self.assertEqual(
             recommended[0],
             "Recommended: set a priority first — what this item is blocking "
-            "cannot be compared until it has one; run factory priority "
-            "0001-runaway <n>, then factory packet 0001-runaway to re-render "
-            "this decision.")
+            "cannot be compared until it has one; run `factory priority "
+            "0001-runaway <n>`, then `factory packet 0001-runaway` to "
+            "re-render this decision.")
         self.assertNotIn("re-read this packet", section)
+
+    def test_every_placeholder_command_in_the_section_is_backticked(self):
+        """F8: `<n>` matches CommonMark's inline raw-HTML open-tag
+        production, so a markdown renderer swallows it and the operator
+        is shown `factory priority 0001-runaway ,` — and for a
+        no-priority item these commands are the only route to a
+        decision. All 12 shipped packets backtick their placeholders.
+
+        Keyed on the placeholder *shape*, not on the literal `<n>`: the
+        defect is CommonMark's open-tag production, which any
+        `<word>` triggers, so a future `<id>` or `<option>` added to this
+        section is caught by the same guard rather than needing a new one.
+        """
+        self.unprioritise()
+        section = self.section(packet.render_packet(self.repo, "0001-runaway"))
+        placeholder = re.compile(r"<[A-Za-z][^>]*>")
+        lines = [l for l in section.splitlines() if placeholder.search(l)]
+        self.assertEqual(len(lines), 2, lines)
+        for line in lines:
+            # Splitting on backticks, the even-indexed segments are the
+            # text outside code spans — where a placeholder gets swallowed.
+            outside = "".join(line.split("`")[::2])
+            self.assertIsNone(placeholder.search(outside), line)
+
+    def test_defer_consequence_backticks_its_command(self):
+        section = self.section(packet.render_packet(self.repo, "0001-runaway"))
+        defer = [l for l in section.splitlines() if l.startswith("- defer — ")]
+        self.assertEqual(len(defer), 1, defer)
+        self.assertIn("drop its priority with `factory priority "
+                      "0001-runaway <n>`.", defer[0])
 
     def test_continue_consequence_carries_no_priority_sentinel(self):
         self.unprioritise()
@@ -464,7 +624,7 @@ class TestCostDecisionPacket(unittest.TestCase):
         self.other("0002-p1", priority=1)
         self.other("0003-p9", priority=9)
         section = self.section(packet.render_packet(self.repo, "0001-runaway"))
-        self.assertIn("- backlog: 1 actionable items at priority ≤ 2, "
+        self.assertIn("- backlog: 1 actionable item at priority ≤ 2, "
                       "2 actionable in total", section)
 
     def test_recommendation_is_defer_when_backlog_at_or_above(self):
@@ -501,7 +661,7 @@ class TestCostDecisionPacket(unittest.TestCase):
         self.other("0002-p1", priority=1)
         section = self.section(packet.render_packet(self.repo, "0001-runaway"))
         self.assertIn("the next rework edge parks it again at 3", section)
-        self.assertIn("the 1 items at priority ≤ 2 keep waiting", section)
+        self.assertIn("the 1 item at priority ≤ 2 keeps waiting", section)
 
     def test_no_line_promises_backlog_release_unconditionally(self):
         """M9: release is loop-mode behaviour."""
