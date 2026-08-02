@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.factory.lib import initrepo, items, logs, packet, paths
+from scripts.factory.lib import initrepo, items, logs, machine, packet, paths
 # One pattern, one definition: a second copy here could drift back to the
 # unfalsifiable single-form filter without the self-check noticing.
 from tests.test_packet import REWORK_FIGURE_RE
@@ -87,19 +87,27 @@ class TestCostDecisionHtml(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.repo = Path(self.tmp.name)
         initrepo.init(self.repo)
-        os.environ["FACTORY_NOW"] = "2026-08-02T06:00:00Z"
+        self.park("0001-runaway",
+                  "cost breaker: 2 rework edges (threshold 2)")
+
+    def park(self, item_id, reason, priority=2):
+        """The HTML twin of `TestCostDecisionPacket.park` — park through
+        `machine.advance`, the way production parks, so the event
+        `## Recent events` dumps (`machine.py:307-308`) is present here
+        too. See that docstring for why the old `items.save_item`
+        fixture made the whole-page guard unfalsifiable (pass 2, F3)."""
+        os.environ["FACTORY_NOW"] = "2026-08-02T00:00:00Z"
         items.save_item(self.repo, {
-            "id": "0001-runaway", "title": "Runaway",
-            "stage": "waiting-human", "kind": "backend", "priority": 2,
-            "paused-from": "implement",
-            "paused-reason": "cost breaker: 2 rework edges (threshold 2)",
+            "id": item_id, "title": "Runaway", "stage": "implement",
+            "kind": "backend", "priority": priority,
             "created": "2026-08-02T00:00:00Z",
-            "updated": "2026-08-02T06:00:00Z"}, "# Runaway\n")
+            "updated": "2026-08-02T00:00:00Z"}, "# Runaway\n")
         for ts in ("2026-08-02T01:00:00Z", "2026-08-02T02:00:00Z"):
             os.environ["FACTORY_NOW"] = ts
-            logs.append_event(self.repo, "0001-runaway", "stage.advance",
+            logs.append_event(self.repo, item_id, "stage.advance",
                               {"from": "review", "to": "implement"})
         os.environ["FACTORY_NOW"] = "2026-08-02T06:00:00Z"
+        machine.advance(self.repo, item_id, "waiting-human", reason=reason)
 
     def tearDown(self):
         os.environ.pop("FACTORY_NOW", None)
@@ -122,6 +130,52 @@ class TestCostDecisionHtml(unittest.TestCase):
                 "kind": "backend", "priority": priority,
                 "created": "2026-08-02T00:00:00Z",
                 "updated": "2026-08-02T00:00:00Z"}, "")
+
+    RECENT_EVENTS = "<h2>Recent events</h2>"
+
+    def without_recent_events(self, page):
+        """The page minus its `Recent events` section — the HTML twin of
+        `TestCostDecisionPacket.without_recent_events`. Same reason: an
+        append-only verbatim dump of what was logged is excluded by name,
+        because it records what was written, not what is aggregated now,
+        and must not be rewritten to agree (J-002, review pass 2)."""
+        head, marker, tail = page.partition(self.RECENT_EVENTS)
+        if not marker:
+            return page
+        _dump, _end, rest = tail.partition("  </section>")
+        # Drop the section's own opening tag with it: line-based counting
+        # does not care, but leaving an orphaned `<section>` in `kept` would
+        # invite a future reader to trust the remainder as well-formed markup.
+        return head.rsplit("  <section>", 1)[0] + rest
+
+    def cost_surface_lines(self, page):
+        """Rework figures on *rendered cost surfaces* of the HTML page."""
+        return [l for l in self.without_recent_events(page).splitlines()
+                if REWORK_FIGURE_RE.search(l)]
+
+    def test_html_a_mistyped_park_reason_does_not_put_a_second_number_on_the_page(self):
+        """The HTML twin of the markdown divergent-reason guard (F4).
+        `render_packet_html` builds its own `id="waiting-on-you"` callout,
+        so the markdown assertion leaves this surface unguarded."""
+        self.park("0002-mistyped",
+                  "cost breaker: 7 rework edges (threshold 2)")
+        page = packet.render_packet_html(self.repo, "0002-mistyped")
+        numbers = set()
+        for line in self.cost_surface_lines(page):
+            for match in REWORK_FIGURE_RE.finditer(line):
+                numbers.add(match.group(1) or match.group(2))
+        self.assertEqual(numbers, {"2"}, numbers)
+        ask = page.split('<section class="ask" id="waiting-on-you">', 1)[1] \
+                  .split("</section>", 1)[0]
+        self.assertIn("<p>cost breaker: 2 rework edges (threshold 2)</p>", ask)
+        self.assertNotIn("7 rework edges", ask)
+        # The other half of why `Recent events` may be excluded (J-002): it
+        # preserves the reason *as logged*. The dump still carries the
+        # operator's mistyped 7 while no rendered cost surface does, so the
+        # exclusion's justification is tested, not merely asserted.
+        dump = page.split(self.RECENT_EVENTS, 1)[1].split("</section>", 1)[0]
+        self.assertIn("7 rework edges", dump)
+        self.assertNotIn("7 rework edges", self.without_recent_events(page))
 
     def test_html_backlog_line_names_the_items_it_could_not_read(self):
         """N4 on the HTML render: packet.py builds its own section, so
@@ -160,9 +214,13 @@ class TestCostDecisionHtml(unittest.TestCase):
         HTML render *only*, carrying the same number, would satisfy both
         the section-scoped count and the numbers-agree assertion and slip
         through. Each of the three is pinned by identity here, so a
-        fourth anywhere in the document fails."""
+        fourth anywhere in the document fails.
+
+        The count is taken over rendered cost surfaces: the
+        `Recent events` dump is excluded by name and by reason (see
+        `without_recent_events`), not because it is inconvenient."""
         page = packet.render_packet_html(self.repo, "0001-runaway")
-        every = [l for l in page.splitlines() if REWORK_FIGURE_RE.search(l)]
+        every = self.cost_surface_lines(page)
         self.assertEqual(len(every), 3, every)
         section = self.section().splitlines()
         inside = [l for l in every if l in section]
@@ -181,11 +239,34 @@ class TestCostDecisionHtml(unittest.TestCase):
         self.assertEqual(len(echo) + len(receipt), len(outside), outside)
 
     def test_html_every_rework_number_in_the_page_agrees(self):
+        """Scoped to rendered cost surfaces, with
+        `test_html_a_mistyped_park_reason_…` as the proof it can fail."""
         page = packet.render_packet_html(self.repo, "0001-runaway")
         numbers = set()
-        for match in REWORK_FIGURE_RE.finditer(page):
-            numbers.add(match.group(1) or match.group(2))
+        for line in self.cost_surface_lines(page):
+            for match in REWORK_FIGURE_RE.finditer(line):
+                numbers.add(match.group(1) or match.group(2))
         self.assertEqual(numbers, {"2"}, numbers)
+
+    def test_html_only_recent_events_is_excluded_from_the_rework_count(self):
+        """The HTML twin of the exclusion pin: exactly one section is
+        excluded, the raw page really does carry the extra figure there,
+        and every other section survives the cut."""
+        page = packet.render_packet_html(self.repo, "0001-runaway")
+        every = [l for l in page.splitlines() if REWORK_FIGURE_RE.search(l)]
+        surfaces = self.cost_surface_lines(page)
+        excluded = [l for l in every if l not in surfaces]
+        self.assertEqual(len(excluded), 1, excluded)
+        dump = page.split(self.RECENT_EVENTS, 1)[1].split(
+            "  </section>", 1)[0].splitlines()
+        self.assertIn(excluded[0], dump)
+        self.assertIn("stage.advance", excluded[0])
+        kept = self.without_recent_events(page)
+        self.assertNotIn(self.RECENT_EVENTS, kept)
+        for marker in ('<section id="cost-decision">', "<h2>Spend</h2>",
+                       '<section id="respond">', '<section id="artifacts">',
+                       '<section class="ask" id="waiting-on-you">'):
+            self.assertIn(marker, kept, marker)
 
     def test_html_section_leads_with_the_proxy_substrate(self):
         section = self.section()

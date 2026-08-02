@@ -31,6 +31,28 @@ def view_links(repo, item_id, meta):
     return links
 
 
+def waiting_line(meta, summary):
+    """The `- waiting on you:` text, one branch shared by both renderers.
+
+    A cost-breaker pause is rendered from `summary["rework_edges"]`,
+    never from the operator's free text: the park reason is hand-copied
+    by an agent (`skills/factory-dispatch/SKILL.md:50`) and a typo in it
+    must not reach the operator as a rework figure (B3/F4) — least of all
+    on the line that leads the page. Every other pause reason is echoed
+    faithfully; this is scoped to the cost-breaker prefix only, so a
+    design pause's free text (and its hosted URL) is untouched.
+
+    `summary` is the render's single aggregation, passed down by the
+    caller: re-reading the clock here would let the two documents
+    `write_packet` produces disagree."""
+    from . import breaker
+    reason = meta.get("paused-reason", "")
+    if reason.startswith(breaker.PAUSE_PREFIX):
+        return (f"{breaker.PAUSE_PREFIX} {summary['rework_edges']} rework "
+                f"edges (threshold {breaker.REWORK_THRESHOLD})")
+    return reason
+
+
 def cost_decision_lines(repo, item_id, meta, summary=None):
     """The '## Cost decision' body, ordered exactly as item spec 0016 §6.
     Returns [] unless the item is parked with a cost-breaker reason. The
@@ -148,7 +170,7 @@ def render_packet(repo, item_id, summary=None):
     lines.append(f"- kind: {meta['kind']}")
     lines.append(f"- priority: {meta.get('priority', '-')}")
     if meta.get("paused-reason"):
-        lines.append(f"- waiting on you: {meta['paused-reason']}")
+        lines.append(f"- waiting on you: {waiting_line(meta, summary)}")
     decision = cost_decision_lines(repo, item_id, meta, summary)
     if decision:
         lines += ["", "## Cost decision", ""] + decision
@@ -246,7 +268,7 @@ def render_packet_html(repo, item_id, summary=None):
     if meta.get("paused-reason"):
         out += ["  <section class=\"ask\" id=\"waiting-on-you\">",
                 "    <h2>waiting on you</h2>",
-                f"    <p>{_e(meta['paused-reason'])}</p>",
+                f"    <p>{_e(waiting_line(meta, summary))}</p>",
                 "  </section>"]
 
     # Deviation from plan Task 10 step 4: the section carries no

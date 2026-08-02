@@ -5,7 +5,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from scripts.factory.lib import cost, initrepo, items, logs, packet, paths
+from scripts.factory.lib import (cost, initrepo, items, logs, machine, packet,
+                                 paths)
 
 # AC11 / J-002's `one rework figure` oracle. The packet renders the figure in
 # two surface forms — `rework edges: N` at the decision and `N rework edges` in
@@ -106,19 +107,34 @@ class TestCostDecisionPacket(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.repo = Path(self.tmp.name)
         initrepo.init(self.repo)
-        os.environ["FACTORY_NOW"] = "2026-08-02T06:00:00Z"
-        meta = {"id": "0001-runaway", "title": "Runaway",
-                "stage": "waiting-human", "kind": "backend", "priority": 2,
-                "paused-from": "implement",
-                "paused-reason": "cost breaker: 2 rework edges (threshold 2)",
-                "created": "2026-08-02T00:00:00Z",
-                "updated": "2026-08-02T06:00:00Z"}
-        items.save_item(self.repo, meta, "# Runaway\n")
+        self.park("0001-runaway",
+                  "cost breaker: 2 rework edges (threshold 2)")
+
+    def park(self, item_id, reason, priority=2):
+        """Park the fixture the way production parks — through
+        `machine.advance(..., "waiting-human", reason=...)`.
+
+        The engine writes `paused-from`/`paused-reason` itself *and*
+        appends a `stage.advance` event carrying `reason`
+        (`machine.py:307-308`), which is exactly the event
+        `## Recent events` dumps verbatim. A fixture that writes the
+        frontmatter straight through `items.save_item` never produces
+        that event, so the whole-packet rework guards were counting a
+        packet production never renders (review pass 2, F3). The clock
+        is pinned across the call so the park stays deterministic.
+        """
+        os.environ["FACTORY_NOW"] = "2026-08-02T00:00:00Z"
+        items.save_item(self.repo, {
+            "id": item_id, "title": "Runaway", "stage": "implement",
+            "kind": "backend", "priority": priority,
+            "created": "2026-08-02T00:00:00Z",
+            "updated": "2026-08-02T00:00:00Z"}, "# Runaway\n")
         for ts in ("2026-08-02T01:00:00Z", "2026-08-02T02:00:00Z"):
             os.environ["FACTORY_NOW"] = ts
-            logs.append_event(self.repo, "0001-runaway", "stage.advance",
+            logs.append_event(self.repo, item_id, "stage.advance",
                               {"from": "review", "to": "implement"})
         os.environ["FACTORY_NOW"] = "2026-08-02T06:00:00Z"
+        machine.advance(self.repo, item_id, "waiting-human", reason=reason)
 
     def tearDown(self):
         os.environ.pop("FACTORY_NOW", None)
@@ -261,6 +277,96 @@ class TestCostDecisionPacket(unittest.TestCase):
         return [line for line in text.splitlines()
                 if REWORK_FIGURE_RE.search(line)]
 
+    RECENT_EVENTS = "Recent events"
+
+    def without_recent_events(self, text):
+        """The packet minus its `## Recent events` section.
+
+        `## Recent events` is an append-only verbatim dump of the log: it
+        records what was *written*, not what is aggregated now, and
+        forcing an audit record to agree with a live aggregation would be
+        architecturally wrong. So it is excluded from the rework
+        accounting **by name, with that reason** (J-002, review pass 2) —
+        never by accident, and never by a filter that would also swallow
+        a real rendered surface. Everything else on the packet is a
+        rendered cost surface and is counted."""
+        head, marker, tail = text.partition(f"## {self.RECENT_EVENTS}\n")
+        if not marker:
+            return text
+        _dump, nxt, rest = tail.partition("\n## ")
+        return head + (nxt + rest if nxt else "")
+
+    def cost_surface_lines(self, text):
+        """Rework figures on *rendered cost surfaces* — every digit-bearing
+        rework line except those in the excluded audit dump. See
+        `without_recent_events` for what is excluded and why."""
+        return self.rework_lines(self.without_recent_events(text))
+
+    def test_a_mistyped_park_reason_does_not_put_a_second_number_on_the_packet(self):
+        """F4: skills/factory-dispatch/SKILL.md:50 has an agent hand-copy
+        `<n>` into the park reason. A typo there must not reach the
+        operator as a rework figure — the decision block, the
+        waiting-on-you line and the `## Spend` receipt all derive from
+        `summary["rework_edges"]`, so the packet shows one number and it
+        is the engine's."""
+        self.park("0002-mistyped",
+                  "cost breaker: 7 rework edges (threshold 2)")
+        text = packet.render_packet(self.repo, "0002-mistyped")
+        numbers = set()
+        for line in self.cost_surface_lines(text):
+            for match in REWORK_FIGURE_RE.finditer(line):
+                numbers.add(match.group(1) or match.group(2))
+        self.assertEqual(numbers, {"2"}, numbers)
+        waiting = [l for l in text.splitlines()
+                   if l.startswith("- waiting on you:")]
+        self.assertEqual(
+            waiting,
+            ["- waiting on you: cost breaker: 2 rework edges (threshold 2)"])
+        # The other half of why `## Recent events` may be excluded (J-002):
+        # it preserves the reason *as logged*. Both halves are pinned here —
+        # the audit dump still carries the operator's mistyped 7, and no
+        # rendered cost surface does — so the exclusion's justification is a
+        # tested property rather than a claim in the contract.
+        self.assertIn("7 rework edges",
+                      self.section_named(text, self.RECENT_EVENTS))
+        self.assertNotIn("7 rework edges", self.without_recent_events(text))
+
+    def test_a_cost_breaker_reason_carrying_extra_text_renders_derived(self):
+        """The derivation reconstructs the whole sentence from
+        `breaker.PAUSE_PREFIX` (`packet.py:50-53`), so context an agent
+        appends beyond the canonical string
+        (`skills/factory-dispatch/SKILL.md:50`) is *deliberately* dropped
+        from the line that leads the page: that line carries the engine's
+        figure and nothing hand-copied. The context is not lost — the
+        `## Recent events` dump preserves the reason as logged."""
+        self.park("0003-verbose",
+                  "cost breaker: 9 rework edges (threshold 2) "
+                  "— third rework round, see reviews/synthesis.md")
+        text = packet.render_packet(self.repo, "0003-verbose")
+        waiting = [l for l in text.splitlines()
+                   if l.startswith("- waiting on you:")]
+        self.assertEqual(
+            waiting,
+            ["- waiting on you: cost breaker: 2 rework edges (threshold 2)"])
+        self.assertNotIn("third rework round",
+                         self.without_recent_events(text))
+        self.assertIn("third rework round",
+                      self.section_named(text, self.RECENT_EVENTS))
+
+    def test_a_non_breaker_pause_reason_is_echoed_byte_for_byte(self):
+        """The complement of the derivation, and the bound on it: the
+        rewrite is scoped to the cost-breaker prefix, not to content that
+        looks like a rework figure. A design pause's free text — hosted URL
+        and all — reaches the operator exactly as it was written."""
+        reason = ("design options ready: pick one — "
+                  "https://example.com/opt (2 rework edges of context)")
+        self.park("0004-design", reason)
+        text = packet.render_packet(self.repo, "0004-design")
+        waiting = [l for l in text.splitlines()
+                   if l.startswith("- waiting on you:")]
+        self.assertEqual(waiting, [f"- waiting on you: {reason}"])
+        self.assertNotIn("## Cost decision", text)
+
     def test_rework_figure_pattern_matches_both_surface_forms(self):
         """A self-check on the filter itself, before it is used to count
         anything. The old guard matched only `rework edges: N`, so its
@@ -279,24 +385,55 @@ class TestCostDecisionPacket(unittest.TestCase):
         self.assertEqual(len(lines), 1, lines)
 
     def test_every_rework_number_in_the_packet_agrees(self):
+        """Scoped to rendered cost surfaces (`cost_surface_lines`), and
+        `test_a_mistyped_park_reason_…` is what makes this fire: without
+        it this assertion runs against a fixture whose park reason
+        already contains the right number and cannot fail."""
         text = packet.render_packet(self.repo, "0001-runaway")
         numbers = set()
-        for line in text.splitlines():
+        for line in self.cost_surface_lines(text):
             for match in REWORK_FIGURE_RE.finditer(line):
                 numbers.add(match.group(1) or match.group(2))
         self.assertEqual(numbers, {"2"}, numbers)
 
+    def test_only_recent_events_is_excluded_from_the_rework_count(self):
+        """The exclusion is exactly one section, and it is real.
+
+        If a future edit widens it, a rendered cost surface stops being
+        counted and the two counts stop differing by exactly the audit
+        dump — this fails. If the raw packet stops carrying the extra
+        figure there, the exclusion is vacuous and the identity
+        assertions below fail. Either way the scope cannot drift in
+        silence."""
+        text = packet.render_packet(self.repo, "0001-runaway")
+        every = self.rework_lines(text)
+        surfaces = self.cost_surface_lines(text)
+        excluded = [l for l in every if l not in surfaces]
+        self.assertEqual(len(excluded), 1, excluded)
+        dump = self.section_named(text, self.RECENT_EVENTS).splitlines()
+        self.assertIn(excluded[0], dump)
+        self.assertIn("stage.advance", excluded[0])
+        kept = self.without_recent_events(text)
+        self.assertNotIn(f"## {self.RECENT_EVENTS}", kept)
+        for heading in ("## Cost decision", "## View the options",
+                        "## Artifacts", "## Spend", "## Respond"):
+            self.assertIn(heading, kept, heading)
+
     def test_rework_figures_outside_the_decision_section_are_the_two_known_surfaces(self):
         """The two repetitions outside `## Cost decision` are deliberate
         and derived from the same `summary["rework_edges"]`: the
-        `- waiting on you:` paused-reason echo and the `## Spend`
-        receipt's proxy line, which is the operator's cross-check. They
-        are named and counted here so a *fourth* surface — a
+        `- waiting on you:` derived echo and the `## Spend` receipt's
+        proxy line, which is the operator's cross-check. They are named
+        and counted here so a *fourth* rendered cost surface — a
         differently-derived second figure, the defect J-002 exists to
-        remove — fails this test rather than passing unnoticed."""
+        remove — fails this test rather than passing unnoticed.
+
+        The count is taken over rendered cost surfaces:
+        `## Recent events` is excluded by name and by reason (see
+        `without_recent_events`), not because it is inconvenient."""
         text = packet.render_packet(self.repo, "0001-runaway")
         section = self.section(text)
-        every = self.rework_lines(text)
+        every = self.cost_surface_lines(text)
         self.assertEqual(len(every), 3, every)
         outside = [l for l in every if l not in section.splitlines()]
         self.assertEqual(len(outside), 2, outside)
@@ -462,19 +599,25 @@ class TestOneAggregationPerPacket(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.repo = Path(self.tmp.name)
         initrepo.init(self.repo)
-        os.environ["FACTORY_NOW"] = "2026-08-02T06:00:00Z"
+        os.environ["FACTORY_NOW"] = "2026-08-02T00:00:00Z"
         items.save_item(self.repo, {
             "id": "0001-runaway", "title": "Runaway",
-            "stage": "waiting-human", "kind": "backend", "priority": 2,
-            "paused-from": "implement",
-            "paused-reason": "cost breaker: 2 rework edges (threshold 2)",
+            "stage": "implement", "kind": "backend", "priority": 2,
             "created": "2026-08-02T00:00:00Z",
-            "updated": "2026-08-02T06:00:00Z"}, "# Runaway\n")
+            "updated": "2026-08-02T00:00:00Z"}, "# Runaway\n")
         for ts in ("2026-08-02T01:00:00Z", "2026-08-02T02:00:00Z"):
             os.environ["FACTORY_NOW"] = ts
             logs.append_event(self.repo, "0001-runaway", "stage.advance",
                               {"from": "review", "to": "implement"})
         os.environ["FACTORY_NOW"] = "2026-08-02T06:00:00Z"
+        # Park through the engine, not through frontmatter: `machine.advance`
+        # writes `paused-from`/`paused-reason` itself and appends the
+        # `stage.advance` event `## Recent events` dumps verbatim
+        # (`machine.py:307-308`). A fixture that hand-writes the parked
+        # frontmatter renders a packet production never produces — the shape
+        # review pass 2 rejected (F3) — so this file no longer contains one.
+        machine.advance(self.repo, "0001-runaway", "waiting-human",
+                        reason="cost breaker: 2 rework edges (threshold 2)")
 
     def tearDown(self):
         os.environ.pop("FACTORY_NOW", None)

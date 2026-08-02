@@ -41,12 +41,26 @@ more spend on an item they did not watch, against a backlog they did not audit.
   bid-0018). Measured figures on this journey are additionally suffixed
   `LOWER BOUND` — the aggregate is untrustworthy (judgement on bid-0063).
 - **Exactly one rework figure** appears at the decision — the one the breaker
-  fired on, inside `## Cost decision`. Every echo of it elsewhere on the packet
-  (the `- waiting on you:` paused-reason line, the `## Spend` receipt, which is
-  the operator's cross-check) is derived from the same aggregation and is
-  numerically identical to it; each is named and counted, so an unaccounted
-  fourth appearance fails. A second, **differently-derived** figure beside it is
-  the exact defect this journey exists to remove.
+  fired on, inside `## Cost decision`. Every echo of it elsewhere on the packet's
+  **rendered cost surfaces** (the `- waiting on you:` line, the `## Spend`
+  receipt, which is the operator's cross-check) is derived from the same
+  aggregation and is numerically identical to it; each is named and counted, so
+  an unaccounted fourth digit-bearing rework **line** on a rendered cost surface
+  fails. That count is line-granular — a second figure appended to an
+  already-counted line is caught by the numbers-agree assertion instead, not by
+  the count. The `- waiting on you:`
+  line for a cost-breaker pause is **derived from `summary["rework_edges"]`**,
+  not echoed from the operator's `paused-reason` free text — that string is
+  hand-copied by an agent (`skills/factory-dispatch/SKILL.md:50`) and a typo in
+  it must not reach the operator as a rework figure, least of all on the line
+  that leads the page. A second, **differently-derived** figure beside it is the
+  exact defect this journey exists to remove.
+- `## Recent events` is **excluded by name** from that accounting, and this is
+  the reason: it is an append-only verbatim audit dump — it records what was
+  *written* (including the `reason` string `machine.advance` logged at the park),
+  not what is aggregated now, and must **not** be rewritten to agree with a live
+  aggregation. The exclusion is one named section and no wider; a test pins that
+  it is real and exactly that section.
 - The **proxy substrate leads**; no token headline appears above it.
 - The recommendation is **never `continue`**: an unpriced choice defaulting to
   "continue" is the behaviour the item exists to stop. Each of continue / narrow
@@ -68,7 +82,8 @@ more spend on an item they did not watch, against a backlog they did not audit.
 | fired | `breaker.verdict(...)["fired"]` and the presence of a `cost.breaker` event in `log.jsonl` |
 | requested stage preserved | stdout of `factory advance <id> implement` names the **requested** stage and exit status is `0` |
 | park | `item.md` frontmatter `stage: waiting-human`, `paused-from: implement`, `paused-reason` starting `cost breaker:` |
-| one rework figure | count of digit-bearing rework lines inside `## Cost decision` == 1, **and** every rework number in the packet agrees with it, **and** the only repetitions outside the block are the `- waiting on you:` paused-reason echo and the `## Spend` receipt line; the count pattern matches both `rework edges: N` and `N rework edges` |
+| one rework figure | count of digit-bearing rework lines inside `## Cost decision` == 1, **and** every rework number on the packet's **rendered cost surfaces** agrees with it, **and** the only repetitions outside the block are the `- waiting on you:` derived echo and the `## Spend` receipt line; `## Recent events` is excluded by name as an append-only verbatim audit dump — it records what was written, not what is aggregated, and must not be rewritten to agree; the count pattern matches both `rework edges: N` and `N rework edges` |
+| derived, not echoed | parking with a mistyped reason (`cost breaker: 7 rework edges` against a 2-edge log) still renders `2` on every rendered cost surface, `- waiting on you:` included, in both renderers — the guard above is falsifiable, and this is what falsifies it |
 | provenance | every cost-bearing line in the packet matches `^\s*[-•]?\s*\[(measured\|proxy\|unmeasured)\]` |
 | recommendation | the `Recommended:` line names `defer` when `backlog.at_or_above >= 1`, `narrow` when it is `0`, and — when it is `None`, i.e. the item carries no priority so the comparison is impossible — names neither, directing the operator to `factory priority <id> <n>`; never `continue` in any case |
 | one action | count of `factory ` command lines under `## Respond` == 1, and that line names `factory cost-answer` |
