@@ -780,3 +780,38 @@ class TestRedesignDecisionBlock(ApproachTest):
         # literals drifted — assert the splice's ACTIVE path.
         self.assertIn("#redesign-decision {", html)
         self.assertIn("#redesign-decision h2", html)
+
+
+class TestInheritance0025(ApproachTest):
+    """AC14 (B1): the redesign path inherits 0025's forward-gate
+    re-scoping with ZERO 0015-side mechanism - spec -> plan -> implement
+    is a fresh entry into implement under 0025's key. These tests
+    require 0025 merged; this item's diff touches no forward-gate
+    scoping code (inspection, step 3)."""
+
+    def test_stale_implement_completed_refused_after_redesign(self):
+        self.make_item()
+        self.redesign(frm="review")   # pre-redesign implement.completed
+        self.walk_to("implement")     # fresh entry into implement
+        # only PRE-redesign implement.completed exists; 0025 scopes the
+        # review entry gate to evidence after this implement entry.
+        with self.assertRaises(machine.GateError):
+            machine.advance(self.repo, ITEM, "review")
+        logs.append_event(self.repo, ITEM, "implement.completed")
+        meta, _ = machine.advance(self.repo, ITEM, "review")
+        self.assertEqual(meta["stage"], "review")
+
+    def test_stale_review_approved_refused_after_redesign(self):
+        self.make_item()
+        self.walk_to("verify")        # pre-redesign review.approved
+        self.forbid("verify")
+        machine.advance(self.repo, ITEM, "spec",
+                        reason="approach.rejected: x")
+        self.walk_to("review")        # logs a fresh implement.completed
+        # only PRE-redesign review.approved exists
+        with self.assertRaises(machine.GateError):
+            machine.advance(self.repo, ITEM, "verify")
+        self.art("reviews/synthesis.md")
+        logs.append_event(self.repo, ITEM, "review.approved")
+        meta, _ = machine.advance(self.repo, ITEM, "verify")
+        self.assertEqual(meta["stage"], "verify")
