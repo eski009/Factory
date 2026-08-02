@@ -81,3 +81,40 @@ def admit_over_cap(repo, item_id, edges):
         raise GateError(
             f"approach answer stale: recorded at {answer['redesigns']} "
             f"redesign(s), now {edges}; " + retry)
+
+
+def record_answer(repo, item_id, answer, notes=None):
+    """The single writer of approaches/answer.md (B5 part 2), modelled
+    on breaker.record_answer. The watermark `- redesigns: N` is the
+    engine-counted edge count at answer time - monotone: after the
+    admitted edge the count exceeds it, so the next request is refused
+    again.
+
+    bid-0078: `narrow` and `defer` deliberately leave the item parked,
+    so this function deletes the item's packet at answer-record time -
+    never keyed on "no longer waiting-human"."""
+    items.load_item(repo, item_id)
+    if answer not in ANSWERS:
+        raise GateError(
+            f"answer must be one of {', '.join(ANSWERS)}, got {answer!r}")
+    edges = approach_edges(repo, item_id)
+    if edges < MAX_APPROACH_REJECTIONS:
+        raise GateError(
+            f"nothing to answer: {edges} redesign(s), cap "
+            f"{MAX_APPROACH_REJECTIONS}")
+    path = answer_path(repo, item_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    body = notes if notes else "(no notes)"
+    path.write_text(
+        f"# Approach cap answer\n\n- answer: {answer}\n"
+        f"- redesigns: {edges}\n- ts: {logs.now_stamp()}\n\n{body}\n",
+        encoding="utf-8")
+    logs.append_event(repo, item_id, "approach.answered",
+                      {"answer": answer, "redesigns": edges})
+    if answer in ("narrow", "defer"):
+        for name in (f"{item_id}.md", f"{item_id}.html"):
+            try:
+                (paths.docs_root(repo) / "packets" / name).unlink()
+            except OSError:
+                pass
+    return path

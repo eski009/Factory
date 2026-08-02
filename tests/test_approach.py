@@ -266,3 +266,138 @@ class TestApproachEdge(ApproachTest):
         self.assertEqual(meta["stage"], "design")
         meta, _ = machine.advance(self.repo, ITEM, "plan")
         self.assertEqual(meta["stage"], "plan")
+
+
+class TestApproachAnswer(ApproachTest):
+    """AC6/AC16/AC17/AC18: the five-part pause contract's artifact side."""
+
+    def test_record_below_cap_refused(self):
+        self.make_item()
+        self.walk_to("review")
+        with self.assertRaises(machine.GateError) as ctx:
+            approach.record_answer(self.repo, ITEM, "continue")
+        self.assertIn("nothing to answer", str(ctx.exception))
+
+    def test_out_of_enum_refused(self):
+        self.make_item()
+        self.redesign()
+        with self.assertRaises(machine.GateError) as ctx:
+            approach.record_answer(self.repo, ITEM, "later")
+        self.assertIn("must be one of", str(ctx.exception))
+
+    def test_record_writes_artifact_and_logs_event(self):
+        self.make_item()
+        self.redesign()
+        path = approach.record_answer(self.repo, ITEM, "continue",
+                                      notes="one more try")
+        text = path.read_text(encoding="utf-8")
+        self.assertIn("- answer: continue", text)
+        self.assertIn("- redesigns: 1", text)
+        self.assertIn("- ts: 2026-07-03T12:00:00Z", text)
+        self.assertIn("one more try", text)
+        last = logs.read_events(self.repo, ITEM)[-1]
+        self.assertEqual(last["event"], "approach.answered")
+        self.assertEqual(last["data"], {"answer": "continue",
+                                        "redesigns": 1})
+
+    def test_watermark_admits_exactly_one_more_edge(self):
+        # AC18: an answer at redesigns 1 admits the second edge and does
+        # not admit a third; the stale refusal names recorded vs now.
+        self.make_item()
+        self.redesign(frm="review", entry=1)
+        approach.record_answer(self.repo, ITEM, "continue")
+        self.walk_to("review")
+        self.forbid("review", entry=2)
+        meta, _ = machine.advance(self.repo, ITEM, "spec",
+                                  reason="approach.rejected: second try")
+        self.assertEqual(meta["stage"], "spec")  # admitted exactly once
+        self.walk_to("review")
+        self.forbid("review", entry=3)
+        with self.assertRaises(machine.GateError) as ctx:
+            machine.advance(self.repo, ITEM, "spec",
+                            reason="approach.rejected: third try")
+        msg = str(ctx.exception)
+        self.assertIn("stale", msg)
+        self.assertIn("recorded at 1", msg)
+        self.assertIn("now 2", msg)
+
+    def test_malformed_artifacts_get_distinct_refusals(self):
+        # AC18: malformed option vs missing watermark line - distinct
+        # messages, both different from the stale message.
+        self.make_item()
+        self.redesign()
+        self.walk_to("review")
+        self.forbid("review", entry=2)
+        p = approach.answer_path(self.repo, ITEM)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("- answer: maybe\n- redesigns: 1\n", encoding="utf-8")
+        with self.assertRaises(machine.GateError) as ctx:
+            machine.advance(self.repo, ITEM, "spec",
+                            reason="approach.rejected: x")
+        self.assertIn("recorded option 'maybe'", str(ctx.exception))
+        p.write_text("- answer: continue\n", encoding="utf-8")
+        with self.assertRaises(machine.GateError) as ctx:
+            machine.advance(self.repo, ITEM, "spec",
+                            reason="approach.rejected: x")
+        self.assertIn("no '- redesigns: N' line", str(ctx.exception))
+
+    def test_narrow_and_defer_delete_packet_at_record_time(self):
+        # bid-0078/AC17: keyed on answer-record time, never on "no
+        # longer waiting-human". continue keeps the packet.
+        self.make_item()
+        self.redesign()
+        pdir = paths.docs_root(self.repo) / "packets"
+        pdir.mkdir(parents=True, exist_ok=True)
+        for answer, expect_gone in (("continue", False), ("narrow", True),
+                                    ("defer", True)):
+            with self.subTest(answer=answer):
+                md = pdir / f"{ITEM}.md"
+                html = pdir / f"{ITEM}.html"
+                md.write_text("packet\n", encoding="utf-8")
+                html.write_text("packet\n", encoding="utf-8")
+                approach.record_answer(self.repo, ITEM, answer)
+                self.assertEqual(not md.exists(), expect_gone)
+                self.assertEqual(not html.exists(), expect_gone)
+
+    def test_no_engine_transition_writes_any_answer(self):
+        # AC6/bid-0098: a full production-path redesign fixture ends
+        # with BOTH answer artifacts absent.
+        self.make_item()
+        self.redesign()
+        self.assertFalse(approach.answer_path(self.repo, ITEM).exists())
+        self.assertFalse(breaker.answer_path(self.repo, ITEM).exists())
+
+
+class TestApproachCli(ApproachTest):
+    """AC16 part 1 + AC6: the verb and the log-verb refusals."""
+
+    def run_cli(self, *args):
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = factory.main(["--repo", str(self.repo), *args])
+        return code, out.getvalue(), err.getvalue()
+
+    def test_approach_answer_records_and_prints_path(self):
+        self.make_item()
+        self.redesign()
+        code, out, _ = self.run_cli("approach-answer", ITEM, "continue")
+        self.assertEqual(code, 0)
+        self.assertIn("approaches/answer.md", out)
+
+    def test_approach_answer_refusal_exits_2(self):
+        self.make_item()
+        self.walk_to("review")
+        code, _, err = self.run_cli("approach-answer", ITEM, "continue")
+        self.assertEqual(code, 2)
+        self.assertIn("nothing to answer", err)
+
+    def test_factory_log_refuses_single_writer_events(self):
+        self.make_item()
+        for event in ("approach.answered", "cost.answered"):
+            with self.subTest(event=event):
+                code, _, err = self.run_cli("log", ITEM, event)
+                self.assertEqual(code, 1)
+                self.assertIn("written only by its human verb", err)
+        self.assertIn(
+            "factory approach-answer",
+            self.run_cli("log", ITEM, "approach.answered")[2])
