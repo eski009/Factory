@@ -476,6 +476,38 @@ def _require_journey_impact(repo, meta):
             "journey impact must be declared: factory journeys <id> <none|J-...>")
 
 
+def _require_fresh_redesign_spec(repo, meta):
+    """Round-scoped spec-exit gate (item 0015 SS4, B3). After an
+    approach.rejected-shaped edge, any advance out of spec requires
+    (a) a non-empty approaches/forbidden.md and (b) a spec.revised
+    event at a log position AFTER the latest approach.rejected edge -
+    the assure.passed postdating pattern. spec.revised is skill-logged
+    (factory-spec, after rewriting spec.md) and used FAIL-CLOSED: a
+    forgetful skill blocks the item loudly; the cap/trigger substrate
+    stays engine edges only (bid-0064's prohibition binds caps, not
+    this freshness token).
+
+    HONEST RESIDUAL (bid-0053/0083): this gate proves freshness and
+    existence, not comprehension - a postdated spec that ignores the
+    graveyard passes. Nothing engine-side can verify a reading
+    happened; factory-spec's required read is skill prose. Items with
+    no approach.rejected edge: inert, byte-identical behavior."""
+    events = logs.read_events(repo, meta["id"])
+    count, last = _approach_edges(events)
+    if count == 0:
+        return
+    problems = []
+    path = _artifact(repo, meta, "approaches/forbidden.md")
+    if not path.exists() or not _read_text_or_empty(path).strip():
+        problems.append("approaches/forbidden.md missing or empty")
+    if _last_index(events, "spec.revised") <= last:
+        problems.append(
+            "no spec.revised event after the latest approach.rejected "
+            "edge (factory-spec logs it after rewriting spec.md)")
+    if problems:
+        raise GateError("redesign spec-exit: " + "; ".join(problems))
+
+
 def _gate_spec(repo, meta):
     _require_file(repo, meta, "triage.md", "triage record required before spec")
     if "priority" not in meta:
@@ -485,6 +517,7 @@ def _gate_spec(repo, meta):
 def _gate_design(repo, meta):
     _require_file(repo, meta, "spec.md", "spec required before design")
     _require_journey_impact(repo, meta)
+    _require_fresh_redesign_spec(repo, meta)
 
 
 def _gate_plan(repo, meta):
@@ -497,6 +530,7 @@ def _gate_plan(repo, meta):
                       "confirmed repro required before planning a bug fix")
         _require_event(repo, meta, "repro.confirmed",
                        "replication must be confirmed before planning a bug fix")
+    _require_fresh_redesign_spec(repo, meta)
 
 
 def _gate_implement(repo, meta):

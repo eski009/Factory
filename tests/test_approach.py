@@ -478,3 +478,110 @@ class TestVerifyReworkAndRoundScoping(ApproachTest):
         self.assertEqual(
             cost.summarize(self.repo, ITEM)["rework_edges"], 1)
         self.assertEqual(breaker.rework_edges(self.repo, ITEM), 1)
+
+
+class TestSpecExitGate(ApproachTest):
+    """AC7/AC8/AC9/AC10: leaving spec after a redesign requires fresh
+    evidence; the gate proves freshness and existence, not
+    comprehension."""
+
+    def test_exit_requires_spec_revised_postdating_the_edge(self):
+        # AC8: a spec.revised logged BEFORE the edge does not satisfy;
+        # one logged after does. Note _prep("plan") logs spec.revised
+        # itself, so this test advances by hand.
+        self.make_item()
+        self.walk_to("review")
+        logs.append_event(self.repo, ITEM, "spec.revised")  # stale
+        self.forbid("review")
+        machine.advance(self.repo, ITEM, "spec",
+                        reason="approach.rejected: x")
+        self.art("spec.md", "# Spec v2\n\n## Journey impact\nJ-001.\n")
+        with self.assertRaises(machine.GateError) as ctx:
+            machine.advance(self.repo, ITEM, "plan")
+        self.assertIn("spec.revised", str(ctx.exception))
+        logs.append_event(self.repo, ITEM, "spec.revised")
+        meta, _ = machine.advance(self.repo, ITEM, "plan")
+        self.assertEqual(meta["stage"], "plan")
+
+    def test_refusal_names_both_missing_pieces(self):
+        # AC8: (a) and (b) both named. The edge required a non-empty
+        # graveyard, so simulate a bad cleanup truncating it afterwards.
+        self.make_item()
+        self.redesign()
+        self.art("approaches/forbidden.md", "")  # truncated post-edge
+        self.art("spec.md", "# Spec v2\n\n## Journey impact\nJ-001.\n")
+        with self.assertRaises(machine.GateError) as ctx:
+            machine.advance(self.repo, ITEM, "plan")
+        msg = str(ctx.exception)
+        self.assertIn("approaches/forbidden.md", msg)
+        self.assertIn("spec.revised", msg)
+
+    def test_zero_redesign_items_gate_inert(self):
+        # AC8: no approach edge - no spec.revised required, byte-
+        # identical behavior (the walk in every other test also proves
+        # this transitively).
+        self.make_item()
+        self.walk_to("plan")
+        self.assertEqual(items.load_item(self.repo, ITEM)[0]["stage"],
+                         "plan")
+        self.assertNotIn("spec.revised",
+                         [e["event"] for e in
+                          logs.read_events(self.repo, ITEM)])
+
+    def test_honest_residual_stated_in_docstring(self):
+        # AC9, verified by inspection-as-test: freshness and existence,
+        # not comprehension.
+        doc = machine._require_fresh_redesign_spec.__doc__ or ""
+        self.assertIn("not comprehension", doc)
+
+    def test_forbidden_is_append_only_across_redesigns(self):
+        # AC10: a two-redesign fixture retains entry 1 intact.
+        self.make_item()
+        self.redesign(frm="review", entry=1)
+        approach.record_answer(self.repo, ITEM, "continue")
+        self.walk_to("review")
+        self.forbid("review", entry=2)
+        machine.advance(self.repo, ITEM, "spec",
+                        reason="approach.rejected: y")
+        text = approach.forbidden_path(self.repo, ITEM).read_text(
+            encoding="utf-8")
+        self.assertIn("(entry 1)", text)
+        self.assertIn("(entry 2)", text)
+
+    def test_owed_cost_pause_surfaces_post_redesign(self):
+        # AC7/bid-0098: with "cost" gated and cumulative rework at the
+        # threshold, the post-redesign plan -> implement entry is
+        # refused by breaker.precondition naming factory cost-answer -
+        # the redesign edge consumed nothing.
+        config_path = paths.config_path(self.repo)
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config["gates"] = ["cost"]
+        config_path.write_text(json.dumps(config, indent=2, sort_keys=True)
+                               + "\n", encoding="utf-8")
+        self.make_item()
+        # two rework edges, production path (no review.rejected events,
+        # so the review cap never trips)
+        self.walk_to("review")
+        machine.advance(self.repo, ITEM, "implement")
+        self.walk_to("review")
+        machine.advance(self.repo, ITEM, "implement")
+        # redesign from review
+        self.walk_to("review")
+        self.forbid("review")
+        machine.advance(self.repo, ITEM, "spec",
+                        reason="approach.rejected: x")
+        self.art("spec.md", "# Spec v2\n\n## Journey impact\nJ-001.\n")
+        logs.append_event(self.repo, ITEM, "spec.revised")
+        machine.advance(self.repo, ITEM, "plan")
+        self.art("plan.md", "- [ ] task v2\n")
+        with self.assertRaises(machine.GateError) as ctx:
+            machine.advance(self.repo, ITEM, "implement")
+        self.assertIn("factory cost-answer", str(ctx.exception))
+        # a stale pre-redesign answer does not admit it either
+        breaker_path = breaker.answer_path(self.repo, ITEM)
+        breaker_path.parent.mkdir(parents=True, exist_ok=True)
+        breaker_path.write_text("- answer: continue\n- rework-edges: 1\n",
+                                encoding="utf-8")
+        with self.assertRaises(machine.GateError) as ctx:
+            machine.advance(self.repo, ITEM, "implement")
+        self.assertIn("stale", str(ctx.exception))
