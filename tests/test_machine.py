@@ -32,6 +32,17 @@ def write(repo, rel, text="content\n"):
     p.write_text(text, encoding="utf-8")
 
 
+def mark_round(repo, item_id="0001-thing"):
+    """Item 0025: the engine-written entry-into-implement marker. Tests
+    that seed an item mid-pipeline (rather than walking it through
+    machine.advance) must also seed the round marker the real walk
+    would have logged, or every round-scoped gate fails closed (B4).
+    Precedent: TestCostBreakerSeam.seed already seeds stage.advance
+    edges through logs.append_event the same way."""
+    logs.append_event(repo, item_id, "stage.advance",
+                      {"from": "plan", "to": "implement"})
+
+
 SPEC_MD = "# Spec\n\n## Journey impact\nNone - no customer journey affected.\n"
 
 
@@ -222,6 +233,7 @@ class TestGates(MachineTest):
     def test_review_requires_branch_and_completion_event(self):
         subprocess.run(["git", "init", "-q"], cwd=self.repo, check=True)
         make_item(self.repo, stage="implement", priority=1)
+        mark_round(self.repo)
         with self.assertRaises(machine.GateError):
             machine.advance(self.repo, "0001-thing", "review")
         subprocess.run(["git", "commit", "-q", "--allow-empty", "-m", "x"], cwd=self.repo, check=True,
@@ -235,6 +247,7 @@ class TestGates(MachineTest):
 
     def test_verify_requires_synthesis_and_approval(self):
         make_item(self.repo, stage="review", priority=1)
+        mark_round(self.repo)
         with self.assertRaises(machine.GateError):
             machine.advance(self.repo, "0001-thing", "verify")
         write(self.repo, "reviews/synthesis.md")
@@ -243,6 +256,7 @@ class TestGates(MachineTest):
 
     def test_ship_and_done_require_evidence_events(self):
         make_item(self.repo, stage="verify", priority=1, journeys="none")
+        mark_round(self.repo)
         with self.assertRaises(machine.GateError):
             machine.advance(self.repo, "0001-thing", "ship")
         logs.append_event(self.repo, "0001-thing", "verify.green")
@@ -267,6 +281,7 @@ class TestGates(MachineTest):
 
     def test_assure_requires_verify_green(self):
         make_item(self.repo, stage="verify", priority=1)
+        mark_round(self.repo)
         with self.assertRaises(machine.GateError):
             machine.advance(self.repo, "0001-thing", "assure")
         logs.append_event(self.repo, "0001-thing", "verify.green")
@@ -288,6 +303,7 @@ class TestGates(MachineTest):
 
     def test_declaring_none_at_assure_still_advances_to_ship(self):
         make_item(self.repo, stage="assure", priority=1)
+        mark_round(self.repo)
         items.set_journeys(self.repo, "0001-thing", "none")
         meta, _ = items.load_item(self.repo, "0001-thing")
         self.assertEqual(machine.next_stage(meta), "ship")
@@ -309,6 +325,7 @@ class TestGateCorruption(MachineTest):
         # The only review.approved "evidence" is a corrupt line: the gate
         # must refuse exactly as if the event were never logged.
         make_item(self.repo, stage="review", priority=1)
+        mark_round(self.repo)
         write(self.repo, "reviews/synthesis.md")
         self.corrupt_line()
         with self.assertRaises(machine.GateError):
@@ -316,6 +333,7 @@ class TestGateCorruption(MachineTest):
 
     def test_valid_approval_beside_corrupt_line_advances(self):
         make_item(self.repo, stage="review", priority=1)
+        mark_round(self.repo)
         write(self.repo, "reviews/synthesis.md")
         self.corrupt_line('{"event": "spend", "ts": ')
         logs.append_event(self.repo, "0001-thing", "review.approved")
@@ -378,6 +396,7 @@ class TestShipGateAssurance(MachineTest):
         meta, body = items.load_item(self.repo, "0001-thing")
         meta["journeys"] = journeys
         items.save_item(self.repo, meta, body)
+        mark_round(self.repo)
         logs.append_event(self.repo, "0001-thing", "implement.completed")
         logs.append_event(self.repo, "0001-thing", "verify.green")
 
@@ -394,7 +413,8 @@ class TestShipGateAssurance(MachineTest):
         self._to_assure()
         _write_assurance(self.repo)
         logs.append_event(self.repo, "0001-thing", "assure.passed")
-        logs.append_event(self.repo, "0001-thing", "implement.completed")
+        logs.append_event(self.repo, "0001-thing", "stage.advance",
+                          {"from": "assure", "to": "implement"})
         with self.assertRaises(machine.GateError):
             machine.advance(self.repo, "0001-thing", "ship")
 
@@ -492,6 +512,7 @@ class TestShipGateAssurance(MachineTest):
 
     def test_journeys_none_ship_gate_unchanged(self):
         meta = make_item(self.repo, stage="verify", priority=1)
+        mark_round(self.repo)
         meta, body = items.load_item(self.repo, "0001-thing")
         meta["journeys"] = "none"
         items.save_item(self.repo, meta, body)
@@ -601,6 +622,7 @@ class TestCostBreakerSeam(MachineTest):
                      GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t"))
         subprocess.run(["git", "branch", "factory/0001-thing"],
                        cwd=self.repo, check=True)
+        mark_round(self.repo)
         logs.append_event(self.repo, "0001-thing", "implement.completed")
         meta, verdict = machine.advance(self.repo, "0001-thing", "review")
         self.assertEqual(meta["stage"], "review")

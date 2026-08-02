@@ -106,6 +106,8 @@ class GateTest(AttributionTest):
             "tier": "feature", "journeys": journeys, "priority": 1,
             "created": "2026-07-03T10:00:00Z",
             "updated": "2026-07-03T10:00:00Z"}, "# Thing\n")
+        logs.append_event(self.repo, ITEM, "stage.advance",
+                          {"from": "plan", "to": "implement"})
         for event in ("implement.completed", "verify.green", "assure.passed"):
             logs.append_event(self.repo, ITEM, event)
 
