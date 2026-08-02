@@ -6,7 +6,7 @@ import json
 import re
 
 from . import items, logs, paths
-from .machine import GateError, _last_index
+from .machine import GateError, _postdates_latest_implement
 
 FINGERPRINT_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -39,7 +39,7 @@ def record_confirmation(repo, item_id):
     meta, _body = items.load_item(repo, item_id)
     _require_assure_context(meta)
     events = logs.read_events(repo, item_id)
-    if _last_index(events, "assure.passed") <= _last_index(events, "implement.completed"):
+    if not _postdates_latest_implement(events, "assure.passed"):
         raise GateError("nothing to confirm: no assure.passed after the "
                         "latest implementation round")
     path = paths.item_dir(repo, item_id) / "assurance" / "human-confirmation.md"

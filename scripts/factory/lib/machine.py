@@ -2,15 +2,17 @@
 deterministic gatekeeper that refuses transitions whose preconditions
 (files and logged evidence events) are unmet. Spec §3.
 
-Evidence events are checked as lifetime counts, not scoped to the
-item's latest entry into its current stage, so stale evidence (e.g.
-an old review.approved after a later rework) satisfies gates.
-EXCEPTION: the ship gate's assurance evidence (assure.passed /
-assure.waived / assure.confirmed) is round-scoped — it must postdate
-the latest implement.completed, so assurance from before a rework
-never satisfies the ship gate. All other events (including
-assure.rejected, a lifetime count feeding the capped rework edge,
-and the assure entry gate's verify.green) are lifetime counts.
+Rework-gated evidence events are round-scoped (item 0025):
+implement.completed, review.approved, verify.green and the ship gate's
+assure.passed / assure.waived / assure.confirmed must each postdate
+the latest engine-written entry into implement — the last
+stage.advance whose data.to == "implement" and whose data.from is not
+in SPECIAL — by log-order index over the tolerant-read event list,
+never by timestamp. A SPECIAL-from resume returns only to paused-from
+and never starts a round; a log with no such marker fails closed.
+Non-postdating checks stay lifetime/presence checks: review.rejected
+and assure.rejected (the capped rework edges), ship.merged,
+repro.confirmed, and every file gate.
 
 advance() returns (meta, verdict): the cost breaker's verdict is computed
 on every transition and is advisory — the caller parks, the engine never
@@ -89,6 +91,68 @@ def _last_index(events, name):
         if event["event"] == name:
             idx = i
     return idx
+
+
+def _postdates_latest_implement(events, event):
+    """Item 0025 §1 — the one round-scoping predicate (B1/B5): the
+    latest occurrence of `event` strictly postdates the latest entry
+    into implement, by log-order index over the tolerant-read event
+    list. Never timestamps: FACTORY_NOW freezes test clocks and stamps
+    are %S-granular, so an entire rework round can share one second.
+
+    The round marker is the engine-written stage.advance appended by
+    advance() itself — matched by its data.to/data.from payload, never
+    by event name alone (bid-0064). A SPECIAL-from resume returns only
+    to paused-from (see advance()), so it never starts a round and is
+    excluded via the existing SPECIAL set — item 0015's verify->implement
+    edge will count here with no amendment (verify is not SPECIAL).
+
+    Fails closed (B4): no marker raises GateError naming the missing
+    entry into implement. Never a -1 sentinel — `index > -1` is true
+    for every logged event and would disarm all gates at once on a
+    corrupt or hand-edited log."""
+    marker = -1
+    for i, entry in enumerate(events):
+        if entry.get("event") != "stage.advance":
+            continue
+        data = entry.get("data")
+        if not isinstance(data, dict):
+            continue
+        if data.get("to") == "implement" and data.get("from") not in SPECIAL:
+            marker = i
+    if marker == -1:
+        raise GateError(
+            "no entry into implement recorded: the log has no "
+            "stage.advance with to 'implement' from a working stage, so "
+            "evidence cannot be scoped to an implementation round")
+    return _last_index(events, event) > marker
+
+
+def _stale_evidence_error(event, producer):
+    """Item 0025 §3 (B2, bid-0083): the one stale-evidence sentence
+    shape, shared by all four rework gates and distinct from
+    _require_event's 'not logged' — which would be provably false
+    against `factory log` output when the event exists. Names the
+    evidence event, the round-resetting entry into implement, and the
+    remediation."""
+    return GateError(
+        f"event {event!r} after the latest implementation round required: "
+        f"the logged {event!r} predates the latest entry into implement "
+        f"— re-run {producer} to log fresh evidence")
+
+
+def _require_event_this_round(repo, meta, event, producer, why, events=None):
+    """Round-scoped _require_event (item 0025 §2): the event must exist
+    AND postdate the latest entry into implement. Three distinct
+    refusals: missing round marker (fail closed, first), absent event
+    ('not logged'), stale event (the B2 shape)."""
+    if events is None:
+        events = logs.read_events(repo, meta["id"])
+    fresh = _postdates_latest_implement(events, event)
+    if _last_index(events, event) == -1:
+        raise GateError(f"event {event!r} not logged ({why})")
+    if not fresh:
+        raise _stale_evidence_error(event, producer)
 
 
 def _config_dict(repo):
@@ -385,33 +449,37 @@ def _gate_review(repo, meta):
     )
     if result.returncode != 0:
         raise GateError(f"implementation branch {branch} required")
-    _require_event(repo, meta, "implement.completed", "implementation must be finished")
+    _require_event_this_round(repo, meta, "implement.completed", "implement",
+                              "implementation must be finished")
 
 
 def _gate_verify(repo, meta):
     _require_file(repo, meta, "reviews/synthesis.md", "council review synthesis required")
-    _require_event(repo, meta, "review.approved",
-                   "review must be approved with no blocking findings")
+    _require_event_this_round(repo, meta, "review.approved", "review",
+                              "review must be approved with no blocking findings")
 
 
 def _gate_assure(repo, meta):
-    _require_event(repo, meta, "verify.green",
-                   "verification evidence required before assurance")
+    _require_event_this_round(repo, meta, "verify.green", "verify",
+                              "verification evidence required before assurance")
 
 
 def _gate_ship(repo, meta):
-    if meta.get("journeys") == "none":
-        _require_event(repo, meta, "verify.green", "verification evidence required")
-        return
     events = logs.read_events(repo, meta["id"])
-    impl = _last_index(events, "implement.completed")
-    passed = _last_index(events, "assure.passed") > impl
-    waived = _last_index(events, "assure.waived") > impl
+    if meta.get("journeys") == "none":
+        _require_event_this_round(repo, meta, "verify.green", "verify",
+                                  "verification evidence required",
+                                  events=events)
+        return
+    passed = _postdates_latest_implement(events, "assure.passed")
+    waived = _postdates_latest_implement(events, "assure.waived")
     if not (passed or waived):
+        if _last_index(events, "assure.passed") != -1:
+            raise _stale_evidence_error("assure.passed", "assure")
         raise GateError("assure.passed (or a recorded human waiver) after the "
                         "latest implementation round required")
     if "assure" in _config_gates(repo) and not (
-            waived or _last_index(events, "assure.confirmed") > impl):
+            waived or _postdates_latest_implement(events, "assure.confirmed")):
         raise GateError("human confirmation required: factory confirm <id> "
                         "(the assure gate is configured)")
     # a recorded human waiver is authoritative — artifact checks are the machine's, not the human's
