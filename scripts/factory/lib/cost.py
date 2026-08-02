@@ -1,8 +1,8 @@
 """Read-side per-item cost aggregation. Item spec 0004 §2.
 
-Tier-1 effort proxies (per-stage wall-clock, stage advances, retries)
-are derived retroactively from stage.advance events already on disk —
-zero new writes. Tier-2 rolls up spend events skills wrote through the
+Tier-1 effort proxies (per-stage wall-clock, stage advances, rework
+edges) are derived retroactively from stage.advance events already on
+disk — zero new writes. Tier-2 rolls up spend events skills wrote through the
 existing `factory log` path. Every rendered figure carries exactly one
 provenance class (measured | proxy | unmeasured), no line ever blends
 classes, and the orchestrator's own main-loop tokens are always
@@ -16,6 +16,18 @@ from . import initrepo, items, logs, machine
 UNMEASURED_NOTE = "orchestrator main-loop tokens"
 WAITING_STAGES = frozenset(machine.SPECIAL)
 TOKEN_KEYS = ("input", "output", "total")
+
+# The rework substrate: a backward stage.advance edge into implement.
+# Engine-written (machine.advance appends every stage.advance itself), so
+# no skill can forget to log it. "verify" counts zero today — machine
+# admits no verify -> implement edge — and is listed so 0014/0015 cannot
+# silently under-count when they add one. waiting-human -> implement is
+# deliberately absent: resumes must not inflate the count.
+REWORK_FROM = frozenset({"review", "assure", "verify"})
+REWORK_TO = "implement"
+REWORK_SUBSTRATE_NOTE = (
+    "backward stage.advance edges (review|assure|verify → implement); "
+    "rework routed through waiting-human is not counted")
 
 
 def _parse_ts(stamp):
@@ -56,7 +68,7 @@ def summarize(repo, item_id):
     stages = {}
     waiting = 0
     advances = 0
-    retries = 0
+    rework_edges = 0
     start = None
     prev = None
     current_stage = "idea"
@@ -70,8 +82,6 @@ def summarize(repo, item_id):
             prev = ts
             _bucket(stages, current_stage)["entries"] += 1
         name = event.get("event")
-        if name == "review.rejected":
-            retries += 1
         if name != "stage.advance" or ts is None:
             continue
         data = event.get("data")
@@ -84,6 +94,9 @@ def summarize(repo, item_id):
         else:
             _bucket(stages, current_stage)["active_seconds"] += seconds
         advances += 1
+        if (data.get("from", current_stage) in REWORK_FROM
+                and data["to"] == REWORK_TO):
+            rework_edges += 1
         current_stage = data["to"]
         prev = ts
         if current_stage not in WAITING_STAGES and not resumed:
@@ -137,7 +150,7 @@ def summarize(repo, item_id):
         "active_seconds": active,
         "waiting_seconds": waiting,
         "advances": advances,
-        "retries": retries,
+        "rework_edges": rework_edges,
         "dispatches": dispatches,
         "stages": stages,
         "measured": measured,
@@ -201,8 +214,9 @@ def render_text(summary):
             line += f", dispatches {bucket['dispatches']}"
         lines.append(line)
     lines.append(f"[proxy] advances: {summary['advances']}, "
-                 f"retries: {summary['retries']}, "
+                 f"rework edges: {summary['rework_edges']}, "
                  f"dispatches: {summary['dispatches']}")
+    lines.append(f"[proxy] rework substrate: {REWORK_SUBSTRATE_NOTE}")
     lines.append(_measured_text(summary))
     lines.append(f"[unmeasured] UNMEASURED: {UNMEASURED_NOTE} "
                  "(not in any figure above)")
@@ -222,7 +236,7 @@ def render_receipt(summary):
              f"(waiting {format_duration(summary['waiting_seconds'])}), "
              f"{summary['advances']} advances, "
              f"{summary['dispatches']} dispatches, "
-             f"{summary['retries']} retries")
+             f"{summary['rework_edges']} rework edges")
     if summary["corrupt_log_lines"]:
         proxy += f", corrupt log lines skipped: {summary['corrupt_log_lines']}"
     measured = summary["measured"]

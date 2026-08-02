@@ -187,7 +187,7 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 0)
         summary = json.loads(out)
         for key in ("item", "window", "elapsed_seconds", "active_seconds",
-                    "waiting_seconds", "advances", "retries", "dispatches",
+                    "waiting_seconds", "advances", "rework_edges", "dispatches",
                     "stages", "measured", "unmeasured",
                     "invalid_spend_events"):
             self.assertIn(key, summary)

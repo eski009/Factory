@@ -68,7 +68,7 @@ class SummarizeTimelineTest(CostTestCase):
                          summary["active_seconds"] + summary["waiting_seconds"])
         self.assertEqual(summary["elapsed_seconds"], 66600)
 
-    def test_rework_reentry_counts_entries_and_retries(self):
+    def test_rework_reentry_counts_entries_and_rework_edges(self):
         self.advance_at("2026-07-03T00:00:00Z", "plan", "implement")
         self.advance_at("2026-07-03T01:00:00Z", "implement", "review")
         self.log_at("2026-07-03T01:30:00Z", "review.rejected", {"round": 1})
@@ -79,7 +79,7 @@ class SummarizeTimelineTest(CostTestCase):
         self.assertEqual(summary["stages"]["implement"]["entries"], 2)
         self.assertEqual(summary["stages"]["implement"]["active_seconds"], 7200)
         self.assertEqual(summary["stages"]["review"]["active_seconds"], 3600)
-        self.assertEqual(summary["retries"], 1)
+        self.assertEqual(summary["rework_edges"], 1)
         self.assertEqual(summary["advances"], 4)
 
     def test_open_item_window_ends_at_frozen_now(self):
@@ -110,7 +110,8 @@ class SummarizeTimelineTest(CostTestCase):
         os.environ["FACTORY_NOW"] = "2026-07-03T01:00:00Z"
         summary = cost.summarize(self.repo, ITEM)
         expected = {"item", "window", "elapsed_seconds", "active_seconds",
-                    "waiting_seconds", "advances", "retries", "dispatches",
+                    "waiting_seconds", "advances", "rework_edges",
+                    "dispatches",
                     "stages", "measured", "unmeasured", "invalid_spend_events",
                     "corrupt_log_lines"}
         self.assertEqual(set(summary), expected)
@@ -121,6 +122,117 @@ class SummarizeTimelineTest(CostTestCase):
     def test_unknown_item_raises_item_error(self):
         with self.assertRaises(items.ItemError):
             cost.summarize(self.repo, "0999-none")
+
+
+class ReworkEdgeSubstrateTest(CostTestCase):
+    """AC1/AC2: the rework figure is derived from the backward
+    stage.advance edges the engine writes itself, never from the
+    rejection events a skill may forget to log."""
+
+    def seed_full_fixture(self):
+        # 4 backward edges into implement + 2 review.rejected + 2
+        # assure.rejected, on one item. The edges are the substrate; the
+        # rejection events are demoted telemetry.
+        self.advance_at("2026-07-03T00:00:00Z", "plan", "implement")
+        self.advance_at("2026-07-03T01:00:00Z", "implement", "review")
+        self.log_at("2026-07-03T01:10:00Z", "review.rejected", {"round": 1})
+        self.advance_at("2026-07-03T01:30:00Z", "review", "implement")
+        self.advance_at("2026-07-03T02:00:00Z", "implement", "review")
+        self.log_at("2026-07-03T02:10:00Z", "review.rejected", {"round": 2})
+        self.advance_at("2026-07-03T02:30:00Z", "review", "implement")
+        self.advance_at("2026-07-03T03:00:00Z", "implement", "assure")
+        self.log_at("2026-07-03T03:10:00Z", "assure.rejected", {"round": 1})
+        self.advance_at("2026-07-03T03:30:00Z", "assure", "implement")
+        self.advance_at("2026-07-03T04:00:00Z", "implement", "assure")
+        self.log_at("2026-07-03T04:10:00Z", "assure.rejected", {"round": 2})
+        self.advance_at("2026-07-03T04:30:00Z", "assure", "implement")
+        os.environ["FACTORY_NOW"] = "2026-07-03T05:00:00Z"
+
+    def strip_events(self, names):
+        path = self.repo / f".factory/items/{ITEM}/log.jsonl"
+        kept = [line for line in path.read_text(encoding="utf-8").splitlines()
+                if json.loads(line)["event"] not in names]
+        path.write_text("\n".join(kept) + "\n", encoding="utf-8")
+
+    def test_arm_a_edges_and_rejections_report_four(self):
+        self.seed_full_fixture()
+        summary = cost.summarize(self.repo, ITEM)
+        self.assertEqual(summary["rework_edges"], 4)
+
+    def test_arm_b_deleting_rejection_events_leaves_four(self):
+        self.seed_full_fixture()
+        self.strip_events({"review.rejected", "assure.rejected"})
+        summary = cost.summarize(self.repo, ITEM)
+        self.assertEqual(summary["rework_edges"], 4)
+
+    def test_arm_c_deleting_edges_leaves_zero_with_all_rejections(self):
+        self.seed_full_fixture()
+        path = self.repo / f".factory/items/{ITEM}/log.jsonl"
+        kept = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            event = json.loads(line)
+            data = event.get("data") or {}
+            if (event["event"] == "stage.advance"
+                    and data.get("to") == "implement"
+                    and data.get("from") in ("review", "assure", "verify")):
+                continue
+            kept.append(line)
+        path.write_text("\n".join(kept) + "\n", encoding="utf-8")
+        summary = cost.summarize(self.repo, ITEM)
+        self.assertEqual(summary["rework_edges"], 0)
+
+    def test_summary_has_no_retries_key(self):
+        self.seed_full_fixture()
+        self.assertNotIn("retries", cost.summarize(self.repo, ITEM))
+
+    def test_cost_module_never_reads_rejection_events(self):
+        src = (Path(__file__).resolve().parents[1]
+               / "scripts/factory/lib/cost.py").read_text(encoding="utf-8")
+        self.assertNotIn("review.rejected", src)
+        self.assertNotIn("assure.rejected", src)
+
+    def test_verify_to_implement_counts_although_engine_admits_none(self):
+        self.advance_at("2026-07-03T00:00:00Z", "verify", "implement")
+        os.environ["FACTORY_NOW"] = "2026-07-03T01:00:00Z"
+        self.assertEqual(cost.summarize(self.repo, ITEM)["rework_edges"], 1)
+
+    def test_missing_from_field_falls_back_to_tracked_stage(self):
+        self.advance_at("2026-07-03T00:00:00Z", "plan", "implement")
+        self.advance_at("2026-07-03T01:00:00Z", "implement", "review")
+        # older log line: no "from" — summarize's tracked current_stage is
+        # "review", so this is still a rework edge.
+        self.log_at("2026-07-03T01:30:00Z", "stage.advance", {"to": "implement"})
+        os.environ["FACTORY_NOW"] = "2026-07-03T02:00:00Z"
+        self.assertEqual(cost.summarize(self.repo, ITEM)["rework_edges"], 1)
+
+    def test_waiting_human_resume_is_never_a_rework_edge(self):
+        """AC23 (M6): rework laundered through waiting-human is real cost
+        and zero backward edges. Stated, not implied."""
+        self.advance_at("2026-07-03T00:00:00Z", "review", "verify")
+        self.advance_at("2026-07-03T01:00:00Z", "verify", "waiting-human")
+        self.advance_at("2026-07-03T02:00:00Z", "waiting-human", "verify")
+        self.advance_at("2026-07-03T03:00:00Z", "verify", "assure")
+        self.advance_at("2026-07-03T04:00:00Z", "assure", "waiting-human")
+        self.advance_at("2026-07-03T05:00:00Z", "waiting-human", "assure")
+        os.environ["FACTORY_NOW"] = "2026-07-03T06:00:00Z"
+        self.assertEqual(cost.summarize(self.repo, ITEM)["rework_edges"], 0)
+
+    def test_render_text_states_the_substrate_and_its_undercount(self):
+        self.seed_full_fixture()
+        text = cost.render_text(cost.summarize(self.repo, ITEM))
+        self.assertIn(
+            "[proxy] rework substrate: backward stage.advance edges "
+            "(review|assure|verify → implement); rework routed through "
+            "waiting-human is not counted", text)
+        self.assertIn("rework edges: 4", text)
+        self.assertNotIn("retries", text)
+
+    def test_spec_states_the_undercount(self):
+        spec = (Path(__file__).resolve().parents[1]
+                / ".factory/items/0016-cost-circuit-breaker-on-engine-authorita"
+                  "/spec.md").read_text(encoding="utf-8")
+        self.assertIn("rework routed through `waiting-human` is not counted",
+                      spec)
 
 
 class SpendRollupTest(CostTestCase):
@@ -341,7 +453,7 @@ class CorruptLogSurfacingTest(CostTestCase):
         receipt = cost.render_receipt(cost.summarize(self.repo, ITEM))
         self.assertEqual(receipt, "\n".join([
             "- [proxy] active 00h 05m (waiting 00h 00m), "
-            "0 advances, 0 dispatches, 0 retries",
+            "0 advances, 0 dispatches, 0 rework edges",
             "- [measured] tokens: none logged",
             "- [unmeasured] UNMEASURED: orchestrator main-loop tokens",
         ]))
