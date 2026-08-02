@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from scripts.factory.lib import initrepo, items, logs, packet
+from scripts.factory.lib import cost, initrepo, items, logs, packet
 
 
 class TestPacket(unittest.TestCase):
@@ -90,6 +90,10 @@ class TestPacket(unittest.TestCase):
 
 
 class TestCostDecisionPacket(unittest.TestCase):
+    """AC10/AC11: the packet a crossing item parks with states its own
+    cost, the backlog it is blocking, and the three named options, each
+    with one consequence line and one provenance tag."""
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.repo = Path(self.tmp.name)
@@ -430,6 +434,64 @@ class TestJ001PermittedDiffSet(unittest.TestCase):
         line = self.oracle_line()
         self.assertIn("narrowed by item 0016", line)
         self.assertIn("`## Respond`", line)
+
+
+class TestJ001Regression(unittest.TestCase):
+    """AC26: this item touches J-001's packet and status surfaces. The
+    permitted diffs are the two renames and the `## Respond` block that
+    spec §6/B3 mandates on every packet; every other J-001 signal is left
+    exactly as this item found it."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        initrepo.init(self.repo)
+        os.environ["FACTORY_NOW"] = "2026-08-02T06:00:00Z"
+        items.save_item(self.repo, {
+            "id": "0001-thing", "title": "Thing", "stage": "waiting-human",
+            "kind": "backend", "priority": 1, "paused-from": "assure",
+            "paused-reason": "confirm the assure walk",
+            "created": "2026-08-02T00:00:00Z",
+            "updated": "2026-08-02T06:00:00Z"}, "# Thing\n")
+
+    def tearDown(self):
+        os.environ.pop("FACTORY_NOW", None)
+        self.tmp.cleanup()
+
+    def test_respond_still_renders_exactly_one_action(self):
+        respond = packet.render_packet(
+            self.repo, "0001-thing").split("## Respond\n", 1)[1]
+        actions = [line for line in respond.splitlines()
+                   if line.startswith("- `")]
+        self.assertEqual(len(actions), 1, actions)
+
+    def test_spend_receipt_diff_is_only_the_rework_edges_label(self):
+        text = packet.render_packet(self.repo, "0001-thing")
+        section = text.split("## Spend\n", 1)[1].split("\n\n## Respond", 1)[0]
+        lines = section.splitlines()
+        self.assertEqual(len(lines), 3)
+        self.assertTrue(lines[0].endswith("0 rework edges"), lines[0])
+        self.assertNotIn("retries", text)
+
+    def test_this_item_introduces_no_known_fails_line(self):
+        """0013 owns the first-screen known-fails line; 0016 must leave
+        that surface exactly as it found it."""
+        text = packet.render_packet(self.repo, "0001-thing")
+        self.assertNotIn("shipped with known fails", text)
+
+    def test_status_json_spend_key_renamed_and_assurance_untouched(self):
+        summary = cost.summarize(self.repo, "0001-thing")
+        self.assertIn("rework_edges", summary)
+        self.assertNotIn("retries", summary)
+        meta, _body = items.load_item(self.repo, "0001-thing")
+        self.assertNotIn("assurance", meta)
+
+    def test_no_cost_decision_block_on_a_j001_packet(self):
+        """The `## Cost decision` block is a new state, not a diff: it
+        appears only on a cost-breaker pause, never on J-001's path."""
+        for render in (packet.render_packet, packet.render_packet_html):
+            text = render(self.repo, "0001-thing")
+            self.assertNotIn("Cost decision", text)
 
 
 if __name__ == "__main__":
