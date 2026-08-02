@@ -585,3 +585,39 @@ class TestSpecExitGate(ApproachTest):
         with self.assertRaises(machine.GateError) as ctx:
             machine.advance(self.repo, ITEM, "implement")
         self.assertIn("stale", str(ctx.exception))
+
+
+class TestCostApproachKeys(ApproachTest):
+    """AC5/AC19/AC20: one summarize read feeds every renderer; zero-
+    approach items are byte-identical to the pre-change engine."""
+
+    def test_summarize_counts_both_populations(self):
+        # Production-path walk: one pre-redesign rework edge, the
+        # redesign, one post-redesign rework edge.
+        self.make_item()
+        self.walk_to("review")
+        machine.advance(self.repo, ITEM, "implement")   # rework 1
+        self.walk_to("verify")
+        machine.advance(self.repo, ITEM, "implement",
+                        reason="verify rework: x")      # rework 2
+        self.walk_to("verify")
+        self.forbid("verify")
+        machine.advance(self.repo, ITEM, "spec",
+                        reason="approach.rejected: x")  # redesign
+        self.walk_to("review")
+        machine.advance(self.repo, ITEM, "implement")   # rework 3
+        summary = cost.summarize(self.repo, ITEM)
+        self.assertEqual(summary["approach_edges"], 1)
+        self.assertEqual(summary["rework_edges_since_last_redesign"], 1)
+        # AC5: cumulative, redesigns included, NEVER reset
+        self.assertEqual(summary["rework_edges"], 3)
+        self.assertEqual(breaker.rework_edges(self.repo, ITEM), 3)
+
+    def test_zero_approach_items_have_no_new_keys(self):
+        # AC20: the keys are absent, not zero - so status --json and
+        # cost --json bytes cannot change for un-redesigned items.
+        self.make_item()
+        self.walk_to("implement")
+        summary = cost.summarize(self.repo, ITEM)
+        self.assertNotIn("approach_edges", summary)
+        self.assertNotIn("rework_edges_since_last_redesign", summary)
