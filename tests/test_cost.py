@@ -549,5 +549,128 @@ class CorruptLogSurfacingTest(CostTestCase):
         ]))
 
 
+class AggregateModeTest(unittest.TestCase):
+    """AC5-AC8: a backlog-wide view that reports exactly three things
+    plus the mandatory [unmeasured] line, and never aggregates across
+    items — the two spend-event classes measure different quantities, so
+    a sum has no provenance class."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        initrepo.init(self.repo)
+        os.environ["FACTORY_NOW"] = "2026-07-03T00:00:00Z"
+
+    def tearDown(self):
+        os.environ.pop("FACTORY_NOW", None)
+        self.tmp.cleanup()
+
+    def put(self, item_id, stage="implement", tier=None):
+        meta = {"id": item_id, "title": item_id, "stage": stage,
+                "kind": "backend", "created": "2026-07-03T00:00:00Z",
+                "updated": "2026-07-03T00:00:00Z"}
+        if tier:
+            meta["tier"] = tier
+        items.save_item(self.repo, meta, "")
+
+    def log_at(self, item_id, ts, event, data=None):
+        os.environ["FACTORY_NOW"] = ts
+        logs.append_event(self.repo, item_id, event, data)
+
+    def seed(self):
+        # 0001: one measured spend event, one rework edge, spend carried
+        #       by one of its two advances.
+        self.put("0001-a")
+        self.log_at("0001-a", "2026-07-03T00:00:00Z", "stage.advance",
+                    {"from": "plan", "to": "implement"})
+        self.log_at("0001-a", "2026-07-03T00:30:00Z", "spend",
+                    {"provenance": "measured", "stage": "implement",
+                     "dispatches": 1, "tokens": {"total": 100}})
+        self.log_at("0001-a", "2026-07-03T01:00:00Z", "stage.advance",
+                    {"from": "review", "to": "implement"})
+        # 0002: no spend events at all, one advance.
+        self.put("0002-b", stage="done", tier="feature")
+        self.log_at("0002-b", "2026-07-03T00:00:00Z", "stage.advance",
+                    {"from": "ship", "to": "done"})
+        # 0003: a proxy-only spend event (valid, but not measured).
+        self.put("0003-c", stage="done")
+        self.log_at("0003-c", "2026-07-03T00:00:00Z", "spend",
+                    {"provenance": "proxy", "stage": "spec", "dispatches": 2})
+        self.log_at("0003-c", "2026-07-03T00:10:00Z", "stage.advance",
+                    {"from": "ship", "to": "done"})
+        os.environ["FACTORY_NOW"] = "2026-07-03T02:00:00Z"
+        return cost.summarize_all(self.repo)
+
+    def test_top_level_keys_are_exactly_items_and_coverage(self):
+        summary = self.seed()
+        self.assertEqual(set(summary), {"items", "coverage"})
+        self.assertEqual(
+            set(summary["coverage"]),
+            {"items_with_spend", "items_total", "advances_with_spend",
+             "advances_total", "done_items", "done_with_tier"})
+
+    def test_coverage_figures_are_scanned_not_hardcoded(self):
+        """AC8: seeded counts differ from this repo's 9/17."""
+        # seed() appends to the logs, so it is called exactly once here:
+        # a second call would double every scanned count.
+        summary = self.seed()
+        cov = summary["coverage"]
+        self.assertEqual(cov["items_total"], 3)
+        self.assertEqual(cov["items_with_spend"], 2)
+        self.assertEqual(cov["advances_total"], 4)
+        self.assertEqual(cov["advances_with_spend"], 2)
+        self.assertEqual(cov["done_items"], 2)
+        self.assertEqual(cov["done_with_tier"], 1)
+        text = cost.render_all_text(summary)
+        self.assertIn("[coverage] spend events present for 2 of 3 items; "
+                      "2 of 4 stage advances carry one", text)
+        self.assertNotIn("9 of 17", text)
+
+    def test_measured_line_only_for_items_with_measured_spend(self):
+        text = cost.render_all_text(self.seed())
+        self.assertIn("[measured] 0001-a: tokens total 100 (1 spend events) "
+                      "— LOWER BOUND (not summable)", text)
+        self.assertNotIn("[measured] 0002-b:", text)
+        self.assertNotIn("[measured] 0003-c:", text)
+
+    def test_proxy_block_present_for_every_item(self):
+        text = cost.render_all_text(self.seed())
+        for item_id, edges in (("0001-a", 1), ("0002-b", 0), ("0003-c", 0)):
+            self.assertIn(f"[proxy] {item_id}: advances ", text)
+            self.assertIn(f"rework edges {edges}", text)
+        self.assertIn("[proxy] stage implement: active ", text)
+
+    def test_unmeasured_line_names_both_empty_populations(self):
+        text = cost.render_all_text(self.seed())
+        self.assertIn("[unmeasured] UNMEASURED: orchestrator main-loop "
+                      "tokens; per-tier medians (1 of 2 done items carry a "
+                      "tier)", text)
+
+    def test_no_cross_item_aggregate_in_text_or_json(self):
+        """AC6: the median clause is discharged as UNMEASURED, never as a
+        number, and nothing sums or averages across items."""
+        summary = self.seed()
+        text = cost.render_all_text(summary)
+        # 0001-a is the only item with measured tokens (100). Neither a
+        # sum nor a mean of the population appears anywhere.
+        self.assertNotIn("total: 100", text)
+        for line in text.splitlines():
+            lowered = line.lower()
+            self.assertNotRegex(lowered, r"median[: ]+\d")
+            self.assertNotRegex(lowered, r"\b(mean|average)\b")
+            self.assertNotIn("cost per item", lowered)
+            self.assertNotIn("across all items", lowered)
+        payload = json.dumps(summary, sort_keys=True)
+        json.loads(payload)
+        self.assertEqual(set(json.loads(payload)), {"items", "coverage"})
+
+    def test_every_figure_line_carries_one_tag(self):
+        text = cost.render_all_text(self.seed())
+        tags = ("[proxy]", "[measured]", "[unmeasured]", "[coverage]")
+        for line in text.splitlines():
+            self.assertTrue(line.startswith(tags), line)
+            self.assertEqual(sum(line.count(tag) for tag in tags), 1, line)
+
+
 if __name__ == "__main__":
     unittest.main()

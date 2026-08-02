@@ -284,3 +284,105 @@ def render_receipt(summary):
             lines.append(f"- [measured] stage {name}: {', '.join(segments)} "
                          f"({bucket['measured']['events']} events)")
     return "\n".join(lines)
+
+
+def _coverage_scan(repo, item_id):
+    """Walk one item's log in order. An advance 'carries' a spend event
+    when at least one valid spend event appears after the previous
+    stage.advance (or the start of the log) and before it. Every figure
+    here is computed by scanning — no literal is ever baked in."""
+    events, _corrupt = logs.read_events_with_stats(repo, item_id)
+    advances = 0
+    carried = 0
+    any_spend = False
+    pending = False
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        name = event.get("event")
+        if name == "spend":
+            if not initrepo.spend_event_errors(event.get("data"), "spend"):
+                any_spend = True
+                pending = True
+        elif name == "stage.advance":
+            data = event.get("data")
+            if not isinstance(data, dict) or "to" not in data:
+                continue
+            advances += 1
+            if pending:
+                carried += 1
+            pending = False
+    return {"advances": advances, "carried": carried, "any_spend": any_spend}
+
+
+def summarize_all(repo):
+    """Backlog-wide aggregate (item spec 0016 §2). Reports exactly three
+    things — per-item measured lower bounds, per-item proxy blocks, one
+    coverage line — plus the mandatory [unmeasured] line. It never sums,
+    averages, or compares token figures across items: the inner and outer
+    spend-event classes measure different quantities (bid-0063), so a
+    cross-item total has no provenance class and would be a constraint
+    violation rather than an inaccuracy."""
+    metas, _errors = items.list_items_safe(repo)
+    metas = sorted(metas, key=lambda m: m["id"])
+    rows = []
+    items_with_spend = 0
+    advances_total = 0
+    advances_with_spend = 0
+    done_items = 0
+    done_with_tier = 0
+    for meta in metas:
+        rows.append(summarize(repo, meta["id"]))
+        scan = _coverage_scan(repo, meta["id"])
+        advances_total += scan["advances"]
+        advances_with_spend += scan["carried"]
+        if scan["any_spend"]:
+            items_with_spend += 1
+        if meta.get("stage") == "done":
+            done_items += 1
+            if meta.get("tier"):
+                done_with_tier += 1
+    return {
+        "items": rows,
+        "coverage": {
+            "items_with_spend": items_with_spend,
+            "items_total": len(rows),
+            "advances_with_spend": advances_with_spend,
+            "advances_total": advances_total,
+            "done_items": done_items,
+            "done_with_tier": done_with_tier,
+        },
+    }
+
+
+def render_all_text(summary):
+    """Aggregate text contract: per-item measured lower bounds, per-item
+    proxy blocks, one [coverage] line, one [unmeasured] line. No line and
+    no key aggregates across items."""
+    lines = []
+    for item in summary["items"]:
+        segments = _token_segments(item["measured"])
+        if segments:
+            lines.append(f"[measured] {item['item']}: tokens "
+                         f"{', '.join(segments)} "
+                         f"({item['measured']['events']} spend events) "
+                         "— LOWER BOUND (not summable)")
+        for name in machine.STAGES:
+            bucket = item["stages"].get(name)
+            if bucket is None:
+                continue
+            lines.append(f"[proxy] stage {name}: "
+                         f"active {format_duration(bucket['active_seconds'])}, "
+                         f"entries {bucket['entries']}")
+        lines.append(f"[proxy] {item['item']}: advances {item['advances']}, "
+                     f"rework edges {item['rework_edges']}")
+    cov = summary["coverage"]
+    lines.append(f"[coverage] spend events present for "
+                 f"{cov['items_with_spend']} of {cov['items_total']} items; "
+                 f"{cov['advances_with_spend']} of {cov['advances_total']} "
+                 "stage advances carry one")
+    lines.append(f"[unmeasured] UNMEASURED: {UNMEASURED_NOTE}; per-tier "
+                 f"medians ({cov['done_with_tier']} of {cov['done_items']} "
+                 "done items carry a tier) — no cross-item total or median "
+                 "is computed")
+    return "\n".join(lines)
