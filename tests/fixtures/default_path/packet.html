@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Factory packet — Thing</title>
+  <style>
+    :root { color-scheme: light dark; --bg: #f5f5f2; --panel: #fff;
+      --text: #252522; --muted: #6f706b; --line: #d9d9d3;
+      --accent: #2459a9; --ask: #fff4cc; --ask-line: #d29b20; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text);
+      font: 17px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    main { width: min(100% - 32px, 760px); margin: 0 auto; padding: 48px 0 72px; }
+    h1 { margin: 0 0 28px; font-size: clamp(2rem, 8vw, 3.25rem); line-height: 1.08; }
+    h2 { margin: 0 0 16px; font-size: 1.3rem; }
+    section { margin-top: 20px; padding: 24px; border: 1px solid var(--line);
+      border-radius: 14px; background: var(--panel); }
+    .ask, #cost-decision { border-left: 5px solid var(--ask-line); background: var(--ask); }
+    .ask h2, #cost-decision h2 { text-transform: uppercase; letter-spacing: .08em; font-size: .84rem; }
+    ul { margin: 0; padding-left: 1.25rem; }
+    li + li { margin-top: 10px; }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 0; list-style: none; }
+    .meta li { margin: 0; }
+    a { color: var(--accent); font-weight: 650; text-underline-offset: 3px; overflow-wrap: anywhere; }
+    .links { list-style: none; padding: 0; }
+    .links a { display: block; padding: 14px 16px; border: 1px solid var(--line);
+      border-radius: 10px; text-decoration: none; }
+    .missing { color: var(--muted); }
+    code { padding: .15em .35em; border-radius: 5px; background: color-mix(in srgb, var(--text) 9%, transparent);
+      overflow-wrap: anywhere; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #181918; --panel: #222321; --text: #ededeb; --muted: #aaa9a4;
+        --line: #3d3e3a; --accent: #91baff; --ask: #332d1d; --ask-line: #e2ae3d; }
+    }
+    @media (max-width: 520px) {
+      main { width: min(100% - 20px, 760px); padding: 28px 0 48px; }
+      section { padding: 20px 18px; border-radius: 11px; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Thing</h1>
+  <section aria-label="Item metadata">
+    <ul class="meta">
+      <li><strong>id:</strong> 0001-thing</li>
+      <li><strong>stage:</strong> assure</li>
+      <li><strong>kind:</strong> backend</li>
+      <li><strong>priority:</strong> 1</li>
+    </ul>
+  </section>
+  <section id="view-options">
+    <h2>View the options</h2>
+    <ul class="links">
+      <li><a href="#artifacts">Review the available packet details</a></li>
+      <li><a href="<REPOURI>/.factory/items/0001-thing/spec.md">Open spec.md</a></li>
+      <li><a href="<REPOURI>/.factory/items/0001-thing/assurance/verdicts.json">Open assurance/verdicts.json</a></li>
+    </ul>
+  </section>
+  <section id="artifacts">
+    <h2>Artifacts</h2>
+    <ul>
+      <li class="missing">triage.md (not yet)</li>
+      <li><a href="<REPOURI>/.factory/items/0001-thing/spec.md">spec.md</a></li>
+      <li class="missing">plan.md (not yet)</li>
+      <li class="missing">design/choice.md (not yet)</li>
+      <li class="missing">reviews/synthesis.md (not yet)</li>
+      <li class="missing">assurance/impact.json (not yet)</li>
+      <li><a href="<REPOURI>/.factory/items/0001-thing/assurance/verdicts.json">assurance/verdicts.json</a></li>
+    </ul>
+  </section>
+  <section>
+    <h2>Recent events</h2>
+    <ul>
+      <li>2026-07-03T12:00:00Z implement.completed</li>
+      <li>2026-07-03T12:00:00Z verify.green</li>
+      <li>2026-07-03T12:00:00Z assure.passed</li>
+    </ul>
+  </section>
+  <section>
+    <h2>Spend</h2>
+    <ul>
+      <li>[proxy] active 00h 00m (waiting 00h 00m), 0 advances, 0 dispatches, 0 rework edges</li>
+      <li>[measured] tokens: none logged</li>
+      <li>[unmeasured] UNMEASURED: orchestrator main-loop tokens</li>
+    </ul>
+  </section>
+  <section id="respond">
+    <h2>Respond</h2>
+    <p>Reply in session, or use the factory CLI.</p>
+    <ul>
+      <li><code>/factory:run</code> — resume the pipeline.</li>
+    </ul>
+  </section>
+</main>
+</body>
+</html>

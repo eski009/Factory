@@ -1,0 +1,1 @@
+refused: journey J-001 scenario S1: verdict 'fail' is not pass
