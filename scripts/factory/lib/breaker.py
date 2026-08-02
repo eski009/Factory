@@ -9,7 +9,7 @@ the current edge count.
 The breaker is advisory: it parks, it never refuses on its own
 initiative. The one refusal it owns is the resume precondition, which
 exists only so a park with no recorded answer cannot ping-pong forever
-(machine.py:274-278 applies no gate to a waiting-human resume).
+(machine.py:287-291 applies no gate to a waiting-human resume).
 """
 
 import re

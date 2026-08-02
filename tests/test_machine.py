@@ -7,7 +7,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.factory.lib import breaker, initrepo, items, logs, machine, paths
+from scripts.factory.lib import (
+    breaker, cost, initrepo, items, logs, machine, paths)
 
 
 def make_item(repo, kind="ui", stage="idea", priority=None, bug=False, journeys=None):
@@ -623,6 +624,9 @@ class TestCostBreakerSeam(MachineTest):
         self.assertEqual(events[-1]["data"],
                          {"rework_edges": 2, "threshold": 2})
         self.assertEqual(events[-2]["event"], "stage.advance")
+        # "one event", pinned directly rather than implied by position
+        self.assertEqual(
+            [e["event"] for e in events].count("cost.breaker"), 1)
 
     def test_second_entry_past_threshold_is_refused_without_an_answer(self):
         self.seed(edges=2)
@@ -638,6 +642,40 @@ class TestCostBreakerSeam(MachineTest):
         self.assertEqual(
             items.load_item(self.repo, "0001-thing")[0]["stage"],
             "waiting-human")
+
+    def test_answered_resume_leaves_waiting_human_without_re_firing(self):
+        """AC18's other half, through the engine rather than through
+        breaker.precondition directly: park -> answer -> resume. The
+        recorded answer admits the transition, the resume edge is not a
+        rework edge (waiting-human is not in cost.REWORK_FROM), so the
+        verdict does not fire again and the item does not re-park."""
+        self.seed(edges=2)
+        meta = items.load_item(self.repo, "0001-thing")[0]
+        meta["stage"] = "waiting-human"
+        meta["paused-from"] = "implement"
+        meta["paused-reason"] = "cost breaker: 2 rework edges (threshold 2)"
+        items.save_item(self.repo, meta, "# Thing\n")
+        breaker.record_answer(self.repo, "0001-thing", "continue")
+
+        meta, verdict = machine.advance(self.repo, "0001-thing", "implement")
+
+        # it actually left waiting-human, and the park fields are gone
+        self.assertEqual(meta["stage"], "implement")
+        self.assertNotIn("paused-from", meta)
+        self.assertNotIn("paused-reason", meta)
+        self.assertEqual(
+            items.load_item(self.repo, "0001-thing")[0]["stage"], "implement")
+        # the resume edge is not counted as rework, so the count is
+        # unchanged and the covering answer still covers it
+        self.assertNotIn("waiting-human", cost.REWORK_FROM)
+        self.assertEqual(verdict["rework_edges"], 2)
+        self.assertEqual(verdict["answered_at"], 2)
+        self.assertTrue(verdict["over_threshold"])
+        # therefore no immediate re-fire and no second park
+        self.assertFalse(verdict["fired"])
+        self.assertNotIn(
+            "cost.breaker",
+            [e["event"] for e in logs.read_events(self.repo, "0001-thing")])
 
     def test_gate_off_applies_no_precondition(self):
         self.seed(gates=("design",), edges=2)
@@ -730,10 +768,14 @@ class TestCostBreakerSeam(MachineTest):
         found = 0
         # Deviation from the plan's literal `"machine.advance(" not in line`:
         # that substring also matches the bare prose form `machine.advance()`
-        # in breaker.py's and machine.py's docstrings, which are not call
-        # sites. Requiring a first argument keeps every real call site in
-        # scope and drops the prose.
-        call_site = re.compile(r"machine\.advance\(\s*\w")
+        # in breaker.py's two docstrings (module docstring and
+        # precondition), which are not call sites. Excluding only the
+        # empty-argument form drops exactly that prose while narrowing
+        # nothing: advance() takes three positionals, so a real
+        # zero-argument call cannot exist. Anything else that opens the
+        # parenthesis — a first argument on the next line, `*args`, a
+        # string literal — is still caught.
+        call_site = re.compile(r"machine\.advance\((?!\s*\))")
         for path in sorted((root / "scripts").rglob("*.py")):
             for line in path.read_text(encoding="utf-8").splitlines():
                 if not call_site.search(line):
