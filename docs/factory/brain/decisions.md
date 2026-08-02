@@ -247,3 +247,9 @@
   evidence-backed positions recorded rather than resolved by attrition (source:
   .factory/items/0016-cost-circuit-breaker-on-engine-authorita/triage.md;
   .factory/items/0016-cost-circuit-breaker-on-engine-authorita/reviews/synthesis.md).
+- **2026-08-02, shipped 0016** (mode: auto, ref: 45652c7): cost circuit breaker
+  on engine-authoritative rework counts — breaker fires at 2 rework edges,
+  parks to waiting-human with a one-verb cost-decision block in both packet
+  renderers; `factory cost-answer` is the single writer of cost/answer.md.
+  Assure walked J-001/J-002 11/11; J-001's default-path oracle amended 3->4
+  permitted diffs on S11 evidence.

@@ -26,7 +26,7 @@
      mid-item merge at Task 5 that this used to name was removed as a gate
      bypass; see 0016's plan.md Task 5). -->
 
-- [1] 0016-cost-circuit-breaker-on-engine-authorita Cost circuit breaker on engine-authoritative rework counts (implement — rework round 2, back from review)
+- [1] 0016-cost-circuit-breaker-on-engine-authorita Cost circuit breaker on engine-authoritative rework counts (done)
 - [2] 0013-assure-attribution-gate-only-on-regressi Assure attribution: gate only on regressions this item caused (waiting-human — parked from implement, Task 9 struck)
 - [3] 0015-approach-rejected-a-redesign-loop-back-t approach.rejected: a redesign loop back to spec with forbidden approaches recorded (idea)
 - [4] 0014-approach-gate-at-plan-judge-convergence- Approach gate at plan: judge convergence before implementation spend (idea)
