@@ -106,5 +106,72 @@ class TestValidateTreeToleratesInvalidUtf8(unittest.TestCase):
             "bids.jsonl:" in e and "invalid JSON" in e for e in errors))
 
 
+class TestVerdictsAttributionSchema(unittest.TestCase):
+    schema = None
+
+    def setUp(self):
+        self.schema = initrepo.load_schema("assurance-verdicts")
+
+    def _payload(self, scenario):
+        return {"item": "0001-thing", "journeys": [
+            {"id": "J-001", "surface": "cli", "scenarios": [scenario]}]}
+
+    def _scenario(self, **over):
+        s = {"id": "S1", "verdict": "fail", "expected": "e", "actual": "a"}
+        s.update(over)
+        return s
+
+    def test_scenario_without_attribution_still_valid(self):
+        from scripts.factory.lib.validate import validate
+        self.assertEqual(
+            validate(self._payload(self._scenario()), self.schema, "v"), [])
+
+    def test_full_attribution_shape_valid(self):
+        from scripts.factory.lib.validate import validate
+        scenario = self._scenario(
+            attribution="pre-existing", owner="0002-stale-values",
+            base={"branch": "main", "merge_base": "a" * 40,
+                  "evidence": [{"type": "transcript",
+                                "path": "assurance/base/" + "a" * 40 + "/t.txt"}]})
+        self.assertEqual(
+            validate(self._payload(scenario), self.schema, "v"), [])
+
+    def test_unknown_attribution_class_rejected(self):
+        from scripts.factory.lib.validate import validate
+        errors = validate(self._payload(
+            self._scenario(attribution="out-of-scope")), self.schema, "v")
+        self.assertTrue(any("out-of-scope" in e for e in errors), errors)
+
+    def test_malformed_owner_rejected(self):
+        from scripts.factory.lib.validate import validate
+        errors = validate(self._payload(
+            self._scenario(owner="not an id")), self.schema, "v")
+        self.assertTrue(errors)
+
+    def test_short_merge_base_rejected(self):
+        from scripts.factory.lib.validate import validate
+        errors = validate(self._payload(self._scenario(
+            base={"branch": "main", "merge_base": "abc",
+                  "evidence": [{"type": "transcript", "path": "p"}]})),
+            self.schema, "v")
+        self.assertTrue(errors)
+
+    def test_base_requires_all_three_keys(self):
+        from scripts.factory.lib.validate import validate
+        errors = validate(self._payload(self._scenario(
+            base={"merge_base": "a" * 40,
+                  "evidence": [{"type": "transcript", "path": "p"}]})),
+            self.schema, "v")
+        self.assertTrue(any("branch" in e for e in errors), errors)
+
+    def test_base_rejects_unknown_property(self):
+        from scripts.factory.lib.validate import validate
+        errors = validate(self._payload(self._scenario(
+            base={"branch": "main", "merge_base": "a" * 40, "walked": True,
+                  "evidence": [{"type": "transcript", "path": "p"}]})),
+            self.schema, "v")
+        self.assertTrue(any("walked" in e for e in errors), errors)
+
+
 if __name__ == "__main__":
     unittest.main()

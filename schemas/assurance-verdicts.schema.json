@@ -30,6 +30,35 @@
                 "expected": {"type": "string", "minLength": 1},
                 "actual": {"type": "string", "minLength": 1},
                 "notes": {"type": "string"},
+                "attribution": {"type": "string",
+                                "enum": ["regression", "pre-existing"]},
+                "owner": {"type": "string",
+                          "pattern": "^[0-9]{4}-[a-z0-9-]+$"},
+                "base": {
+                  "type": "object",
+                  "required": ["branch", "merge_base", "evidence"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "branch": {"type": "string", "minLength": 1},
+                    "merge_base": {"type": "string",
+                                   "pattern": "^[0-9a-f]{40}$"},
+                    "evidence": {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
+                        "type": "object",
+                        "required": ["type", "path"],
+                        "additionalProperties": false,
+                        "properties": {
+                          "type": {"type": "string",
+                                   "enum": ["screenshot", "dom", "console",
+                                            "network", "transcript"]},
+                          "path": {"type": "string", "minLength": 1}
+                        }
+                      }
+                    }
+                  }
+                },
                 "evidence": {
                   "type": "array",
                   "items": {
