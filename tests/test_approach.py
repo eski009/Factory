@@ -694,3 +694,89 @@ class TestPacketPopulations(ApproachTest):
         self.assertEqual(len(lines), 1)
         self.assertIn(f"factory approach-answer {ITEM}", lines[0])
         self.assertNotIn("factory confirm", lines[0])
+
+
+class TestRedesignDecisionBlock(ApproachTest):
+    """AC19: the tradeoff packet. Render-only fixtures seed log events
+    directly (see TestPacketPopulations)."""
+
+    def park(self, priority=1, others=0):
+        now = logs.now_stamp()
+        meta = {"id": ITEM, "title": "Thing", "stage": "waiting-human",
+                "kind": "backend", "created": now, "updated": now,
+                "paused-from": "review",
+                "paused-reason": "approach cap: 1 redesign(s) used (cap 1)"}
+        if priority is not None:
+            meta["priority"] = priority
+        items.save_item(self.repo, meta, "# Thing\n")
+        logs.append_event(self.repo, ITEM, "stage.advance",
+                          {"from": "review", "to": "implement"})
+        logs.append_event(self.repo, ITEM, "stage.advance",
+                          {"from": "review", "to": "spec"})
+        self.forbid("review")
+        for i in range(others):
+            oid = f"000{i + 2}-other"
+            items.save_item(self.repo, {
+                "id": oid, "title": "Other", "stage": "idea",
+                "kind": "backend", "priority": 1,
+                "created": now, "updated": now}, "# Other\n")
+
+    def test_block_leads_with_populations_and_ends_with_one_action(self):
+        self.park(others=1)
+        md = packet.render_packet(self.repo, ITEM)
+        self.assertIn("## Redesign decision", md)
+        block = md.split("## Redesign decision", 1)[1].split("## View", 1)[0]
+        lines = [l for l in block.splitlines() if l.strip()]
+        self.assertTrue(lines[0].startswith("- [proxy] redesigns: 1 of 1"))
+        self.assertTrue(lines[1].startswith(
+            "- [proxy] rework edges since last redesign: 0 (cumulative 1"))
+        # measured tokens only as a labelled LOWER BOUND or a loud
+        # UNMEASURED (this fixture has no spend events -> UNMEASURED)
+        self.assertTrue("LOWER BOUND" in block or "UNMEASURED" in block)
+        self.assertTrue("[measured]" in block or "[unmeasured]" in block)
+        self.assertIn("- backlog: 1 actionable item at priority ≤ 1", block)
+        self.assertIn("forbidden approaches (authored text, "
+                      "approaches/forbidden.md):", block)
+        self.assertIn("rejected at review (entry 1)", block)
+        # one consequence line per option
+        for option in ("continue —", "narrow —", "defer —"):
+            self.assertEqual(block.count(f"- {option}"), 1)
+        # exactly one action under ## Respond, naming the verb
+        respond = md.split("## Respond", 1)[1]
+        actions = [l for l in respond.splitlines()
+                   if l.startswith("- `")]
+        self.assertEqual(len(actions), 1)
+        self.assertIn(f"factory approach-answer {ITEM}", actions[0])
+
+    def test_recommended_defer_when_backlog_waiting_never_continue(self):
+        self.park(others=1)
+        md = packet.render_packet(self.repo, ITEM)
+        self.assertIn("Recommended: defer", md)
+        self.assertNotIn("Recommended: continue", md)
+
+    def test_recommended_narrow_when_backlog_empty(self):
+        self.park(others=0)
+        md = packet.render_packet(self.repo, ITEM)
+        self.assertIn("Recommended: narrow", md)
+
+    def test_no_priority_renders_comparison_unavailable(self):
+        # bid-0066/0077: None is never rendered as 0.
+        self.park(priority=None)
+        md = packet.render_packet(self.repo, ITEM)
+        self.assertIn("comparison unavailable", md)
+        self.assertIn("Recommended: set a priority first", md)
+        self.assertNotIn("0 actionable items at priority", md)
+
+    def test_html_carries_the_block_and_cost_section_id_is_intact(self):
+        self.park()
+        html = packet.render_packet_html(self.repo, ITEM)
+        self.assertIn('<section id="redesign-decision">', html)
+        self.assertIn("Redesign decision", html)
+        # the extraction must not perturb the cost-decision contract
+        self.assertIn("#cost-decision", html)  # stylesheet selector
+        # Deviation coverage (task review finding): the stylesheet
+        # selectors are spliced in only when the redesign section
+        # renders, and str.replace would no-op silently if the head
+        # literals drifted — assert the splice's ACTIVE path.
+        self.assertIn("#redesign-decision {", html)
+        self.assertIn("#redesign-decision h2", html)

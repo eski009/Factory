@@ -201,6 +201,116 @@ def cost_decision_lines(repo, item_id, meta, summary=None):
     ]
 
 
+def redesign_decision_lines(repo, item_id, meta, summary=None):
+    """The '## Redesign decision' body (item 0015 SS8), on the 0016
+    '## Cost decision' precedent. [] unless the item is parked with an
+    approach-cap reason. The two labelled populations lead - a redesign
+    never masquerades as a fresh start (B4); every figure derives from
+    the render's single summarize read; the graveyard excerpt is
+    authored text, labelled as such, never parsed (bid-0086). The
+    Recommended line follows the breaker's deterministic backlog rule
+    and is never `continue` (AC19)."""
+    from . import approach, breaker, machine
+    if meta.get("stage") != "waiting-human":
+        return []
+    if not meta.get("paused-reason", "").startswith(approach.PAUSE_PREFIX):
+        return []
+    if summary is None:
+        summary = cost.summarize(repo, item_id)
+    n = summary.get("approach_edges", 0)
+    since = summary.get("rework_edges_since_last_redesign",
+                        summary["rework_edges"])
+    cap = machine.MAX_APPROACH_REJECTIONS
+    v = breaker.backlog_counts(repo, meta)
+    priority = meta.get("priority", "-")
+    at_or_above = v["at_or_above"]
+    total = v["actionable_total"]
+    unreadable = v["unreadable"]
+    unpriced = v["unpriced"]
+    comparable = at_or_above is not None
+    dropped = (f"; {unreadable} item{'' if unreadable == 1 else 's'} "
+               "unreadable and excluded" if unreadable else "")
+    unknown_bits = []
+    if unpriced:
+        unknown_bits.append(
+            f"{unpriced} actionable item{'' if unpriced == 1 else 's'} "
+            "with no priority")
+    if unreadable:
+        unknown_bits.append(
+            f"{unreadable} unreadable item{'' if unreadable == 1 else 's'}")
+    unknown = " and ".join(unknown_bits)
+    if comparable:
+        at_s = "" if at_or_above == 1 else "s"
+        backlog_line = (f"- backlog: {at_or_above} actionable item{at_s} "
+                        f"at priority ≤ {priority}, {total} actionable "
+                        f"in total{dropped}")
+        recommended = "defer" if at_or_above >= 1 else "narrow"
+        narrow_why = ("nothing else is waiting at this priority, so a "
+                      "narrowed redesign costs less than another full "
+                      "one.")
+        if unknown:
+            narrow_why = ("nothing comparable is waiting at this "
+                          f"priority; {unknown} cannot be compared "
+                          "either way, so the backlog is not established "
+                          "as empty; a narrowed redesign costs less than "
+                          "another full one.")
+        why = {
+            "defer": ("work at this priority or higher is waiting behind "
+                      "an item that has already exhausted its redesign "
+                      "cap."),
+            "narrow": narrow_why,
+        }[recommended]
+        recommendation = f"Recommended: {recommended} — {why}"
+    else:
+        backlog_line = ("- backlog: comparison unavailable — this item "
+                        f"has no priority; {total} actionable in "
+                        f"total{dropped}")
+        recommendation = ("Recommended: set a priority first — what this "
+                          "item is blocking cannot be compared until it "
+                          f"has one; run `factory priority {item_id} "
+                          f"<n>`, then `factory packet {item_id}` to "
+                          "re-render this decision.")
+    forbidden = paths.item_dir(repo, item_id) / "approaches" / "forbidden.md"
+    try:
+        text = forbidden.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        text = ""
+    headings = [ln.lstrip("#").strip() for ln in text.splitlines()
+                if ln.startswith("##")]
+    if headings:
+        graveyard = ("- forbidden approaches (authored text, "
+                     "approaches/forbidden.md): " + "; ".join(headings))
+    else:
+        graveyard = ("- forbidden approaches: approaches/forbidden.md "
+                     "missing, empty or unreadable — the artifact gate "
+                     "should have refused the redesign edge; inspect "
+                     "the item dir")
+    return [
+        f"- [proxy] redesigns: {n} of {cap} (engine-counted "
+        "approach.rejected edges; lifetime, never reset)",
+        f"- [proxy] rework edges since last redesign: {since} "
+        f"(cumulative {summary['rework_edges']} — the breaker counts "
+        "the cumulative figure)",
+        "- " + cost.render_lower_bound(summary),
+        backlog_line,
+        graveyard,
+        "",
+        recommendation,
+        "",
+        f"- continue — admits exactly one more redesign; the resumed "
+        f"item re-issues the spec request at redesign {n + 1}, after "
+        "which a further request is refused again; in loop mode the "
+        "next actionable item runs while this one redesigns; in "
+        "item/step mode the run stops here.",
+        "- narrow — records the decision and leaves the item parked; "
+        "narrow the spec by hand, then resume it yourself. v1 does not "
+        "narrow scope for you.",
+        f"- defer — records the decision and leaves the item parked; "
+        f"drop its priority with `factory priority {item_id} <n>`. v1 "
+        "does not re-prioritise for you.",
+    ]
+
+
 def respond_action_lines(repo, item_id, meta):
     """Exactly one copy-pasteable action, naming the verb that actually
     answers THIS pause. One branch, shared by both renderers, so the HTML
@@ -239,6 +349,9 @@ def render_packet(repo, item_id, summary=None):
     decision = cost_decision_lines(repo, item_id, meta, summary)
     if decision:
         lines += ["", "## Cost decision", ""] + decision
+    redesign = redesign_decision_lines(repo, item_id, meta, summary)
+    if redesign:
+        lines += ["", "## Redesign decision", ""] + redesign
     lines += ["", "## View the options"]
     for label, url in view_links(repo, item_id, meta):
         lines.append(f"- [{label}]({url})")
@@ -292,6 +405,36 @@ def _inline_code(text):
                    for i, part in enumerate(text.split("`")))
 
 
+def _decision_section_html(out, section_id, title, lines):
+    """Shared decision-block HTML: one loop, both decision sections,
+    so the two renderers cannot diverge on list/paragraph handling.
+
+    Deviation from plan (0016) Task 10 step 4: the section carries no
+    class="ask" attribute, so the id selector the tests split on stays
+    exact; the ask callout styling is attached to the section ids in
+    the stylesheet instead."""
+    out.append(f'  <section id="{section_id}">')
+    out.append(f"    <h2>{title}</h2>")
+    in_list = False
+    for line in lines:
+        if line.startswith("- "):
+            if not in_list:
+                out.append("    <ul>")
+                in_list = True
+            out.append(
+                f"      <li>{_inline_code(line.removeprefix('- '))}</li>")
+            continue
+        if in_list:
+            out.append("    </ul>")
+            in_list = False
+        if line.strip():
+            out.append(
+                f"    <p><strong>{_inline_code(line)}</strong></p>")
+    if in_list:
+        out.append("    </ul>")
+    out.append("  </section>")
+
+
 def render_packet_html(repo, item_id, summary=None):
     meta, _body = items.load_item(repo, item_id)
     item_dir = paths.item_dir(repo, item_id)
@@ -304,6 +447,8 @@ def render_packet_html(repo, item_id, summary=None):
     ]
     events = logs.read_events(repo, item_id)[-5:]
     receipt = cost.render_receipt(summary).splitlines()
+    decision = cost_decision_lines(repo, item_id, meta, summary)
+    redesign = redesign_decision_lines(repo, item_id, meta, summary)
 
     out = ["""<!doctype html>
 <html lang="en">
@@ -349,6 +494,19 @@ def render_packet_html(repo, item_id, summary=None):
 <body>
 <main>""",
            f"  <h1>{_e(meta['title'])}</h1>"]
+    if redesign:
+        # Deviation from plan Task 7 step 3: the #redesign-decision
+        # stylesheet selectors are added only when the section renders.
+        # A static selector change would alter every packet's bytes and
+        # regenerate the default-path golden packet.html, which the
+        # global constraint (AC20; J-001 regression) forbids — the
+        # golden is never regenerated by this item, so the default-path
+        # stylesheet must stay byte-identical.
+        out[0] = out[0].replace(
+            ".ask, #cost-decision {",
+            ".ask, #cost-decision, #redesign-decision {").replace(
+            ".ask h2, #cost-decision h2 {",
+            ".ask h2, #cost-decision h2, #redesign-decision h2 {")
 
     if meta.get("paused-reason"):
         out += ["  <section class=\"ask\" id=\"waiting-on-you\">",
@@ -356,32 +514,12 @@ def render_packet_html(repo, item_id, summary=None):
                 f"    <p>{_e(waiting_line(meta, summary))}</p>",
                 "  </section>"]
 
-    # Deviation from plan Task 10 step 4: the section carries no
-    # class="ask" attribute, so the id selector the tests split on stays
-    # exact; the ask callout styling is attached to #cost-decision in the
-    # stylesheet above instead.
-    decision = cost_decision_lines(repo, item_id, meta, summary)
     if decision:
-        out += ['  <section id="cost-decision">',
-                "    <h2>Cost decision</h2>"]
-        in_list = False
-        for line in decision:
-            if line.startswith("- "):
-                if not in_list:
-                    out.append("    <ul>")
-                    in_list = True
-                out.append(
-                    f"      <li>{_inline_code(line.removeprefix('- '))}</li>")
-                continue
-            if in_list:
-                out.append("    </ul>")
-                in_list = False
-            if line.strip():
-                out.append(
-                    f"    <p><strong>{_inline_code(line)}</strong></p>")
-        if in_list:
-            out.append("    </ul>")
-        out.append("  </section>")
+        _decision_section_html(out, "cost-decision", "Cost decision",
+                               decision)
+    if redesign:
+        _decision_section_html(out, "redesign-decision",
+                               "Redesign decision", redesign)
 
     out += ["  <section aria-label=\"Item metadata\">", "    <ul class=\"meta\">",
             f"      <li><strong>id:</strong> {_e(meta['id'])}</li>",
