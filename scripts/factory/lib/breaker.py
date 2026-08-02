@@ -70,11 +70,16 @@ def backlog_counts(repo, meta):
     return {"at_or_above": at_or_above, "actionable_total": len(actionable)}
 
 
-def verdict(repo, item_id, meta, to):
+def verdict(repo, item_id, meta, to, summary=None):
     """A plain dict, always, for every advance. Never raises for a
     missing or malformed answer artifact: the verdict reports, the
-    precondition refuses."""
-    edges = rework_edges(repo, item_id)
+    precondition refuses.
+
+    `summary` lets a caller that has already aggregated the log hand that
+    one aggregation in, so every figure it renders comes from a single
+    read of the clock (packet.py renders two proxy figures from it)."""
+    edges = (summary["rework_edges"] if summary is not None
+             else rework_edges(repo, item_id))
     gates = _config_gates(repo)
     answer = read_answer(repo, item_id)
     answered_at = answer["rework_edges"] if answer else None

@@ -52,7 +52,7 @@ merge they did not watch, that carried known failures.
 | one action | count of `factory ` command lines under `## Respond` == 1 |
 | status | `factory status --json` → item row `assurance.non_blocking_fails` |
 | owner | the owner id resolves to an item dir whose `stage != "done"` |
-| default path | byte comparison of gate outcome, packet markdown, packet HTML and `status --json` against the pre-change engine — **narrowed by item 0016** to byte-identical except (a) the `## Spend` receipt's `retries` → `rework edges` label and its value, and (b) `status --json`'s `spend.retries` → `spend.rework_edges` (source: .factory/items/0016-cost-circuit-breaker-on-engine-authorita/spec.md) |
+| default path | byte comparison of gate outcome, packet markdown, packet HTML and `status --json` against the pre-change engine — **narrowed by item 0016** to byte-identical except (a) the `## Spend` receipt's `retries` → `rework edges` label and its value, (b) `status --json`'s `spend.retries` → `spend.rework_edges`, and (c) the `## Respond` block in both renderers, which now names the one verb that answers this pause instead of listing every verb and closing with `/factory:run` (source: .factory/items/0016-cost-circuit-breaker-on-engine-authorita/spec.md §6 B3 mandates (c) on every packet; its narrowing paragraph names only (a) and (b), so this contract records the third diff the shipped renderers actually make — a two-diff list would make this oracle report a false regression) |
 
 No oracle reads the free-text `expected`/`actual` strings; the engine never
 judges the truth of a walk (see the spec's §1 boundary).

@@ -31,18 +31,25 @@ def view_links(repo, item_id, meta):
     return links
 
 
-def cost_decision_lines(repo, item_id, meta):
+def cost_decision_lines(repo, item_id, meta, summary=None):
     """The '## Cost decision' body, ordered exactly as item spec 0016 §6.
     Returns [] unless the item is parked with a cost-breaker reason. The
     proxy substrate leads: no token headline appears above it, because
-    the measured aggregate has been shown untrustworthy."""
+    the measured aggregate has been shown untrustworthy.
+
+    `summary` is the render's single aggregation of the item log, passed
+    in by the caller. A parked item's window is open, so `active_seconds`
+    re-reads the wall clock on every `cost.summarize` call: aggregating
+    separately here would print this block's proxy figures and the
+    `## Spend` receipt's from two different instants."""
     from . import breaker
     if meta.get("stage") != "waiting-human":
         return []
     if not meta.get("paused-reason", "").startswith(breaker.PAUSE_PREFIX):
         return []
-    summary = cost.summarize(repo, item_id)
-    v = breaker.verdict(repo, item_id, meta, "implement")
+    if summary is None:
+        summary = cost.summarize(repo, item_id)
+    v = breaker.verdict(repo, item_id, meta, "implement", summary=summary)
     edges = summary["rework_edges"]
     entries = summary["stages"].get("implement", {}).get("entries", 0)
     priority = meta.get("priority", "-")
@@ -100,9 +107,11 @@ def respond_action_lines(repo, item_id, meta):
     return ["- `/factory:run` — resume the pipeline."]
 
 
-def render_packet(repo, item_id):
+def render_packet(repo, item_id, summary=None):
     meta, _body = items.load_item(repo, item_id)
     item_dir = paths.item_dir(repo, item_id)
+    if summary is None:
+        summary = cost.summarize(repo, item_id)
     lines = [f"# {meta['title']}", ""]
     lines.append(f"- id: {meta['id']}")
     lines.append(f"- stage: {meta['stage']}")
@@ -110,7 +119,7 @@ def render_packet(repo, item_id):
     lines.append(f"- priority: {meta.get('priority', '-')}")
     if meta.get("paused-reason"):
         lines.append(f"- waiting on you: {meta['paused-reason']}")
-    decision = cost_decision_lines(repo, item_id, meta)
+    decision = cost_decision_lines(repo, item_id, meta, summary)
     if decision:
         lines += ["", "## Cost decision", ""] + decision
     lines += ["", "## View the options"]
@@ -129,7 +138,7 @@ def render_packet(repo, item_id):
         lines.append(f"- {event['ts']} {event['event']}"
                      + (f" {event['data']}" if "data" in event else ""))
     lines += ["", "## Spend"]
-    lines += cost.render_receipt(cost.summarize(repo, item_id)).splitlines()
+    lines += cost.render_receipt(summary).splitlines()
     lines += ["", "## Respond",
               "Reply in session, or use the factory CLI to record your "
               "decision.", ""]
@@ -146,16 +155,18 @@ def _link(label, url):
     return f'<a href="{_e(url)}">{_e(label)}</a>'
 
 
-def render_packet_html(repo, item_id):
+def render_packet_html(repo, item_id, summary=None):
     meta, _body = items.load_item(repo, item_id)
     item_dir = paths.item_dir(repo, item_id)
+    if summary is None:
+        summary = cost.summarize(repo, item_id)
     links = view_links(repo, item_id, meta)[:-1]
     artifact_links = [
         (f"Open {rel}", (item_dir / rel).resolve().as_uri())
         for rel in ARTIFACTS if (item_dir / rel).exists()
     ]
     events = logs.read_events(repo, item_id)[-5:]
-    receipt = cost.render_receipt(cost.summarize(repo, item_id)).splitlines()
+    receipt = cost.render_receipt(summary).splitlines()
 
     out = ["""<!doctype html>
 <html lang="en">
@@ -212,7 +223,7 @@ def render_packet_html(repo, item_id):
     # class="ask" attribute, so the id selector the tests split on stays
     # exact; the ask callout styling is attached to #cost-decision in the
     # stylesheet above instead.
-    decision = cost_decision_lines(repo, item_id, meta)
+    decision = cost_decision_lines(repo, item_id, meta, summary)
     if decision:
         out += ['  <section id="cost-decision">',
                 "    <h2>Cost decision</h2>"]
@@ -279,9 +290,13 @@ def render_packet_html(repo, item_id):
 
 
 def write_packet(repo, item_id):
+    """One aggregation, both documents: the markdown and the HTML packet
+    are two views of one moment and must never disagree on a figure."""
     path = paths.docs_root(repo) / "packets" / f"{item_id}.md"
     html_path = packet_html_path(repo, item_id)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render_packet(repo, item_id), encoding="utf-8")
-    html_path.write_text(render_packet_html(repo, item_id), encoding="utf-8")
+    summary = cost.summarize(repo, item_id)
+    path.write_text(render_packet(repo, item_id, summary), encoding="utf-8")
+    html_path.write_text(render_packet_html(repo, item_id, summary),
+                         encoding="utf-8")
     return path

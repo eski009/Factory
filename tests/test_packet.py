@@ -3,6 +3,7 @@ import re
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from scripts.factory.lib import initrepo, items, logs, packet
 
@@ -287,6 +288,148 @@ class TestRespondBranches(unittest.TestCase):
         actions = self.actions()
         self.assertEqual(len(actions), 1)
         self.assertIn("/factory:run", actions[0])
+
+
+class TestOneAggregationPerPacket(unittest.TestCase):
+    """Carried review finding A: every figure on one packet must come from
+    one `cost.summarize` call.
+
+    The window is open while an item is parked, so `active_seconds`
+    re-reads the wall clock on every call. Rendering the `## Cost
+    decision` block and the `## Spend` receipt from two separate
+    aggregations therefore prints the same proxy quantity twice, a dozen
+    lines apart, with two different values whenever the calls straddle a
+    minute boundary. Pinning FACTORY_NOW hides the bug, so these tests
+    drive a ticking clock instead.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        initrepo.init(self.repo)
+        os.environ["FACTORY_NOW"] = "2026-08-02T06:00:00Z"
+        items.save_item(self.repo, {
+            "id": "0001-runaway", "title": "Runaway",
+            "stage": "waiting-human", "kind": "backend", "priority": 2,
+            "paused-from": "implement",
+            "paused-reason": "cost breaker: 2 rework edges (threshold 2)",
+            "created": "2026-08-02T00:00:00Z",
+            "updated": "2026-08-02T06:00:00Z"}, "# Runaway\n")
+        for ts in ("2026-08-02T01:00:00Z", "2026-08-02T02:00:00Z"):
+            os.environ["FACTORY_NOW"] = ts
+            logs.append_event(self.repo, "0001-runaway", "stage.advance",
+                              {"from": "review", "to": "implement"})
+        os.environ["FACTORY_NOW"] = "2026-08-02T06:00:00Z"
+
+    def tearDown(self):
+        os.environ.pop("FACTORY_NOW", None)
+        self.tmp.cleanup()
+
+    def ticking_clock(self):
+        """An unpinned clock that advances one hour per reading, so any
+        two aggregations of the same open window disagree visibly."""
+        readings = []
+
+        def now_stamp():
+            stamp = f"2026-08-02T{6 + len(readings):02d}:00:00Z"
+            readings.append(stamp)
+            return stamp
+
+        return readings, now_stamp
+
+    def actives(self, text):
+        return [value.strip()
+                for value in re.findall(r"\[proxy\] active ([^,(]+)", text)]
+
+    def test_the_two_active_figures_on_one_packet_agree(self):
+        os.environ.pop("FACTORY_NOW", None)
+        readings, clock = self.ticking_clock()
+        with mock.patch.object(logs, "now_stamp", clock):
+            text = packet.render_packet(self.repo, "0001-runaway")
+        actives = self.actives(text)
+        self.assertEqual(len(actives), 2, text)
+        self.assertEqual(actives[0], actives[1], readings)
+
+    def test_markdown_render_aggregates_the_log_once(self):
+        os.environ.pop("FACTORY_NOW", None)
+        readings, clock = self.ticking_clock()
+        with mock.patch.object(logs, "now_stamp", clock):
+            packet.render_packet(self.repo, "0001-runaway")
+        self.assertEqual(len(readings), 1, readings)
+
+    def test_html_render_aggregates_the_log_once(self):
+        os.environ.pop("FACTORY_NOW", None)
+        readings, clock = self.ticking_clock()
+        with mock.patch.object(logs, "now_stamp", clock):
+            html_text = packet.render_packet_html(self.repo, "0001-runaway")
+        self.assertEqual(len(readings), 1, readings)
+        actives = self.actives(html_text)
+        self.assertEqual(len(actives), 2, html_text)
+        self.assertEqual(actives[0], actives[1])
+
+    def test_one_write_gives_both_documents_the_same_figures(self):
+        os.environ.pop("FACTORY_NOW", None)
+        readings, clock = self.ticking_clock()
+        with mock.patch.object(logs, "now_stamp", clock):
+            path = packet.write_packet(self.repo, "0001-runaway")
+        self.assertEqual(len(readings), 1, readings)
+        both = (path.read_text(encoding="utf-8")
+                + packet.packet_html_path(
+                    self.repo, "0001-runaway").read_text(encoding="utf-8"))
+        actives = self.actives(both)
+        self.assertEqual(len(actives), 4, actives)
+        self.assertEqual(len(set(actives)), 1, actives)
+
+
+class TestJ001PermittedDiffSet(unittest.TestCase):
+    """Carried review finding B: the shipped renderers change the
+    `## Respond` block on every packet (item 0016 spec §6, B3), which is a
+    third permitted J-001 diff the spec's own narrowing paragraph does not
+    name. J-001's contract must name every diff the code actually makes,
+    or its byte-comparison oracle reports a false regression the first
+    time anyone runs it.
+    """
+
+    ORACLE = ("docs/factory/journeys/contracts/"
+              "J-001-assure-outcome-readout.md")
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        initrepo.init(self.repo)
+        os.environ["FACTORY_NOW"] = "2026-08-02T06:00:00Z"
+        items.save_item(self.repo, {
+            "id": "0001-thing", "title": "Thing", "stage": "waiting-human",
+            "kind": "backend", "priority": 1, "paused-from": "assure",
+            "paused-reason": "confirm the assure walk",
+            "created": "2026-08-02T00:00:00Z",
+            "updated": "2026-08-02T06:00:00Z"}, "# Thing\n")
+
+    def tearDown(self):
+        os.environ.pop("FACTORY_NOW", None)
+        self.tmp.cleanup()
+
+    def oracle_line(self):
+        text = (Path(__file__).resolve().parents[1] / self.ORACLE).read_text(
+            encoding="utf-8")
+        lines = [l for l in text.splitlines() if l.startswith("| default path")]
+        self.assertEqual(len(lines), 1, lines)
+        return lines[0]
+
+    def test_the_respond_block_really_did_change_on_a_j001_packet(self):
+        """The pre-change Respond block listed every verb and closed with
+        'then run `/factory:run` to resume.'; the shipped one names the
+        single verb that answers this pause. A two-diff permitted list
+        would flag this as a regression."""
+        text = packet.render_packet(self.repo, "0001-thing")
+        respond = text.split("## Respond\n", 1)[1]
+        self.assertNotIn("then run `/factory:run` to resume.", respond)
+        self.assertIn("factory confirm 0001-thing", respond)
+
+    def test_the_oracle_names_the_respond_diff_too(self):
+        line = self.oracle_line()
+        self.assertIn("narrowed by item 0016", line)
+        self.assertIn("`## Respond`", line)
 
 
 if __name__ == "__main__":
