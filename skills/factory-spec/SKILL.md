@@ -133,6 +133,10 @@ Write `items/<id>/spec.md` with these sections, in order:
 - `## Assumptions (brain gaps)` — one entry per brain gap from the loop above (omit the section only if there were none).
 - `## Acceptance criteria` — a numbered list, each criterion testable (a later stage can check it mechanically or by inspection, not by opinion). If the item body contains a section titled `## Acceptance criteria (seeded at bug intake — carry into spec.md verbatim)`, its criteria MUST appear verbatim in this list — they may be joined by further criteria, never replaced or reworded.
 
+## Redesign rounds
+
+When `.factory/items/ITEM/approaches/forbidden.md` exists and is non-empty, this is a redesign round — the item arrived on an `approach.rejected` edge. REQUIRED reading before authoring: every dated entry in `approaches/forbidden.md`. The new spec must take a different approach from every entry recorded there; re-proposing a forbidden approach re-buys a full failed loop at full price. Never edit or truncate `approaches/` — it is append-only. After rewriting `spec.md`, log the freshness token the spec-exit gate requires: `factory log ITEM spec.revised`. The engine refuses any advance out of `spec` after a redesign until a `spec.revised` event postdates the latest `approach.rejected` edge — the gate proves freshness and existence, not comprehension; actually reading the graveyard is this skill's contract.
+
 ## Exit
 
 - `ui` or `mixed`: `factory advance ITEM design`.

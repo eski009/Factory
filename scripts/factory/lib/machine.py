@@ -10,9 +10,10 @@ stage.advance whose data.to == "implement" and whose data.from is not
 in SPECIAL — by log-order index over the tolerant-read event list,
 never by timestamp. A SPECIAL-from resume returns only to paused-from
 and never starts a round; a log with no such marker fails closed.
-Non-postdating checks stay lifetime/presence checks: review.rejected
-and assure.rejected (the capped rework edges), ship.merged,
-repro.confirmed, and every file gate. Item 0015 adds verify->implement
+Non-postdating checks stay lifetime/presence checks: ship.merged,
+repro.confirmed, and every file gate; review.rejected and
+assure.rejected (the capped rework edges) now count events since the
+latest redesign edge (lifetime when none). Item 0015 adds verify->implement
 (capped, round-scoped) and the APPROACH_FROM -> spec redesign edge
 (lifetime-capped).
 
