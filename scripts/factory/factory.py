@@ -363,6 +363,21 @@ def cmd_confirm(args):
     return 0
 
 
+def cmd_file_base_defect(args):
+    if not _require_factory_repo(args.repo):
+        return 2
+    try:
+        owner, _deduped = assure_mod.file_base_defect(
+            args.repo, args.item, args.journey, args.scenario,
+            args.fingerprint, args.title,
+            expected=args.expected or "", actual=args.actual or "")
+    except (machine.GateError, items.ItemError) as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    print(owner)
+    return 0
+
+
 def cmd_escape(args):
     if not _require_factory_repo(args.repo):
         return 2
@@ -563,6 +578,18 @@ def main(argv=None):
                        help="record human confirmation of a passed assurance")
     p.add_argument("item")
     p.set_defaults(func=cmd_confirm)
+
+    p = sub.add_parser("file-base-defect",
+                       help="file (or dedupe to) the item that owns a "
+                            "pre-existing assurance fail")
+    p.add_argument("item")
+    p.add_argument("--journey", required=True)
+    p.add_argument("--scenario", required=True)
+    p.add_argument("--fingerprint", required=True)
+    p.add_argument("--title", required=True)
+    p.add_argument("--expected")
+    p.add_argument("--actual")
+    p.set_defaults(func=cmd_file_base_defect)
 
     p = sub.add_parser("escape", help="file a post-assurance human discovery")
     p.add_argument("journey")
