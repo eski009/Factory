@@ -142,11 +142,11 @@ class TestVerdictsAttributionSchema(unittest.TestCase):
             self._scenario(attribution="out-of-scope")), self.schema, "v")
         self.assertTrue(any("out-of-scope" in e for e in errors), errors)
 
-    def test_malformed_owner_rejected(self):
+    def test_malformed_owner_passes_the_schema_shape_check(self):
         from scripts.factory.lib.validate import validate
         errors = validate(self._payload(
             self._scenario(owner="not an id")), self.schema, "v")
-        self.assertTrue(errors)
+        self.assertEqual(errors, [])
 
     def test_short_merge_base_rejected(self):
         from scripts.factory.lib.validate import validate

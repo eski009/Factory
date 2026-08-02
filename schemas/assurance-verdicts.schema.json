@@ -32,8 +32,7 @@
                 "notes": {"type": "string"},
                 "attribution": {"type": "string",
                                 "enum": ["regression", "pre-existing"]},
-                "owner": {"type": "string",
-                          "pattern": "^[0-9]{4}-[a-z0-9-]+$"},
+                "owner": {"type": "string"},
                 "base": {
                   "type": "object",
                   "required": ["branch", "merge_base", "evidence"],

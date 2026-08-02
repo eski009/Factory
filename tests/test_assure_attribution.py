@@ -379,6 +379,29 @@ class TestAttributionOn(GateTest):
             attribution="pre-existing", base=self.base()))
         self.assertIn("open owning item", self.refusal())
 
+    def test_empty_owner_blocks_with_the_owner_rule_not_the_schema(self):
+        # J-001/S5 assure walk, arm B: an empty owner must reach rule 10
+        # and name the journey, the scenario, and the owner rule - not be
+        # rejected earlier by the schema layer with array-index addressing.
+        self.make_item()
+        self.write_verdicts(self.scenario(
+            attribution="pre-existing", owner="", base=self.base()))
+        self.assertEqual(
+            self.refusal(),
+            "journey J-001 scenario S2: a pre-existing fail must name an "
+            "open owning item (owner '' is absent or malformed)")
+
+    def test_malformed_owner_blocks_with_the_owner_rule_not_the_schema(self):
+        # J-001/S5 assure walk, arm C: same rule, the value interpolated.
+        self.make_item()
+        self.write_verdicts(self.scenario(
+            attribution="pre-existing", owner="not an item",
+            base=self.base()))
+        self.assertEqual(
+            self.refusal(),
+            "journey J-001 scenario S2: a pre-existing fail must name an "
+            "open owning item (owner 'not an item' is absent or malformed)")
+
     def test_owner_naming_a_missing_item_blocks(self):
         self.make_item()
         self.write_verdicts(self.scenario(
@@ -430,6 +453,12 @@ class TestAttributionOn(GateTest):
             self.scenario(verdict="ambiguity", attribution="pre-existing",
                           owner=OWNER, base=self.base()),
             self.scenario(attribution="pre-existing", base=self.base()),
+            # malformed owner (J-001/S5 arm C) is distinct because the value
+            # is interpolated; empty owner is omitted here because it shares
+            # the absent-owner message above, "owner '' is absent or
+            # malformed", by design.
+            self.scenario(attribution="pre-existing", owner="not an item",
+                          base=self.base()),
             self.scenario(attribution="regression"),
             self.scenario(),
         ]
