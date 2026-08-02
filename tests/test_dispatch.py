@@ -84,5 +84,31 @@ class TestNextItems(unittest.TestCase):
                          dispatch.next_items(self.repo, 1)[0]["id"])
 
 
+class TestCostBreakerParkRelease(unittest.TestCase):
+    """AC24 / M9: once the parked item is waiting-human it drops out of
+    the actionable set, so loop mode releases the backlog. Nothing in the
+    packet promises this in item/step mode."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        initrepo.init(self.repo)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_parked_item_yields_to_the_next_actionable_item(self):
+        put(self.repo, "0001-runaway", "implement", priority=1)
+        put(self.repo, "0002-next", "plan", priority=2)
+        self.assertEqual(dispatch.next_item(self.repo)["id"], "0001-runaway")
+        put(self.repo, "0001-runaway", "waiting-human", priority=1)
+        self.assertEqual(dispatch.next_item(self.repo)["id"], "0002-next")
+
+    def test_parked_item_is_not_actionable_at_all(self):
+        put(self.repo, "0001-runaway", "waiting-human", priority=1)
+        self.assertIsNone(dispatch.next_item(self.repo))
+        self.assertEqual(dispatch.next_items(self.repo, 5), [])
+
+
 if __name__ == "__main__":
     unittest.main()

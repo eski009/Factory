@@ -189,6 +189,31 @@ class TestPluginCoherence(unittest.TestCase):
         self.assertLess(dispatch.index("| assure | factory-assure |"),
                         dispatch.index("| ship | factory-ship |"))
 
+    def test_dispatcher_parks_and_resumes_on_the_cost_breaker(self):
+        """AC24: the park rule, the loop/item-step split, and the
+        recorded-option routing all live in dispatcher prose — the engine
+        never routes on which answer was recorded."""
+        text = read(ROOT / "skills/factory-dispatch/SKILL.md")
+        self.assertIn("cost breaker:", text)
+        self.assertIn("factory cost-answer", text)
+        self.assertIn("cost/answer.md", text)
+        self.assertIn("- answer: continue", text)
+        self.assertIn(
+            'factory advance ITEM waiting-human --reason "cost breaker:',
+            text)
+        park = text.split("cost breaker: <n> rework edges", 1)[1]
+        self.assertIn("loop", park)
+        self.assertIn("item", park)
+        self.assertIn("step", park)
+
+    def test_autopilot_run_summary_carries_no_cross_item_total(self):
+        """0016 global constraint: no total, sum, mean or median across
+        items appears in any text output, anywhere — the run-summary
+        packet's Spend section is per-item only."""
+        text = read(ROOT / "skills/factory-autopilot/SKILL.md")
+        self.assertNotIn("run total", text)
+        self.assertIn("no run-total line", text)
+
 
 if __name__ == "__main__":
     unittest.main()
