@@ -32,6 +32,17 @@ SPECIAL = ("blocked", "waiting-human")
 MAX_REVIEW_REJECTIONS = 2
 MAX_ASSURE_REJECTIONS = 2
 
+# Item 0015: the redesign loop. The firing set is declared ONCE, here;
+# cost.py aliases it (the import graph runs cost -> machine, the same
+# direction breaker.py aliases cost.REWORK_FROM). An approach.rejected
+# edge is identified by SHAPE - an engine-written stage.advance with
+# from in APPROACH_FROM and to == APPROACH_TO - never by reason text
+# (bid-0086). The cap is LIFETIME-scoped: no transition, resume, or
+# redesign resets or re-scopes it.
+APPROACH_FROM = frozenset({"review", "verify", "assure"})
+APPROACH_TO = "spec"
+MAX_APPROACH_REJECTIONS = 1
+
 
 class GateError(Exception):
     """Transition refused: illegal move or precondition unmet."""
@@ -91,6 +102,25 @@ def _last_index(events, name):
         if event["event"] == name:
             idx = i
     return idx
+
+
+def _approach_edges(events):
+    """(count, last_index) of approach.rejected-shaped edges: engine-
+    written stage.advance events with from in APPROACH_FROM and to ==
+    APPROACH_TO. Shape only, never reason text (bid-0086). Counts the
+    one substrate no skill can forget to log (B2) - skill-logged events
+    named 'approach.rejected' are invisible here by design."""
+    count, last = 0, -1
+    for i, event in enumerate(events):
+        if not isinstance(event, dict) or event.get("event") != "stage.advance":
+            continue
+        data = event.get("data")
+        if not isinstance(data, dict):
+            continue
+        if data.get("from") in APPROACH_FROM and data.get("to") == APPROACH_TO:
+            count += 1
+            last = i
+    return count, last
 
 
 def _postdates_latest_implement(events, event):
@@ -529,6 +559,20 @@ def advance(repo, item_id, to, reason=None):
     elif frm == "assure" and to == "implement":
         if logs.count_events(repo, item_id, "assure.rejected") > MAX_ASSURE_REJECTIONS:
             raise GateError("assurance rejected too many times; move item to blocked")
+    elif frm in APPROACH_FROM and to == APPROACH_TO:
+        # Item 0015 SS1/SS2: the redesign edge. The rejecting stage
+        # writes the graveyard BEFORE routing, while the evidence is
+        # fresh - the edge is refused without it. The cap counts
+        # engine-written edges over the item's whole life and is never
+        # round-scoped; a recorded answer's watermark admits exactly
+        # one more edge (approach.admit_over_cap).
+        from . import approach
+        _require_file(repo, meta, "approaches/forbidden.md",
+                      "the rejecting stage records the forbidden "
+                      "approach before requesting a redesign")
+        count, _last = _approach_edges(logs.read_events(repo, item_id))
+        if count >= MAX_APPROACH_REJECTIONS:
+            approach.admit_over_cap(repo, item_id, count)
     else:
         expected = next_stage(meta)
         if to != expected:

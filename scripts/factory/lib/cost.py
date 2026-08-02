@@ -25,6 +25,11 @@ TOKEN_KEYS = ("input", "output", "total")
 # deliberately absent: resumes must not inflate the count.
 REWORK_FROM = frozenset({"review", "assure", "verify"})
 REWORK_TO = "implement"
+# Item 0015: the redesign firing set - aliased from the one declaration
+# in machine.py, the way breaker.py aliases cost.REWORK_FROM (the alias
+# direction is dictated by the import graph: cost imports machine).
+APPROACH_FROM = machine.APPROACH_FROM
+APPROACH_TO = machine.APPROACH_TO
 REWORK_SUBSTRATE_NOTE = (
     "backward stage.advance edges (review|assure|verify → implement); "
     "rework routed through waiting-human is not counted")

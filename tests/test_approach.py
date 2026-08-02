@@ -1,0 +1,268 @@
+"""Item 0015: the redesign loop - approach.rejected edges, caps,
+spec-exit gate, answer verb, and packet surfaces.
+
+Guard-test discipline (bid-0076/0082): every fixture that exercises a
+cap or a gate reaches its state through machine.advance() - the
+production path - never by writing a stage into item.md with
+items.save_item. Render-only fixtures (packet/cost aggregation) seed
+log events directly and say so in a comment: they test aggregation of
+log shape, not gate admission.
+"""
+
+import io
+import json
+import os
+import subprocess
+import tempfile
+import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from pathlib import Path
+
+from scripts.factory import factory
+from scripts.factory.lib import (
+    approach, breaker, cost, initrepo, items, logs, machine, packet, paths)
+
+ITEM = "0001-thing"
+GIT_ENV = dict(GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
+               GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t")
+
+
+class ApproachTest(unittest.TestCase):
+    """Base harness: a backend item driven only by machine.advance()."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        initrepo.init(self.repo)
+        os.environ["FACTORY_NOW"] = "2026-07-03T12:00:00Z"
+        self._branched = False
+
+    def tearDown(self):
+        os.environ.pop("FACTORY_NOW", None)
+        self.tmp.cleanup()
+
+    def reset(self):
+        """Fresh repo mid-test, for subTest parameterization."""
+        self.tearDown()
+        self.setUp()
+
+    def art(self, rel, text="content\n"):
+        p = paths.item_dir(self.repo, ITEM) / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text, encoding="utf-8")
+
+    def make_item(self, kind="backend"):
+        now = logs.now_stamp()
+        items.save_item(self.repo, {
+            "id": ITEM, "title": "Thing", "stage": "idea", "kind": kind,
+            "created": now, "updated": now}, "# Thing\n")
+
+    def _branch(self):
+        if self._branched:
+            return
+        subprocess.run(["git", "init", "-q"], cwd=self.repo, check=True)
+        subprocess.run(["git", "commit", "-q", "--allow-empty", "-m", "x"],
+                       cwd=self.repo, check=True,
+                       env=dict(os.environ, **GIT_ENV))
+        subprocess.run(["git", "branch", f"factory/{ITEM}"],
+                       cwd=self.repo, check=True)
+        self._branched = True
+
+    def _prep(self, to):
+        """Write exactly what each gate requires, the way the stage
+        skills write it, before advancing to `to`."""
+        if to == "spec":
+            self.art("triage.md")
+            items.set_priority(self.repo, ITEM, 1)
+        elif to == "plan":
+            self.art("spec.md", "# Spec\n\n## Journey impact\nJ-001.\n")
+            meta, _ = items.load_item(self.repo, ITEM)
+            if "journeys" not in meta:
+                items.set_journeys(self.repo, ITEM, "J-001")
+            # On a redesign round factory-spec logs the freshness token
+            # after rewriting spec.md (item 0015 SS4).
+            if machine._approach_edges(
+                    logs.read_events(self.repo, ITEM))[0]:
+                logs.append_event(self.repo, ITEM, "spec.revised")
+        elif to == "implement":
+            self.art("plan.md", "- [ ] task\n")
+        elif to == "review":
+            self._branch()
+            logs.append_event(self.repo, ITEM, "implement.completed")
+        elif to == "verify":
+            self.art("reviews/synthesis.md")
+            logs.append_event(self.repo, ITEM, "review.approved")
+        elif to == "assure":
+            logs.append_event(self.repo, ITEM, "verify.green")
+
+    def walk_to(self, target):
+        """Advance ITEM from its current stage to `target`, production
+        path only."""
+        seq = machine.stage_sequence("backend")
+        meta, _ = items.load_item(self.repo, ITEM)
+        idx = seq.index(meta["stage"])
+        for stage in seq[idx + 1:seq.index(target) + 1]:
+            self._prep(stage)
+            machine.advance(self.repo, ITEM, stage)
+
+    def forbid(self, frm, entry=1):
+        """Append one dated graveyard entry, the way a rejecting stage
+        writes it (append-only, gap G4/G5)."""
+        p = paths.item_dir(self.repo, ITEM) / "approaches" / "forbidden.md"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with p.open("a", encoding="utf-8") as f:
+            f.write(f"## 2026-07-03T12:00:00Z - rejected at {frm} "
+                    f"(entry {entry})\n\nTried approach {entry}; the "
+                    "evidence shows it cannot converge. Evidence: "
+                    "reviews/synthesis.md\n\n")
+
+    def redesign(self, frm="review", entry=1):
+        """Walk to `frm`, write the graveyard, take the edge."""
+        self.walk_to(frm)
+        self.forbid(frm, entry)
+        machine.advance(self.repo, ITEM, "spec",
+                        reason="approach.rejected: cannot converge")
+
+
+class TestApproachEdge(ApproachTest):
+    """AC1/AC3/AC10/AC15: the edge, its firing set, its artifact gate,
+    its lifetime cap."""
+
+    def test_constants_declared_once_in_machine(self):
+        self.assertEqual(machine.APPROACH_FROM,
+                         frozenset({"review", "verify", "assure"}))
+        self.assertEqual(machine.APPROACH_TO, "spec")
+        self.assertEqual(machine.MAX_APPROACH_REJECTIONS, 1)
+        # aliased, not re-declared (import graph: cost imports machine)
+        self.assertIs(cost.APPROACH_FROM, machine.APPROACH_FROM)
+        self.assertIs(cost.APPROACH_TO, machine.APPROACH_TO)
+
+    def test_edge_from_each_firing_stage(self):
+        # AC1/AC15: parameterized over the set - a membership change is
+        # a one-line change in machine.py plus nothing here.
+        for frm in sorted(machine.APPROACH_FROM):
+            with self.subTest(frm=frm):
+                self.reset()
+                self.make_item()
+                self.redesign(frm=frm)
+                meta, _ = items.load_item(self.repo, ITEM)
+                self.assertEqual(meta["stage"], "spec")
+                last = logs.read_events(self.repo, ITEM)[-1]
+                self.assertEqual(last["event"], "stage.advance")
+                self.assertEqual(last["data"]["from"], frm)
+                self.assertEqual(last["data"]["to"], "spec")
+
+    def test_edge_refused_without_forbidden_artifact(self):
+        # AC10: missing, then empty - both refused naming the path.
+        self.make_item()
+        self.walk_to("review")
+        with self.assertRaises(machine.GateError) as ctx:
+            machine.advance(self.repo, ITEM, "spec",
+                            reason="approach.rejected: x")
+        self.assertIn("approaches/forbidden.md", str(ctx.exception))
+        self.art("approaches/forbidden.md", "   \n")
+        with self.assertRaises(machine.GateError) as ctx:
+            machine.advance(self.repo, ITEM, "spec",
+                            reason="approach.rejected: x")
+        self.assertIn("approaches/forbidden.md", str(ctx.exception))
+        # still at review: the refusal changed nothing
+        self.assertEqual(items.load_item(self.repo, ITEM)[0]["stage"],
+                         "review")
+
+    def test_cap_refusal_names_the_answer_verb(self):
+        # AC1: at MAX_APPROACH_REJECTIONS engine-counted edges with no
+        # covering answer, exit path is a GateError naming the verb.
+        self.make_item()
+        self.redesign(frm="review", entry=1)
+        self.walk_to("review")
+        self.forbid("review", entry=2)
+        with self.assertRaises(machine.GateError) as ctx:
+            machine.advance(self.repo, ITEM, "spec",
+                            reason="approach.rejected: y")
+        msg = str(ctx.exception)
+        self.assertIn("approach cap: 1 redesign(s) used (cap 1)", msg)
+        self.assertIn(f"factory approach-answer {ITEM}", msg)
+        self.assertIn("<continue|narrow|defer>", msg)
+
+    def test_forward_and_resume_entries_never_count(self):
+        # AC3: triage->spec and waiting-human->spec are outside the
+        # firing set - resumes never inflate the count (cost.py:25
+        # waiting-human exclusion, mirrored).
+        self.make_item()
+        self.walk_to("spec")
+        machine.advance(self.repo, ITEM, "waiting-human", reason="hold")
+        machine.advance(self.repo, ITEM, "spec")  # resume
+        events = logs.read_events(self.repo, ITEM)
+        self.assertEqual(machine._approach_edges(events)[0], 0)
+        # and a real redesign afterwards counts exactly one
+        self.redesign(frm="review")
+        events = logs.read_events(self.repo, ITEM)
+        self.assertEqual(machine._approach_edges(events)[0], 1)
+
+    def test_outside_firing_set_to_spec_stays_illegal(self):
+        self.make_item()
+        self.walk_to("plan")
+        with self.assertRaises(machine.GateError) as ctx:
+            machine.advance(self.repo, ITEM, "spec")
+        self.assertIn("illegal transition", str(ctx.exception))
+
+    def test_cap_counts_engine_edges_only(self):
+        # AC2, the parameterized invariance: (a) edges only and
+        # (b) edges + skill-logged noise events agree; (c) noise events
+        # with no edges count zero and the edge is admitted.
+        for frm in sorted(machine.APPROACH_FROM):
+            with self.subTest(frm=frm):
+                # (a) one engine edge
+                self.reset()
+                self.make_item()
+                self.redesign(frm=frm)
+                a = machine._approach_edges(
+                    logs.read_events(self.repo, ITEM))[0]
+                # (b) same walk plus skill-logged event noise
+                for noise in ("approach.rejected", "review.rejected",
+                              "assure.rejected"):
+                    logs.append_event(self.repo, ITEM, noise)
+                b = machine._approach_edges(
+                    logs.read_events(self.repo, ITEM))[0]
+                self.assertEqual(a, 1)
+                self.assertEqual(a, b)
+                # (c) events only, no edges: count zero, edge admitted
+                self.reset()
+                self.make_item()
+                self.walk_to(frm)
+                for noise in ("approach.rejected", "review.rejected",
+                              "assure.rejected"):
+                    logs.append_event(self.repo, ITEM, noise)
+                self.assertEqual(machine._approach_edges(
+                    logs.read_events(self.repo, ITEM))[0], 0)
+                self.forbid(frm)
+                meta, _ = machine.advance(self.repo, ITEM, "spec",
+                                          reason="approach.rejected: z")
+                self.assertEqual(meta["stage"], "spec")
+
+    def test_ui_redesign_passes_back_through_design(self):
+        # item 0015 SS1: the redesign path for ui/mixed re-enters design;
+        # the round-1 design/choice.md satisfies _gate_plan unchanged
+        # (fresh choice is a named non-goal, gap G7 residual).
+        self.make_item(kind="ui")
+        machine.advance(self.repo, ITEM, "triage")
+        self._prep("spec")
+        machine.advance(self.repo, ITEM, "spec")
+        self.art("spec.md", "# Spec\n\n## Journey impact\nJ-001.\n")
+        items.set_journeys(self.repo, ITEM, "J-001")
+        machine.advance(self.repo, ITEM, "design")
+        self.art("design/choice.md", "- option: b\n")
+        self._prep("plan")  # spec.md exists; logs nothing (no edges yet)
+        machine.advance(self.repo, ITEM, "plan")
+        self._prep("implement")
+        machine.advance(self.repo, ITEM, "implement")
+        self._prep("review")
+        machine.advance(self.repo, ITEM, "review")
+        self.forbid("review")
+        machine.advance(self.repo, ITEM, "spec",
+                        reason="approach.rejected: wrong shape")
+        logs.append_event(self.repo, ITEM, "spec.revised")
+        meta, _ = machine.advance(self.repo, ITEM, "design")
+        self.assertEqual(meta["stage"], "design")
+        meta, _ = machine.advance(self.repo, ITEM, "plan")
+        self.assertEqual(meta["stage"], "plan")
