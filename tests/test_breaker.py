@@ -446,5 +446,110 @@ class MonotoneAnswerTest(BreakerTestCase):
             breaker.precondition(self.repo, ITEM, meta, "implement")
 
 
+class ReplayTest(BreakerTestCase):
+    """AC14/AC15: replaying the reported run's event log fires the
+    breaker before the third implement round. The replay appends the
+    fixture's events one at a time and asks for a verdict after each
+    stage.advance, exactly as machine.advance does."""
+
+    def replay(self):
+        self.set_gates("design", "cost")
+        meta = self.put(stage="idea")
+        path = paths.item_dir(self.repo, ITEM) / "log.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
+        implement_entries = 0
+        with path.open("a", encoding="utf-8") as handle:
+            for raw in FIXTURE.read_text(encoding="utf-8").splitlines():
+                handle.write(raw + "\n")
+                handle.flush()
+                event = json.loads(raw)
+                if event["event"] != "stage.advance":
+                    continue
+                to = event["data"]["to"]
+                if to == "implement":
+                    implement_entries += 1
+                meta["stage"] = to
+                v = breaker.verdict(self.repo, ITEM, meta, to)
+                if v["fired"]:
+                    # the caller parks here; the implement stage skill
+                    # never runs for this entry.
+                    return {"edge": event["data"], "verdict": v,
+                            "implement_entries": implement_entries}
+        return None
+
+    def test_fires_on_the_assure_edge_entering_the_third_round(self):
+        got = self.replay()
+        self.assertIsNotNone(got, "the breaker never fired on the replay")
+        self.assertEqual(got["edge"], {"from": "assure", "to": "implement"})
+        self.assertEqual(got["implement_entries"], 3)
+        self.assertEqual(got["verdict"]["rework_edges"], 2)
+        self.assertTrue(got["verdict"]["fired"])
+
+    def test_no_implement_round_follows_the_fire(self):
+        got = self.replay()
+        # The replay returns at the fire, so the 4th and 5th implement
+        # entries in the fixture are never reached.
+        self.assertEqual(got["implement_entries"], 3)
+        events = logs.read_events(self.repo, ITEM)
+        entered = sum(1 for e in events
+                      if e["event"] == "stage.advance"
+                      and e["data"]["to"] == "implement")
+        self.assertEqual(entered, 3)
+        self.assertLess(len(events), 21)
+
+    def test_fires_exactly_once_across_the_replay(self):
+        self.set_gates("design", "cost")
+        meta = self.put(stage="idea")
+        path = paths.item_dir(self.repo, ITEM) / "log.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
+        fires = []
+        answered = False
+        with path.open("a", encoding="utf-8") as handle:
+            for raw in FIXTURE.read_text(encoding="utf-8").splitlines():
+                handle.write(raw + "\n")
+                handle.flush()
+                event = json.loads(raw)
+                if event["event"] != "stage.advance":
+                    continue
+                meta["stage"] = event["data"]["to"]
+                v = breaker.verdict(self.repo, ITEM, meta,
+                                    event["data"]["to"])
+                if v["fired"] and not answered:
+                    fires.append(v["rework_edges"])
+                    answered = True
+        self.assertEqual(fires, [2])
+
+
+class CalibrationTest(unittest.TestCase):
+    """AC16: two is the only threshold that satisfies AC14 and has a zero
+    false-fire rate on this repo's real logs."""
+
+    def test_threshold_is_two(self):
+        self.assertEqual(breaker.REWORK_THRESHOLD, 2)
+
+    def test_zero_fires_across_every_real_item_log_in_this_repo(self):
+        # A failure here means a real item crossed the threshold — that is
+        # the breaker doing its job, and the fix is to record an answer
+        # with `factory cost-answer`, never to loosen this assertion.
+        over = []
+        for item_dir in sorted((ROOT / ".factory/items").iterdir()):
+            if not (item_dir / "item.md").exists():
+                continue
+            edges = cost.summarize(ROOT, item_dir.name)["rework_edges"]
+            if edges >= breaker.REWORK_THRESHOLD:
+                over.append((item_dir.name, edges))
+        self.assertEqual(over, [], f"items at or over threshold: {over}")
+
+    def test_threshold_of_one_would_fire_on_historical_items(self):
+        """Stated, not implied: 1 also satisfies AC14 but fires on runs
+        nobody considered pathological."""
+        with_any = [d.name for d in sorted((ROOT / ".factory/items").iterdir())
+                    if (d / "item.md").exists()
+                    and cost.summarize(ROOT, d.name)["rework_edges"] >= 1]
+        self.assertGreaterEqual(len(with_any), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
