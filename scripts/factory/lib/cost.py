@@ -386,3 +386,15 @@ def render_all_text(summary):
                  "done items carry a tier) — no cross-item total or median "
                  "is computed")
     return "\n".join(lines)
+
+
+def render_lower_bound(summary):
+    """One measured line for a decision surface: the item's own measured
+    tokens explicitly labelled a lower bound, or the loud UNMEASURED
+    literal. Never a zero, a dash, or an estimated dollar figure."""
+    measured = summary["measured"]
+    segments = _token_segments(measured)
+    if not segments:
+        return "[unmeasured] tokens: UNMEASURED (no spend events logged)"
+    return (f"[measured] tokens: {', '.join(segments)} "
+            f"({measured['events']} spend events) — LOWER BOUND")

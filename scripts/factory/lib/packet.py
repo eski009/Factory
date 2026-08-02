@@ -31,6 +31,75 @@ def view_links(repo, item_id, meta):
     return links
 
 
+def cost_decision_lines(repo, item_id, meta):
+    """The '## Cost decision' body, ordered exactly as item spec 0016 §6.
+    Returns [] unless the item is parked with a cost-breaker reason. The
+    proxy substrate leads: no token headline appears above it, because
+    the measured aggregate has been shown untrustworthy."""
+    from . import breaker
+    if meta.get("stage") != "waiting-human":
+        return []
+    if not meta.get("paused-reason", "").startswith(breaker.PAUSE_PREFIX):
+        return []
+    summary = cost.summarize(repo, item_id)
+    v = breaker.verdict(repo, item_id, meta, "implement")
+    edges = summary["rework_edges"]
+    entries = summary["stages"].get("implement", {}).get("entries", 0)
+    priority = meta.get("priority", "-")
+    at_or_above = v["backlog"]["at_or_above"]
+    total = v["backlog"]["actionable_total"]
+    recommended = "defer" if at_or_above >= 1 else "narrow"
+    why = {
+        "defer": ("work at this priority or higher is waiting behind an item "
+                  "already reworked past the threshold."),
+        "narrow": ("nothing else is waiting at this priority, so a smaller "
+                   "next round costs less than another full one."),
+    }[recommended]
+    return [
+        f"- [proxy] rework edges: {edges} (backward stage.advance edges into "
+        f"implement; threshold {v['threshold']})",
+        f"- [proxy] active {cost.format_duration(summary['active_seconds'])}, "
+        f"{summary['advances']} advances, {entries} implement entries",
+        "- " + cost.render_lower_bound(summary),
+        f"- backlog: {at_or_above} actionable items at priority ≤ {priority}, "
+        f"{total} actionable in total",
+        "",
+        f"Recommended: {recommended} — {why}",
+        "",
+        # Deviation from plan Task 10 step 4: the loop-mode clause is joined
+        # with a semicolon, not a full stop, so the M9 sentence reads as one
+        # lower-case clause exactly as the AC12 test asserts it.
+        f"- continue — the item returns to implement; the next rework edge "
+        f"parks it again at {edges + 1}; the {at_or_above} items at priority "
+        f"≤ {priority} keep waiting; in loop mode the next actionable item "
+        "runs while this one waits; in item/step mode the run stops here.",
+        f"- narrow — records the decision; edit plan.md, then factory advance "
+        f"{item_id} implement. v1 does not narrow scope for you.",
+        f"- defer — records the decision and leaves the item parked; drop its "
+        f"priority with factory priority {item_id} <n>. v1 does not "
+        "re-prioritise for you.",
+    ]
+
+
+def respond_action_lines(repo, item_id, meta):
+    """Exactly one copy-pasteable action, naming the verb that actually
+    answers THIS pause. One branch, shared by both renderers, so the HTML
+    can never tell a cost-breaker pause to run /factory:run."""
+    from . import breaker
+    paused_from = meta.get("paused-from")
+    reason = meta.get("paused-reason", "")
+    if paused_from == "design":
+        return [f"- `factory choice {item_id} <option>` — record your pick."]
+    if paused_from == "assure":
+        return [f"- `factory confirm {item_id}` — or "
+                f'`factory waive {item_id} --reason "..."` to ship with a '
+                "recorded waiver."]
+    if paused_from == "implement" and reason.startswith(breaker.PAUSE_PREFIX):
+        return [f"- `factory cost-answer {item_id} <continue|narrow|defer>` "
+                "— record the cost decision."]
+    return ["- `/factory:run` — resume the pipeline."]
+
+
 def render_packet(repo, item_id):
     meta, _body = items.load_item(repo, item_id)
     item_dir = paths.item_dir(repo, item_id)
@@ -41,6 +110,9 @@ def render_packet(repo, item_id):
     lines.append(f"- priority: {meta.get('priority', '-')}")
     if meta.get("paused-reason"):
         lines.append(f"- waiting on you: {meta['paused-reason']}")
+    decision = cost_decision_lines(repo, item_id, meta)
+    if decision:
+        lines += ["", "## Cost decision", ""] + decision
     lines += ["", "## View the options"]
     for label, url in view_links(repo, item_id, meta):
         lines.append(f"- [{label}]({url})")
@@ -59,11 +131,10 @@ def render_packet(repo, item_id):
     lines += ["", "## Spend"]
     lines += cost.render_receipt(cost.summarize(repo, item_id)).splitlines()
     lines += ["", "## Respond",
-              "Reply in session, or use the factory CLI to record your",
-              f"decision (design pause: `factory choice {meta['id']} <option>`;",
-              f"assurance pause: `factory confirm {meta['id']}` or",
-              f'`factory waive {meta["id"]} --reason "..."`),',
-              "then run `/factory:run` to resume.", ""]
+              "Reply in session, or use the factory CLI to record your "
+              "decision.", ""]
+    lines += respond_action_lines(repo, item_id, meta)
+    lines.append("")
     return "\n".join(lines)
 
 
@@ -104,8 +175,8 @@ def render_packet_html(repo, item_id):
     h2 { margin: 0 0 16px; font-size: 1.3rem; }
     section { margin-top: 20px; padding: 24px; border: 1px solid var(--line);
       border-radius: 14px; background: var(--panel); }
-    .ask { border-left: 5px solid var(--ask-line); background: var(--ask); }
-    .ask h2 { text-transform: uppercase; letter-spacing: .08em; font-size: .84rem; }
+    .ask, #cost-decision { border-left: 5px solid var(--ask-line); background: var(--ask); }
+    .ask h2, #cost-decision h2 { text-transform: uppercase; letter-spacing: .08em; font-size: .84rem; }
     ul { margin: 0; padding-left: 1.25rem; }
     li + li { margin-top: 10px; }
     .meta { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 0; list-style: none; }
@@ -136,6 +207,31 @@ def render_packet_html(repo, item_id):
                 "    <h2>waiting on you</h2>",
                 f"    <p>{_e(meta['paused-reason'])}</p>",
                 "  </section>"]
+
+    # Deviation from plan Task 10 step 4: the section carries no
+    # class="ask" attribute, so the id selector the tests split on stays
+    # exact; the ask callout styling is attached to #cost-decision in the
+    # stylesheet above instead.
+    decision = cost_decision_lines(repo, item_id, meta)
+    if decision:
+        out += ['  <section id="cost-decision">',
+                "    <h2>Cost decision</h2>"]
+        in_list = False
+        for line in decision:
+            if line.startswith("- "):
+                if not in_list:
+                    out.append("    <ul>")
+                    in_list = True
+                out.append(f"      <li>{_e(line.removeprefix('- '))}</li>")
+                continue
+            if in_list:
+                out.append("    </ul>")
+                in_list = False
+            if line.strip():
+                out.append(f"    <p><strong>{_e(line)}</strong></p>")
+        if in_list:
+            out.append("    </ul>")
+        out.append("  </section>")
 
     out += ["  <section aria-label=\"Item metadata\">", "    <ul class=\"meta\">",
             f"      <li><strong>id:</strong> {_e(meta['id'])}</li>",
@@ -168,13 +264,16 @@ def render_packet_html(repo, item_id):
         out.append(f"      <li>{_e(line.removeprefix('- '))}</li>")
     out += ["    </ul>", "  </section>", "  <section id=\"respond\">",
             "    <h2>Respond</h2>",
-            "    <p>Reply in session, or use the factory CLI.</p>"]
-    if meta.get("paused-from") == "design":
-        command = f"factory choice {meta['id']} <option>"
-        out += [f"    <p>For this design pause: <code>{_e(command)}</code>, then run ",
-                "      <code>/factory:run</code> to resume.</p>"]
-    else:
-        out.append("    <p>Run <code>/factory:run</code> to resume.</p>")
+            "    <p>Reply in session, or use the factory CLI.</p>",
+            "    <ul>"]
+    for line in respond_action_lines(repo, item_id, meta):
+        body = line.removeprefix("- ")
+        parts = body.split("`")
+        rendered = "".join(
+            f"<code>{_e(part)}</code>" if i % 2 else _e(part)
+            for i, part in enumerate(parts))
+        out.append(f"      <li>{rendered}</li>")
+    out.append("    </ul>")
     out += ["  </section>", "</main>", "</body>", "</html>", ""]
     return "\n".join(out)
 

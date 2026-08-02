@@ -79,5 +79,63 @@ class TestPacketHtml(unittest.TestCase):
         self.assertEqual(links[0][0], "Open this packet as a page")
 
 
+class TestCostDecisionHtml(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        initrepo.init(self.repo)
+        os.environ["FACTORY_NOW"] = "2026-08-02T06:00:00Z"
+        items.save_item(self.repo, {
+            "id": "0001-runaway", "title": "Runaway",
+            "stage": "waiting-human", "kind": "backend", "priority": 2,
+            "paused-from": "implement",
+            "paused-reason": "cost breaker: 2 rework edges (threshold 2)",
+            "created": "2026-08-02T00:00:00Z",
+            "updated": "2026-08-02T06:00:00Z"}, "# Runaway\n")
+        for ts in ("2026-08-02T01:00:00Z", "2026-08-02T02:00:00Z"):
+            os.environ["FACTORY_NOW"] = ts
+            logs.append_event(self.repo, "0001-runaway", "stage.advance",
+                              {"from": "review", "to": "implement"})
+        os.environ["FACTORY_NOW"] = "2026-08-02T06:00:00Z"
+
+    def tearDown(self):
+        os.environ.pop("FACTORY_NOW", None)
+        self.tmp.cleanup()
+
+    def section(self):
+        page = packet.render_packet_html(self.repo, "0001-runaway")
+        return page.split('<section id="cost-decision">', 1)[1].split(
+            "</section>", 1)[0]
+
+    def test_html_section_leads_with_the_proxy_substrate(self):
+        section = self.section()
+        self.assertLess(section.index("[proxy] rework edges: 2"),
+                        section.index("[unmeasured] tokens:"))
+
+    def test_html_recommendation_and_three_consequences(self):
+        section = self.section()
+        self.assertIn("Recommended: narrow", section)
+        self.assertNotIn("Recommended: continue", section)
+        for option in ("continue", "narrow", "defer"):
+            self.assertIn(f"{option} — ", section)
+
+    def test_html_respond_names_cost_answer_and_not_factory_run(self):
+        page = packet.render_packet_html(self.repo, "0001-runaway")
+        respond = page.split('<section id="respond">', 1)[1].split(
+            "</section>", 1)[0]
+        self.assertIn("factory cost-answer 0001-runaway", respond)
+        self.assertNotIn("/factory:run", respond)
+
+    def test_html_section_absent_for_a_non_breaker_pause(self):
+        meta, body = items.load_item(self.repo, "0001-runaway")
+        meta["paused-reason"] = "the implement skill is unavailable"
+        items.save_item(self.repo, meta, body)
+        page = packet.render_packet_html(self.repo, "0001-runaway")
+        self.assertNotIn('<section id="cost-decision">', page)
+        respond = page.split('<section id="respond">', 1)[1].split(
+            "</section>", 1)[0]
+        self.assertIn("/factory:run", respond)
+
+
 if __name__ == "__main__":
     unittest.main()
