@@ -1,0 +1,21 @@
+{"event": "item.created", "ts": "2026-08-02T00:00:00Z"}
+{"data": {"from": "idea", "to": "triage"}, "event": "stage.advance", "ts": "2026-08-02T00:18:00Z"}
+{"data": {"from": "triage", "to": "spec"}, "event": "stage.advance", "ts": "2026-08-02T00:36:00Z"}
+{"data": {"from": "spec", "to": "plan"}, "event": "stage.advance", "ts": "2026-08-02T00:54:00Z"}
+{"data": {"from": "plan", "to": "implement"}, "event": "stage.advance", "ts": "2026-08-02T01:12:00Z"}
+{"data": {"from": "implement", "to": "review"}, "event": "stage.advance", "ts": "2026-08-02T01:30:00Z"}
+{"data": {"from": "review", "to": "implement"}, "event": "stage.advance", "ts": "2026-08-02T01:48:00Z"}
+{"data": {"from": "implement", "to": "review"}, "event": "stage.advance", "ts": "2026-08-02T02:06:00Z"}
+{"data": {"from": "review", "to": "verify"}, "event": "stage.advance", "ts": "2026-08-02T02:24:00Z"}
+{"data": {"from": "verify", "to": "waiting-human"}, "event": "stage.advance", "ts": "2026-08-02T02:42:00Z"}
+{"data": {"from": "waiting-human", "to": "verify"}, "event": "stage.advance", "ts": "2026-08-02T03:00:00Z"}
+{"data": {"from": "verify", "to": "assure"}, "event": "stage.advance", "ts": "2026-08-02T03:18:00Z"}
+{"data": {"from": "assure", "to": "implement"}, "event": "stage.advance", "ts": "2026-08-02T03:36:00Z"}
+{"data": {"from": "implement", "to": "review"}, "event": "stage.advance", "ts": "2026-08-02T03:54:00Z"}
+{"data": {"from": "review", "to": "implement"}, "event": "stage.advance", "ts": "2026-08-02T04:12:00Z"}
+{"data": {"from": "implement", "to": "review"}, "event": "stage.advance", "ts": "2026-08-02T04:30:00Z"}
+{"data": {"from": "review", "to": "verify"}, "event": "stage.advance", "ts": "2026-08-02T04:48:00Z"}
+{"data": {"from": "verify", "to": "assure"}, "event": "stage.advance", "ts": "2026-08-02T05:06:00Z"}
+{"data": {"from": "assure", "to": "waiting-human"}, "event": "stage.advance", "ts": "2026-08-02T05:24:00Z"}
+{"data": {"from": "waiting-human", "to": "assure"}, "event": "stage.advance", "ts": "2026-08-02T05:42:00Z"}
+{"data": {"from": "assure", "to": "implement"}, "event": "stage.advance", "ts": "2026-08-02T06:00:00Z"}
