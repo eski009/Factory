@@ -401,3 +401,80 @@ class TestApproachCli(ApproachTest):
         self.assertIn(
             "factory approach-answer",
             self.run_cli("log", ITEM, "approach.answered")[2])
+
+
+class TestVerifyReworkAndRoundScoping(ApproachTest):
+    """AC4/AC5/AC11/AC12: the verify edge and the round-scoped counts."""
+
+    def verify_rework(self):
+        """One verify -> implement round trip, production path."""
+        self.walk_to("verify")
+        meta, _ = machine.advance(self.repo, ITEM, "implement",
+                                  reason="verify rework: fix the prose")
+        return meta
+
+    def test_verify_to_implement_capped_names_redesign_route(self):
+        # AC11: mirrors review -> implement in edge shape; the cap
+        # refusal names the redesign route, never bare blocked.
+        self.assertEqual(machine.MAX_VERIFY_REWORKS, 2)
+        self.make_item()
+        self.assertEqual(self.verify_rework()["stage"], "implement")
+        self.assertEqual(self.verify_rework()["stage"], "implement")
+        self.walk_to("verify")
+        with self.assertRaises(machine.GateError) as ctx:
+            machine.advance(self.repo, ITEM, "implement",
+                            reason="verify rework: again")
+        msg = str(ctx.exception)
+        self.assertIn("approaches/forbidden.md", msg)
+        self.assertIn(f"factory advance {ITEM} spec", msg)
+        self.assertNotIn("move item to blocked", msg)
+
+    def test_verify_cap_round_scoped_to_latest_redesign(self):
+        # AC4: the verify cap counts only edges after the latest
+        # approach.rejected edge; the approach cap still counts the
+        # pre-redesign edge (lifetime).
+        self.make_item()
+        self.verify_rework()
+        self.verify_rework()          # at cap, pre-redesign
+        self.redesign(frm="verify")   # walks to verify, takes the edge
+        self.walk_to("verify")
+        meta, _ = machine.advance(self.repo, ITEM, "implement",
+                                  reason="verify rework: fresh round")
+        self.assertEqual(meta["stage"], "implement")  # admitted again
+        self.assertEqual(machine._approach_edges(
+            logs.read_events(self.repo, ITEM))[0], 1)  # still counted
+
+    def test_review_and_assure_caps_round_scoped(self):
+        # AC4: substrate unchanged (review.rejected/assure.rejected
+        # EVENTS - the machine.py:459,462 defect stays named, not
+        # migrated), scoping added: only events after the latest
+        # approach.rejected edge count.
+        for frm, event in (("review", "review.rejected"),
+                           ("assure", "assure.rejected")):
+            with self.subTest(frm=frm):
+                self.reset()
+                self.make_item()
+                self.walk_to(frm)
+                for _ in range(3):
+                    logs.append_event(self.repo, ITEM, event)
+                with self.assertRaises(machine.GateError):
+                    machine.advance(self.repo, ITEM, "implement")
+                # redesign clears the round: over-cap before, admitted after
+                self.forbid(frm)
+                machine.advance(self.repo, ITEM, "spec",
+                                reason="approach.rejected: wrong design")
+                self.walk_to(frm)
+                logs.append_event(self.repo, ITEM, event)
+                meta, _ = machine.advance(self.repo, ITEM, "implement")
+                self.assertEqual(meta["stage"], "implement")
+
+    def test_verify_edge_counts_in_breaker_substrate_unchanged(self):
+        # AC12: cost.py:26 pre-listed verify, so summarize and the 0016
+        # breaker count the new edge with ZERO breaker change.
+        self.assertIs(breaker.REWORK_FROM, cost.REWORK_FROM)
+        self.assertIn("verify", cost.REWORK_FROM)
+        self.make_item()
+        self.verify_rework()
+        self.assertEqual(
+            cost.summarize(self.repo, ITEM)["rework_edges"], 1)
+        self.assertEqual(breaker.rework_edges(self.repo, ITEM), 1)

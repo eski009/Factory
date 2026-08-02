@@ -12,7 +12,9 @@ never by timestamp. A SPECIAL-from resume returns only to paused-from
 and never starts a round; a log with no such marker fails closed.
 Non-postdating checks stay lifetime/presence checks: review.rejected
 and assure.rejected (the capped rework edges), ship.merged,
-repro.confirmed, and every file gate.
+repro.confirmed, and every file gate. Item 0015 adds verify->implement
+(capped, round-scoped) and the APPROACH_FROM -> spec redesign edge
+(lifetime-capped).
 
 advance() returns (meta, verdict): the cost breaker's verdict is computed
 on every transition and is advisory — the caller parks, the engine never
@@ -42,6 +44,13 @@ MAX_ASSURE_REJECTIONS = 2
 APPROACH_FROM = frozenset({"review", "verify", "assure"})
 APPROACH_TO = "spec"
 MAX_APPROACH_REJECTIONS = 1
+
+# Item 0015 SS5: the verify->implement rework cap. Counts engine-
+# written verify->implement stage.advance edges POSTDATING the latest
+# approach.rejected edge (round-scoped, SS6) - edge substrate, not the
+# event substrate the review/assure caps carry (a named live defect
+# this cap must not copy, B2).
+MAX_VERIFY_REWORKS = 2
 
 
 class GateError(Exception):
@@ -121,6 +130,31 @@ def _approach_edges(events):
             count += 1
             last = i
     return count, last
+
+
+def _count_after(events, name, start):
+    """Count events named `name` at log positions strictly after
+    `start` (item 0015 SS6: rework counts round-scope to the latest
+    approach.rejected edge; -1 means the whole log)."""
+    return sum(1 for i, e in enumerate(events)
+               if i > start and isinstance(e, dict)
+               and e.get("event") == name)
+
+
+def _verify_reworks_after(events, start):
+    """Engine-written verify->implement edges after `start` - the
+    round-scoped count behind MAX_VERIFY_REWORKS."""
+    count = 0
+    for i, event in enumerate(events):
+        if i <= start or not isinstance(event, dict):
+            continue
+        if event.get("event") != "stage.advance":
+            continue
+        data = event.get("data")
+        if (isinstance(data, dict) and data.get("from") == "verify"
+                and data.get("to") == "implement"):
+            count += 1
+    return count
 
 
 def _postdates_latest_implement(events, event):
@@ -554,11 +588,29 @@ def advance(repo, item_id, to, reason=None):
         meta.pop("paused-from", None)
         meta.pop("paused-reason", None)
     elif frm == "review" and to == "implement":
-        if logs.count_events(repo, item_id, "review.rejected") > MAX_REVIEW_REJECTIONS:
+        # Round-scoped to the latest approach.rejected edge (item 0015
+        # SS6): substrate unchanged - skill-logged review.rejected
+        # events, the named 0016-L2 defect, deliberately not migrated.
+        events = logs.read_events(repo, item_id)
+        _n, last = _approach_edges(events)
+        if _count_after(events, "review.rejected", last) > MAX_REVIEW_REJECTIONS:
             raise GateError("review rejected too many times; move item to blocked")
     elif frm == "assure" and to == "implement":
-        if logs.count_events(repo, item_id, "assure.rejected") > MAX_ASSURE_REJECTIONS:
+        events = logs.read_events(repo, item_id)
+        _n, last = _approach_edges(events)
+        if _count_after(events, "assure.rejected", last) > MAX_ASSURE_REJECTIONS:
             raise GateError("assurance rejected too many times; move item to blocked")
+    elif frm == "verify" and to == "implement":
+        # Item 0015 SS5: mirrors review->implement in edge shape, not
+        # count substrate (B2). The refusal names the redesign route.
+        events = logs.read_events(repo, item_id)
+        _n, last = _approach_edges(events)
+        if _verify_reworks_after(events, last) >= MAX_VERIFY_REWORKS:
+            raise GateError(
+                f"verify reworked {MAX_VERIFY_REWORKS} times since the "
+                "last redesign; if the design cannot converge, record "
+                "approaches/forbidden.md and route factory advance "
+                f"{item_id} spec")
     elif frm in APPROACH_FROM and to == APPROACH_TO:
         # Item 0015 SS1/SS2: the redesign edge. The rejecting stage
         # writes the graveyard BEFORE routing, while the evidence is
