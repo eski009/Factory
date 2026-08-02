@@ -100,6 +100,30 @@ class TestDoctor(unittest.TestCase):
         report = doctor.report(self.repo)
         self.assertEqual(report["tiers"]["bug"]["assure"], "node")
 
+    def test_assure_attribution_defaults_false_and_follows_config(self):
+        report = doctor.report(self.repo)
+        self.assertIs(report["assure_attribution"], False)
+        cfg = json.loads(paths.config_path(self.repo).read_text(
+            encoding="utf-8"))
+        cfg["assure"] = {"attribution": True}
+        paths.config_path(self.repo).write_text(
+            json.dumps(cfg, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        self.assertIs(doctor.report(self.repo)["assure_attribution"], True)
+
+    def test_assure_attribution_absent_key_reads_false(self):
+        cfg = json.loads(paths.config_path(self.repo).read_text(
+            encoding="utf-8"))
+        cfg.pop("assure", None)
+        paths.config_path(self.repo).write_text(
+            json.dumps(cfg, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        self.assertIs(doctor.report(self.repo)["assure_attribution"], False)
+
+    def test_report_keys_text_render_unchanged(self):
+        # AC4: the text render never grows the new key.
+        self.assertNotIn("assure_attribution", doctor.REPORT_KEYS)
+        text = doctor.render(doctor.report(self.repo))
+        self.assertNotIn("assure_attribution", text)
+
 
 def fake_jwt(exp):
     """Helper to create a fake JWT token with a given exp claim."""

@@ -90,16 +90,31 @@ def _last_index(events, name):
     return idx
 
 
-def _config_gates(repo):
+def _config_dict(repo):
     try:
         raw = json.loads(paths.config_path(repo).read_text(
             encoding="utf-8", errors="replace"))
     except (OSError, json.JSONDecodeError):
-        return []
-    gates = raw.get("gates", []) if isinstance(raw, dict) else []
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _config_gates(repo):
+    gates = _config_dict(repo).get("gates", [])
     if not isinstance(gates, list):
         return []
     return [g for g in gates if isinstance(g, str)]
+
+
+def assure_attribution_enabled(repo):
+    """Item 0013 §2: the one explicit key that gates the base walk's
+    trigger AND the gate's acceptance of attribution fields. An absent
+    key, an unreadable or malformed config, or any non-boolean value all
+    read as False - the default path is the safe path."""
+    assure = _config_dict(repo).get("assure")
+    if not isinstance(assure, dict):
+        return False
+    return assure.get("attribution") is True
 
 
 def _validate_assurance_artifacts(repo, meta):

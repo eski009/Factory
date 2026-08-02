@@ -12,7 +12,7 @@ import os
 import shutil
 import time
 
-from . import dispatch, initrepo, items, paths, pool, tiers, work
+from . import dispatch, initrepo, items, machine, paths, pool, tiers, work
 
 REPORT_KEYS = ("tree_valid", "design_system_present", "designsync_project",
                "schedule_configured", "merge_policy", "gates",
@@ -77,6 +77,7 @@ def report(repo):
         "workers": worker_readiness(repo),
         "tiers": tier_profiles(repo),
         "gates": config.get("gates", []),
+        "assure_attribution": machine.assure_attribution_enabled(repo),
         "open_items": sum(1 for m in metas if m["stage"] not in ("done", "blocked")),
         "pending_human": len(dispatch.pending_human(repo)),
     }

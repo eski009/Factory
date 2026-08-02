@@ -181,6 +181,45 @@ class InitTest(unittest.TestCase):
         config = json.loads((self.repo / ".factory/config.json").read_text())
         self.assertEqual(config["research"], {"depth": "web"})
 
+    def test_default_config_has_assure_attribution_false(self):
+        initrepo.init(self.repo)
+        config = json.loads(paths.config_path(self.repo).read_text(
+            encoding="utf-8"))
+        self.assertEqual(config["assure"], {"attribution": False})
+        self.assertEqual(initrepo.validate_tree(self.repo), [])
+
+    def test_validate_accepts_config_without_assure_key(self):
+        initrepo.init(self.repo)
+        data = json.loads(paths.config_path(self.repo).read_text(
+            encoding="utf-8"))
+        data.pop("assure")
+        paths.config_path(self.repo).write_text(
+            json.dumps(data, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8")
+        self.assertEqual(initrepo.validate_tree(self.repo), [])
+
+    def test_validate_rejects_unknown_assure_property(self):
+        initrepo.init(self.repo)
+        data = json.loads(paths.config_path(self.repo).read_text(
+            encoding="utf-8"))
+        data["assure"] = {"attribution": True, "delta_scope": True}
+        paths.config_path(self.repo).write_text(
+            json.dumps(data, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8")
+        self.assertTrue(any("delta_scope" in e
+                            for e in initrepo.validate_tree(self.repo)))
+
+    def test_validate_rejects_non_boolean_attribution(self):
+        initrepo.init(self.repo)
+        data = json.loads(paths.config_path(self.repo).read_text(
+            encoding="utf-8"))
+        data["assure"] = {"attribution": "yes"}
+        paths.config_path(self.repo).write_text(
+            json.dumps(data, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8")
+        self.assertTrue(any("attribution" in e
+                            for e in initrepo.validate_tree(self.repo)))
+
     def test_validate_accepts_valid_research_depth(self):
         initrepo.init(self.repo)
         cfg = self.repo / ".factory/config.json"
