@@ -49,7 +49,22 @@ three duties run for every item, in order:
    the item's `## Behavior` onto journey nodes. An item that introduces a
    new journey registers it directly as an inventory-only entry (next free
    `J-NNN` id, `status: inventory`, cited to this item's spec) — the same
-   direct-write license triage has for `roadmap.md`. Any affected journey
+   direct-write license triage has for `roadmap.md`.
+
+   A `graph.json` entry is schema-constrained: `schemas/journey-graph.schema.json`
+   sets `additionalProperties: false`, so **any field not in this list fails
+   `factory validate` and halts the dispatcher for every item, not just
+   yours.** Required: `id` (`^J-[0-9]{3}$`), `slug` (`^[a-z0-9-]+$`), `title`,
+   `criticality` (`core` | `high` | `standard`), `status` (`inventory` |
+   `draft` | `approved`). Optional: `persona`, `trigger`, `outcome`,
+   `contract`, and `links` (itself limited to `routes`, `screens`, `apis`,
+   `tests`). There is no field for the node list or for provenance — nodes
+   belong in the contract file, and the citation belongs in the item log — so
+   do not add `nodes`, `source`, or anything else the schema does not name.
+   **Run `factory validate` after writing `graph.json` and fix any error
+   before advancing**; leaving the graph invalid blocks the whole pipeline.
+
+   Any affected journey
    that has no contract yet gets a **minimal draft contract** at
    `docs/factory/journeys/contracts/J-NNN-<slug>.md` with `status: draft`
    recorded in `graph.json`: cover at least the touched nodes (what the
