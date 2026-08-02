@@ -7,6 +7,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 from scripts.factory import factory
+from scripts.factory.lib import items
 
 
 class CliTest(unittest.TestCase):
@@ -187,12 +188,54 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 0)
         summary = json.loads(out)
         for key in ("item", "window", "elapsed_seconds", "active_seconds",
-                    "waiting_seconds", "advances", "retries", "dispatches",
+                    "waiting_seconds", "advances", "rework_edges", "dispatches",
                     "stages", "measured", "unmeasured",
                     "invalid_spend_events"):
             self.assertIn(key, summary)
         self.assertIsNone(summary["measured"])
         self.assertEqual(summary["window"]["end"], "2026-07-03T12:00:00Z")
+
+    def test_cost_all_renders_three_permitted_things_plus_unmeasured(self):
+        self.run_cli("init")
+        self.run_cli("add", "Thing")
+        self.run_cli("add", "Other")
+        code, out, _ = self.run_cli("cost", "--all")
+        self.assertEqual(code, 0)
+        self.assertIn("[proxy] 0001-thing: advances ", out)
+        self.assertIn("[proxy] 0002-other: advances ", out)
+        self.assertIn("[coverage] spend events present for 0 of 2 items;", out)
+        self.assertIn("[unmeasured] UNMEASURED: orchestrator main-loop "
+                      "tokens; per-tier medians", out)
+
+    def test_cost_all_json_returns_exactly_items_and_coverage(self):
+        self.run_cli("init")
+        self.run_cli("add", "Thing")
+        code, out, _ = self.run_cli("cost", "--all", "--json")
+        self.assertEqual(code, 0)
+        payload = json.loads(out)
+        self.assertEqual(set(payload), {"items", "coverage"})
+        self.assertEqual(len(payload["items"]), 1)
+
+    def test_cost_with_neither_item_nor_all_is_refused(self):
+        self.run_cli("init")
+        code, _out, err = self.run_cli("cost")
+        self.assertEqual(code, 2)
+        self.assertIn("give an item id or --all", err)
+
+    def test_cost_with_both_item_and_all_is_refused(self):
+        self.run_cli("init")
+        self.run_cli("add", "Thing")
+        code, _out, err = self.run_cli("cost", "0001-thing", "--all")
+        self.assertEqual(code, 2)
+        self.assertIn("give an item id or --all", err)
+
+    def test_cost_single_item_path_unchanged(self):
+        self.run_cli("init")
+        self.run_cli("add", "Thing")
+        code, out, _ = self.run_cli("cost", "0001-thing")
+        self.assertEqual(code, 0)
+        self.assertIn("item: 0001-thing", out)
+        self.assertNotIn("[coverage]", out)
 
     def test_status_json_rows_carry_spend_without_stages(self):
         self.run_cli("init")
@@ -308,6 +351,123 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("0001-thing", out)
         self.assertEqual(err, "")
+
+    def seed_over_threshold(self):
+        """An item at implement with two backward edges into implement."""
+        self.run_cli("init")
+        self.run_cli("add", "Thing", "--kind", "backend")
+        log = Path(self.repo) / ".factory/items/0001-thing/log.jsonl"
+        with log.open("a", encoding="utf-8") as f:
+            for ts in ("2026-07-03T01:00:00Z", "2026-07-03T02:00:00Z"):
+                f.write(json.dumps(
+                    {"data": {"from": "review", "to": "implement"},
+                     "event": "stage.advance", "ts": ts},
+                    sort_keys=True) + "\n")
+
+    def test_cost_answer_writes_artifact_and_exits_zero(self):
+        self.seed_over_threshold()
+        code, out, _ = self.run_cli("cost-answer", "0001-thing", "continue")
+        self.assertEqual(code, 0)
+        path = Path(out.strip())
+        self.assertTrue(path.exists())
+        body = path.read_text(encoding="utf-8")
+        self.assertIn("- answer: continue", body)
+        self.assertIn("- rework-edges: 2", body)
+        self.assertIn("- ts: ", body)
+
+    def test_cost_answer_below_threshold_is_refused(self):
+        self.run_cli("init")
+        self.run_cli("add", "Thing", "--kind", "backend")
+        code, _out, err = self.run_cli("cost-answer", "0001-thing", "continue")
+        self.assertEqual(code, 2)
+        self.assertIn("nothing to answer", err)
+
+    def test_cost_answered_is_refused_by_factory_log(self):
+        self.seed_over_threshold()
+        code, _out, err = self.run_cli("log", "0001-thing", "cost.answered")
+        self.assertEqual(code, 1)
+        self.assertIn("written only by its human verb", err)
+
+    def seed_cost_gate_item(self, edges, stage, paused_from=None):
+        """A backend item under the cost gate with `edges` backward
+        stage.advance edges already in its log. Seeding writes state
+        directly; every assertion below goes through the CLI."""
+        self.run_cli("init")
+        self.run_cli("add", "Runaway", "--kind", "backend")
+        config = Path(self.repo) / ".factory/config.json"
+        loaded = json.loads(config.read_text(encoding="utf-8"))
+        loaded["gates"] = ["design", "cost"]
+        config.write_text(json.dumps(loaded, indent=2, sort_keys=True) + "\n",
+                          encoding="utf-8")
+        meta, body = items.load_item(self.repo, "0001-runaway")
+        meta["stage"] = stage
+        if paused_from:
+            meta["paused-from"] = paused_from
+            meta["paused-reason"] = (
+                f"cost breaker: {edges} rework edges (threshold 2)")
+        items.save_item(self.repo, meta, body)
+        item_dir = Path(self.repo) / ".factory/items/0001-runaway"
+        (item_dir / "plan.md").write_text("- [ ] task\n", encoding="utf-8")
+        with (item_dir / "log.jsonl").open("a", encoding="utf-8") as f:
+            for i in range(edges):
+                f.write(json.dumps(
+                    {"data": {"from": "review", "to": "implement"},
+                     "event": "stage.advance",
+                     "ts": f"2026-07-03T0{i + 1}:00:00Z"},
+                    sort_keys=True) + "\n")
+
+    def test_advance_on_the_firing_transition_exits_zero_and_advises(self):
+        """AC21 at the CLI seam: the breaker is advisory, never a
+        refusal. One pre-existing edge puts this transition's pre-count
+        at 1 (< 2), so it is admitted; the printed stage is the
+        REQUESTED one; both advisory lines follow; the exit code is 0."""
+        self.seed_cost_gate_item(edges=1, stage="review")
+        code, out, err = self.run_cli("advance", "0001-runaway", "implement")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(err, "")
+        self.assertIn("0001-runaway -> implement", out)
+        self.assertIn("cost breaker: 2 rework edges (threshold 2)", out)
+        self.assertIn("park and answer before the next implement round", out)
+        self.assertIn("next: factory cost-answer 0001-runaway "
+                      "<continue|narrow|defer>", out)
+        # advisory, not a silent redirect: the item really is at implement
+        self.assertEqual(
+            items.load_item(self.repo, "0001-runaway")[0]["stage"],
+            "implement")
+
+    def test_advance_resume_without_an_answer_exits_two_naming_the_verb(self):
+        """AC18 at the CLI seam: the one refusal the breaker owns. The
+        park cannot ping-pong, and the message names the verb that
+        clears it."""
+        self.seed_cost_gate_item(edges=2, stage="waiting-human",
+                                 paused_from="implement")
+        code, out, err = self.run_cli("advance", "0001-runaway", "implement")
+        self.assertEqual(code, 2)
+        self.assertEqual(out, "")
+        self.assertIn("cost breaker unanswered: 2 rework edges "
+                      "(threshold 2)", err)
+        self.assertIn("factory cost-answer 0001-runaway "
+                      "<continue|narrow|defer>", err)
+        self.assertEqual(
+            items.load_item(self.repo, "0001-runaway")[0]["stage"],
+            "waiting-human")
+
+    def test_advance_resume_after_cost_answer_exits_zero_without_advising(self):
+        """The verb the refusal names actually clears it: the answered
+        item resumes to implement, and the resume prints no advisory
+        lines because the resume edge is not a rework edge."""
+        self.seed_cost_gate_item(edges=2, stage="waiting-human",
+                                 paused_from="implement")
+        code, _out, err = self.run_cli("cost-answer", "0001-runaway",
+                                       "continue")
+        self.assertEqual(code, 0, err)
+        code, out, err = self.run_cli("advance", "0001-runaway", "implement")
+        self.assertEqual(code, 0, err)
+        self.assertIn("0001-runaway -> implement", out)
+        self.assertNotIn("cost breaker:", out)
+        self.assertEqual(
+            items.load_item(self.repo, "0001-runaway")[0]["stage"],
+            "implement")
 
 
 if __name__ == "__main__":

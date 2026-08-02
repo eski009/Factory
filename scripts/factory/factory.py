@@ -9,9 +9,9 @@ import sys
 if __package__ in (None, ""):
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod
+    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod, breaker
 else:
-    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod
+    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod, breaker
 
 
 def _require_factory_repo(repo):
@@ -102,6 +102,20 @@ def cmd_status(args):
 
 
 def cmd_cost(args):
+    # Neither given, or both given, is the same refusal: an aggregate view
+    # and an item view answer different questions and never merge.
+    if bool(args.all) == bool(args.item):
+        print("give an item id or --all", file=sys.stderr)
+        return 2
+    if args.all:
+        if not _require_factory_repo(args.repo):
+            return 2
+        summary = cost.summarize_all(args.repo)
+        if args.json:
+            print(json.dumps(summary, indent=2, sort_keys=True))
+        else:
+            print(cost.render_all_text(summary))
+        return 0
     try:
         summary = cost.summarize(args.repo, args.item)
     except items.ItemError as exc:
@@ -170,11 +184,20 @@ def cmd_cleanup(args):
 
 def cmd_advance(args):
     try:
-        machine.advance(args.repo, args.item, args.stage, reason=args.reason)
+        _meta, verdict = machine.advance(args.repo, args.item, args.stage,
+                                         reason=args.reason)
     except (machine.GateError, items.ItemError) as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 2
+    # Always the REQUESTED stage: a silent redirect stays unimplementable
+    # rather than merely inelegant.
     print(f"{args.item} -> {args.stage}")
+    if verdict["fired"]:
+        print(f"cost breaker: {verdict['rework_edges']} rework edges "
+              f"(threshold {verdict['threshold']}) — park and answer "
+              "before the next implement round")
+        print(f"next: factory cost-answer {args.item} "
+              "<continue|narrow|defer>")
     return 0
 
 
@@ -186,9 +209,10 @@ def cmd_log(args):
         except json.JSONDecodeError as exc:
             print(f"--data is not valid JSON: {exc}", file=sys.stderr)
             return 1
-    if args.event in ("assure.waived", "assure.confirmed"):
+    if args.event in ("assure.waived", "assure.confirmed", "cost.answered"):
         print(f"{args.event} is written only by its human verb "
-              "(factory waive / factory confirm)", file=sys.stderr)
+              "(factory waive / factory confirm / factory cost-answer)",
+              file=sys.stderr)
         return 1
     try:
         items.load_item(args.repo, args.item)
@@ -301,6 +325,17 @@ def cmd_choice(args):
     try:
         path = design_mod.record_choice(args.repo, args.item, args.option,
                                         notes=args.notes)
+    except (machine.GateError, items.ItemError) as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    print(path)
+    return 0
+
+
+def cmd_cost_answer(args):
+    try:
+        path = breaker.record_answer(args.repo, args.item, args.answer,
+                                     notes=args.notes)
     except (machine.GateError, items.ItemError) as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 2
@@ -423,7 +458,9 @@ def main(argv=None):
     p.set_defaults(func=cmd_status)
 
     p = sub.add_parser("cost", help="per-item spend summary, provenance-tagged")
-    p.add_argument("item")
+    p.add_argument("item", nargs="?")
+    p.add_argument("--all", action="store_true",
+                   help="aggregate mode: every item, no cross-item totals")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_cost)
 
@@ -508,6 +545,13 @@ def main(argv=None):
     p.add_argument("option")
     p.add_argument("--notes")
     p.set_defaults(func=cmd_choice)
+
+    p = sub.add_parser("cost-answer",
+                       help="record the human's cost-breaker decision")
+    p.add_argument("item")
+    p.add_argument("answer", choices=list(breaker.ANSWERS))
+    p.add_argument("--notes")
+    p.set_defaults(func=cmd_cost_answer)
 
     p = sub.add_parser("waive",
                        help="record a human assurance waiver (requires a reason)")

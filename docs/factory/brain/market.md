@@ -70,3 +70,15 @@ _Seeded by `factory-research`. Every claim is cited `(source: …)` or marked `(
   is a hypothesis (assumption); Devin ARR trajectory and Cursor surcharge
   figures come from secondary sources (source:
   .factory/runs/research/evidence-pack.md §2, marked "secondary").
+- **Council cost is measured, not merely inferred (n=1).** One item's log
+  supplies a complete stage-labelled measured distribution: 0004, 11 measured
+  spend events, 1,385,300 tokens — implement 792,551 (57.2%), review 215,426,
+  triage 160,965, plan 147,199, spec 69,159. The six-seat council (triage +
+  review) accounts for **376,391 = 27.2%** of that item's measured spend, with a
+  per-seat round-1 breakdown on record. This corrects the standing "inferred,
+  not measured" assumption above for a single data point only — one item, one
+  repo, not a population, and no cross-item aggregate is trustworthy while the
+  nested-dispatch double-count stands (source:
+  .factory/items/0004-per-item-cost-meter-measure-and-report-t/log.jsonl;
+  .factory/items/0016-cost-circuit-breaker-on-engine-authorita/reviews/round-1/commercial.md;
+  authorized: judgement on bid-0067).

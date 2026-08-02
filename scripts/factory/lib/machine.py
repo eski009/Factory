@@ -11,6 +11,10 @@ the latest implement.completed, so assurance from before a rework
 never satisfies the ship gate. All other events (including
 assure.rejected, a lifetime count feeding the capped rework edge,
 and the assure entry gate's verify.green) are lifetime counts.
+
+advance() returns (meta, verdict): the cost breaker's verdict is computed
+on every transition and is advisory — the caller parks, the engine never
+does. Item spec 0016 §5.
 """
 
 import json
@@ -262,8 +266,17 @@ GATES = {
 
 
 def advance(repo, item_id, to, reason=None):
+    # Function-local: breaker imports cost, which imports machine. The
+    # precedent is _validate_assurance_artifacts' local imports above.
+    from . import breaker
     meta, body = items.load_item(repo, item_id)
     frm = meta["stage"]
+    # One ordered rule, before the branch dispatch: the waiting-human
+    # resume branch applies no gate of its own (it checks only that the
+    # destination equals paused-from), so without this a park with no
+    # recorded answer returns the item to the stage that parked it and
+    # re-parks immediately.
+    breaker.precondition(repo, item_id, meta, to)
     if to in SPECIAL:
         if frm in SPECIAL:
             raise GateError(f"cannot move {frm} -> {to}")
@@ -294,4 +307,13 @@ def advance(repo, item_id, to, reason=None):
     if reason:
         event_data["reason"] = reason
     logs.append_event(repo, item_id, "stage.advance", event_data)
-    return meta
+    # Computed after the append so the verdict sees the edge this
+    # transition just created. Advisory only: the engine never mutates
+    # stage on its own initiative.
+    verdict = breaker.verdict(repo, item_id, meta, to)
+    if verdict["fired"]:
+        # Audit trail only — nothing ever counts or gates on this event.
+        logs.append_event(repo, item_id, "cost.breaker",
+                          {"rework_edges": verdict["rework_edges"],
+                           "threshold": verdict["threshold"]})
+    return meta, verdict

@@ -212,3 +212,38 @@
   the earlier-session change making Artifact publishing the standard
   presentation channel for design options. No engine change; 334 tests green
   (source: .factory/items/0012-adapt-the-design-options-decision-block-/verify.md).
+- **2026-08-02, triage of 0016:** council unanimous BUILD at priority 1 (6/6,
+  every seat promoting it independently from its filed p2), kind confirmed
+  `backend` over ui-taste's `mixed` dissent (per bid-0040, `kind` is design-gate
+  routing only), tier `feature`. **No seat endorsed the item as written** — all
+  six returned "rescope" on one diagnosis: the item's own title claims an
+  engine-authoritative counter and the counter it named is skill-logged. Five
+  blocking findings bind the spec: the trigger substrate moves to backward
+  `stage.advance` edges (B1); the engine computes the verdict and
+  `factory-dispatch` performs the park, because `advance()` must never return a
+  stage other than the one requested (B2); the answer verb, its precondition
+  artifact and the dispatch resume clause ship in v1 or the park ping-pongs
+  forever (B3); AC5's ParkSnap replay becomes a checked-in fixture, that log
+  not being in this repo (B4); and no cross-item token total and no per-tier
+  medians ship at all (B5). **Precedent recorded (judgement on bid-0070): a new
+  human pause joins the existing configurable `gates` enum rather than becoming
+  a second hardcoded built-in gate** — one enum member in
+  `schemas/config.schema.json`, read by `_config_gates` and consumed exactly as
+  the assure gate is, which keeps vision.md's "exactly one built-in class of
+  human gate, and the gate set is configurable" true. Entanglement resolved
+  6/6: 0013's plan Task 9 is **struck, not "marked complete"**, because its grep
+  hedge for `assure.rejected` would read "not present" once the counter moves to
+  edges and would silently reinstate the convention-dependent counter this item
+  exists to remove; 0013 drops to p2 and unparks at 0016's per-stage-attribution
+  merge, not at 0016 reaching `done`. constraints.md gained the
+  engine-written-substrate rule (with the existing rework caps named as a live
+  instance), the five-part `waiting-human` pause contract, the provenance rule
+  extended to derived statistics, and the 9-of-17 convention-coverage figure
+  (judgements on bid-0064, bid-0065, bid-0066, bid-0068); market.md gained the
+  measured 27.2% council share at n=1 (bid-0067); open-questions.md gained the
+  untrustworthy-aggregate finding and 0005's now-named blocking cost (bid-0063,
+  bid-0069). One question the council could not settle — whether the breaker
+  should require a non-empty backlog to fire — is handed to spec with both
+  evidence-backed positions recorded rather than resolved by attrition (source:
+  .factory/items/0016-cost-circuit-breaker-on-engine-authorita/triage.md;
+  .factory/items/0016-cost-circuit-breaker-on-engine-authorita/reviews/synthesis.md).

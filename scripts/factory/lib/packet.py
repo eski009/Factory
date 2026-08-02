@@ -31,16 +31,183 @@ def view_links(repo, item_id, meta):
     return links
 
 
-def render_packet(repo, item_id):
+def waiting_line(meta, summary):
+    """The `- waiting on you:` text, one branch shared by both renderers.
+
+    A cost-breaker pause is rendered from `summary["rework_edges"]`,
+    never from the operator's free text: the park reason is hand-copied
+    by an agent (`skills/factory-dispatch/SKILL.md:50`) and a typo in it
+    must not reach the operator as a rework figure (B3/F4) — least of all
+    on the line that leads the page. Every other pause reason is echoed
+    faithfully; this is scoped to the cost-breaker prefix only, so a
+    design pause's free text (and its hosted URL) is untouched.
+
+    `summary` is the render's single aggregation, passed down by the
+    caller: re-reading the clock here would let the two documents
+    `write_packet` produces disagree."""
+    from . import breaker
+    reason = meta.get("paused-reason", "")
+    if reason.startswith(breaker.PAUSE_PREFIX):
+        return (f"{breaker.PAUSE_PREFIX} {summary['rework_edges']} rework "
+                f"edges (threshold {breaker.REWORK_THRESHOLD})")
+    return reason
+
+
+def cost_decision_lines(repo, item_id, meta, summary=None):
+    """The '## Cost decision' body, ordered exactly as item spec 0016 §6.
+    Returns [] unless the item is parked with a cost-breaker reason. The
+    proxy substrate leads: no token headline appears above it, because
+    the measured aggregate has been shown untrustworthy.
+
+    `summary` is the render's single aggregation of the item log, passed
+    in by the caller. A parked item's window is open, so `active_seconds`
+    re-reads the wall clock on every `cost.summarize` call: aggregating
+    separately here would print this block's proxy figures and the
+    `## Spend` receipt's from two different instants."""
+    from . import breaker
+    if meta.get("stage") != "waiting-human":
+        return []
+    if not meta.get("paused-reason", "").startswith(breaker.PAUSE_PREFIX):
+        return []
+    if summary is None:
+        summary = cost.summarize(repo, item_id)
+    v = breaker.verdict(repo, item_id, meta, "implement", summary=summary)
+    edges = summary["rework_edges"]
+    entries = summary["stages"].get("implement", {}).get("entries", 0)
+    priority = meta.get("priority", "-")
+    at_or_above = v["backlog"]["at_or_above"]
+    total = v["backlog"]["actionable_total"]
+    unreadable = v["backlog"]["unreadable"]
+    unpriced = v["backlog"]["unpriced"]
+    # B1: `at_or_above is None` means the comparison is impossible, not
+    # empty. brain/constraints.md forbids rendering an incomparable
+    # population as a number, so all three surfaces that read it — the
+    # backlog line, the recommendation and the continue consequence —
+    # take the same branch. A remedy on the recommendation alone would
+    # leave the other two false statements on screen.
+    comparable = at_or_above is not None
+    # N4: the items list_items_safe could not read are named rather than
+    # dropped, so `total` is never an unqualified denominator.
+    dropped = (f"; {unreadable} item{'' if unreadable == 1 else 's'} "
+               "unreadable and excluded" if unreadable else "")
+    # F5 + F6: the two populations `at_or_above` cannot speak for. An
+    # unpriced sibling and an unreadable one are both incomparable, not
+    # absent, so any sentence that concludes "nothing is waiting" from a
+    # zero must name them — the backlog line already did, while the
+    # recommendation and the continue consequence did not.
+    unknown_bits = []
+    if unpriced:
+        unknown_bits.append(
+            f"{unpriced} actionable item{'' if unpriced == 1 else 's'} with "
+            "no priority")
+    if unreadable:
+        unknown_bits.append(
+            f"{unreadable} unreadable item{'' if unreadable == 1 else 's'}")
+    unknown = " and ".join(unknown_bits)
+    if comparable:
+        at_s = "" if at_or_above == 1 else "s"
+        backlog_line = (f"- backlog: {at_or_above} actionable item{at_s} at "
+                        f"priority ≤ {priority}, {total} actionable in "
+                        f"total{dropped}")
+        recommended = "defer" if at_or_above >= 1 else "narrow"
+        # AC11: the Recommended line is exactly one sentence, so every
+        # qualifier joins with a semicolon or an em dash — never a second
+        # full stop (`test_recommendation_is_defer_when_backlog_at_or_above`
+        # asserts `count(".") == 1`). `defer` needs none of this: it is
+        # reached only when at_or_above >= 1, so it asserts presence, not
+        # the emptiness an unknown population could falsify.
+        narrow_why = ("nothing else is waiting at this priority, so a smaller "
+                      "next round costs less than another full one.")
+        if unknown:
+            narrow_why = (f"nothing comparable is waiting at this priority; "
+                          f"{unknown} cannot be compared either way, so the "
+                          "backlog is not established as empty; a smaller "
+                          "next round costs less than another full one.")
+        why = {
+            "defer": ("work at this priority or higher is waiting behind an "
+                      "item already reworked past the threshold."),
+            "narrow": narrow_why,
+        }[recommended]
+        recommendation = f"Recommended: {recommended} — {why}"
+        waiting = (f"the {at_or_above} item{at_s} at priority ≤ {priority} "
+                   f"keep{'s' if at_or_above == 1 else ''} waiting"
+                   + (f", alongside {unknown} that cannot be compared"
+                      if unknown else "") + "; ")
+    else:
+        backlog_line = ("- backlog: comparison unavailable — this item has "
+                        f"no priority; {total} actionable in total{dropped}")
+        # The packet is a static file (`write_packet`), so setting a
+        # priority does not rewrite it: the second verb must be the
+        # re-render, never "re-read this packet". F8: both verbs are
+        # code-spanned — `<n>` matches CommonMark's inline raw-HTML
+        # open-tag production and is swallowed by markdown renderers,
+        # and for a no-priority item these commands are the operator's
+        # only route to a decision.
+        recommendation = ("Recommended: set a priority first — what this item "
+                          "is blocking cannot be compared until it has one; "
+                          f"run `factory priority {item_id} <n>`, then "
+                          f"`factory packet {item_id}` to re-render this "
+                          "decision.")
+        waiting = ""
+    return [
+        f"- [proxy] rework edges: {edges} (backward stage.advance edges into "
+        f"implement; threshold {v['threshold']})",
+        f"- [proxy] active {cost.format_duration(summary['active_seconds'])}, "
+        f"{summary['advances']} advances, {entries} implement entries",
+        "- " + cost.render_lower_bound(summary),
+        backlog_line,
+        "",
+        recommendation,
+        "",
+        # Deviation from plan Task 10 step 4: the loop-mode clause is joined
+        # with a semicolon, not a full stop, so the M9 sentence reads as one
+        # lower-case clause exactly as the AC12 test asserts it.
+        f"- continue — the item returns to implement; the next rework edge "
+        f"parks it again at {edges + 1}; {waiting}in loop mode the next "
+        "actionable item runs while this one waits; in item/step mode the "
+        "run stops here.",
+        f"- narrow — records the decision; edit plan.md, then factory advance "
+        f"{item_id} implement. v1 does not narrow scope for you.",
+        f"- defer — records the decision and leaves the item parked; drop its "
+        f"priority with `factory priority {item_id} <n>`. v1 does not "
+        "re-prioritise for you.",
+    ]
+
+
+def respond_action_lines(repo, item_id, meta):
+    """Exactly one copy-pasteable action, naming the verb that actually
+    answers THIS pause. One branch, shared by both renderers, so the HTML
+    can never tell a cost-breaker pause to run /factory:run."""
+    from . import breaker
+    paused_from = meta.get("paused-from")
+    reason = meta.get("paused-reason", "")
+    if paused_from == "design":
+        return [f"- `factory choice {item_id} <option>` — record your pick."]
+    if paused_from == "assure":
+        return [f"- `factory confirm {item_id}` — or "
+                f'`factory waive {item_id} --reason "..."` to ship with a '
+                "recorded waiver."]
+    if paused_from == "implement" and reason.startswith(breaker.PAUSE_PREFIX):
+        return [f"- `factory cost-answer {item_id} <continue|narrow|defer>` "
+                "— record the cost decision."]
+    return ["- `/factory:run` — resume the pipeline."]
+
+
+def render_packet(repo, item_id, summary=None):
     meta, _body = items.load_item(repo, item_id)
     item_dir = paths.item_dir(repo, item_id)
+    if summary is None:
+        summary = cost.summarize(repo, item_id)
     lines = [f"# {meta['title']}", ""]
     lines.append(f"- id: {meta['id']}")
     lines.append(f"- stage: {meta['stage']}")
     lines.append(f"- kind: {meta['kind']}")
     lines.append(f"- priority: {meta.get('priority', '-')}")
     if meta.get("paused-reason"):
-        lines.append(f"- waiting on you: {meta['paused-reason']}")
+        lines.append(f"- waiting on you: {waiting_line(meta, summary)}")
+    decision = cost_decision_lines(repo, item_id, meta, summary)
+    if decision:
+        lines += ["", "## Cost decision", ""] + decision
     lines += ["", "## View the options"]
     for label, url in view_links(repo, item_id, meta):
         lines.append(f"- [{label}]({url})")
@@ -57,13 +224,12 @@ def render_packet(repo, item_id):
         lines.append(f"- {event['ts']} {event['event']}"
                      + (f" {event['data']}" if "data" in event else ""))
     lines += ["", "## Spend"]
-    lines += cost.render_receipt(cost.summarize(repo, item_id)).splitlines()
+    lines += cost.render_receipt(summary).splitlines()
     lines += ["", "## Respond",
-              "Reply in session, or use the factory CLI to record your",
-              f"decision (design pause: `factory choice {meta['id']} <option>`;",
-              f"assurance pause: `factory confirm {meta['id']}` or",
-              f'`factory waive {meta["id"]} --reason "..."`),',
-              "then run `/factory:run` to resume.", ""]
+              "Reply in session, or use the factory CLI to record your "
+              "decision.", ""]
+    lines += respond_action_lines(repo, item_id, meta)
+    lines.append("")
     return "\n".join(lines)
 
 
@@ -75,16 +241,37 @@ def _link(label, url):
     return f'<a href="{_e(url)}">{_e(label)}</a>'
 
 
-def render_packet_html(repo, item_id):
+def _inline_code(text):
+    """Escape a markdown line for HTML, rendering its backtick code
+    spans as `<code>`. One definition, both renderers: the decision
+    block used to escape its lines wholesale while `## Respond` did the
+    split, and two renderers disagreeing on a command string is the
+    class of bug this item exists to stop (F8).
+
+    Assumes an even backtick count, and may: every caller passes a line
+    built by `cost_decision_lines` or `respond_action_lines`, whose only
+    interpolations are `item_id` (validated by `items`) and integers. No
+    operator-authored text — the `paused-reason` free text in particular
+    — reaches this function; `waiting_line`'s output is escaped with
+    `_e()` directly. Route operator text through here and an odd
+    backtick would wrap the tail of the line in `<code>`, so keep that
+    invariant if a caller is ever added."""
+    return "".join(f"<code>{_e(part)}</code>" if i % 2 else _e(part)
+                   for i, part in enumerate(text.split("`")))
+
+
+def render_packet_html(repo, item_id, summary=None):
     meta, _body = items.load_item(repo, item_id)
     item_dir = paths.item_dir(repo, item_id)
+    if summary is None:
+        summary = cost.summarize(repo, item_id)
     links = view_links(repo, item_id, meta)[:-1]
     artifact_links = [
         (f"Open {rel}", (item_dir / rel).resolve().as_uri())
         for rel in ARTIFACTS if (item_dir / rel).exists()
     ]
     events = logs.read_events(repo, item_id)[-5:]
-    receipt = cost.render_receipt(cost.summarize(repo, item_id)).splitlines()
+    receipt = cost.render_receipt(summary).splitlines()
 
     out = ["""<!doctype html>
 <html lang="en">
@@ -104,8 +291,8 @@ def render_packet_html(repo, item_id):
     h2 { margin: 0 0 16px; font-size: 1.3rem; }
     section { margin-top: 20px; padding: 24px; border: 1px solid var(--line);
       border-radius: 14px; background: var(--panel); }
-    .ask { border-left: 5px solid var(--ask-line); background: var(--ask); }
-    .ask h2 { text-transform: uppercase; letter-spacing: .08em; font-size: .84rem; }
+    .ask, #cost-decision { border-left: 5px solid var(--ask-line); background: var(--ask); }
+    .ask h2, #cost-decision h2 { text-transform: uppercase; letter-spacing: .08em; font-size: .84rem; }
     ul { margin: 0; padding-left: 1.25rem; }
     li + li { margin-top: 10px; }
     .meta { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 0; list-style: none; }
@@ -134,8 +321,35 @@ def render_packet_html(repo, item_id):
     if meta.get("paused-reason"):
         out += ["  <section class=\"ask\" id=\"waiting-on-you\">",
                 "    <h2>waiting on you</h2>",
-                f"    <p>{_e(meta['paused-reason'])}</p>",
+                f"    <p>{_e(waiting_line(meta, summary))}</p>",
                 "  </section>"]
+
+    # Deviation from plan Task 10 step 4: the section carries no
+    # class="ask" attribute, so the id selector the tests split on stays
+    # exact; the ask callout styling is attached to #cost-decision in the
+    # stylesheet above instead.
+    decision = cost_decision_lines(repo, item_id, meta, summary)
+    if decision:
+        out += ['  <section id="cost-decision">',
+                "    <h2>Cost decision</h2>"]
+        in_list = False
+        for line in decision:
+            if line.startswith("- "):
+                if not in_list:
+                    out.append("    <ul>")
+                    in_list = True
+                out.append(
+                    f"      <li>{_inline_code(line.removeprefix('- '))}</li>")
+                continue
+            if in_list:
+                out.append("    </ul>")
+                in_list = False
+            if line.strip():
+                out.append(
+                    f"    <p><strong>{_inline_code(line)}</strong></p>")
+        if in_list:
+            out.append("    </ul>")
+        out.append("  </section>")
 
     out += ["  <section aria-label=\"Item metadata\">", "    <ul class=\"meta\">",
             f"      <li><strong>id:</strong> {_e(meta['id'])}</li>",
@@ -168,21 +382,23 @@ def render_packet_html(repo, item_id):
         out.append(f"      <li>{_e(line.removeprefix('- '))}</li>")
     out += ["    </ul>", "  </section>", "  <section id=\"respond\">",
             "    <h2>Respond</h2>",
-            "    <p>Reply in session, or use the factory CLI.</p>"]
-    if meta.get("paused-from") == "design":
-        command = f"factory choice {meta['id']} <option>"
-        out += [f"    <p>For this design pause: <code>{_e(command)}</code>, then run ",
-                "      <code>/factory:run</code> to resume.</p>"]
-    else:
-        out.append("    <p>Run <code>/factory:run</code> to resume.</p>")
+            "    <p>Reply in session, or use the factory CLI.</p>",
+            "    <ul>"]
+    for line in respond_action_lines(repo, item_id, meta):
+        out.append(f"      <li>{_inline_code(line.removeprefix('- '))}</li>")
+    out.append("    </ul>")
     out += ["  </section>", "</main>", "</body>", "</html>", ""]
     return "\n".join(out)
 
 
 def write_packet(repo, item_id):
+    """One aggregation, both documents: the markdown and the HTML packet
+    are two views of one moment and must never disagree on a figure."""
     path = paths.docs_root(repo) / "packets" / f"{item_id}.md"
     html_path = packet_html_path(repo, item_id)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render_packet(repo, item_id), encoding="utf-8")
-    html_path.write_text(render_packet_html(repo, item_id), encoding="utf-8")
+    summary = cost.summarize(repo, item_id)
+    path.write_text(render_packet(repo, item_id, summary), encoding="utf-8")
+    html_path.write_text(render_packet_html(repo, item_id, summary),
+                         encoding="utf-8")
     return path

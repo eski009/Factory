@@ -7,7 +7,7 @@
   "properties": {
     "version": {"type": "integer", "enum": [1]},
     "merge": {"type": "string", "enum": ["auto", "queue", "tiered"]},
-    "gates": {"type": "array", "items": {"type": "string", "enum": ["design", "spec", "merge", "assure"]}},
+    "gates": {"type": "array", "items": {"type": "string", "enum": ["design", "spec", "merge", "assure", "cost"]}},
     "product": {"type": "string", "minLength": 1},
     "designsync_project": {"type": "string", "minLength": 1},
     "autopilot": {

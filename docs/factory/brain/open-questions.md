@@ -187,3 +187,25 @@
   .factory/items/0009-finish-the-never-bricks-promise-crash-pr/reviews/synthesis.md;
   authorized: judgement on bid-0037). Resolved by: one small hardening item
   when any of these bites, or fold into the next engine-touching item.
+- **No cross-item token aggregate is currently trustworthy.** The spend
+  convention instructs a stage skill to log its own subagent fan-outs *and*
+  `factory-dispatch` to log the forked stage-skill invocation containing them
+  (skills/factory-dispatch/SKILL.md §Spend logging), so measured totals are
+  inflated by nesting depth. Observed on 0013, not inferred: `factory-spec`
+  logged 119,266 for its `spec-writer` dispatch while the harness reported the
+  whole containing fork at 98,841 — **the inner figure exceeds the outer one**,
+  so the two events are not merely double-counted, they measure different
+  quantities. Until this is fixed, the "what does one work item cost end-to-end"
+  question above cannot be resolved from logged spend at any scope wider than a
+  single item (source:
+  .factory/items/0013-assure-attribution-gate-only-on-regressi/log.jsonl;
+  skills/factory-dispatch/SKILL.md:59; authorized: judgement on bid-0063).
+- **0005 being blocked now has a named cost.** The cost circuit breaker (0016)
+  is a second binding consumer of 0005's generalized `waiting-human` decision
+  mechanism — its park is exactly the "one real gate use" 0005 is waiting on.
+  Until 0005 unblocks, the breaker renders plain packet text where a clickable
+  decision belongs, which delays the affordance on the pipeline's only
+  cost-control interrupt. Qualifies the 0005 mandatory-inputs entry (judgement
+  on bid-0050) rather than opening a new question (source:
+  .factory/items/0016-cost-circuit-breaker-on-engine-authorita/reviews/round-2/customer.md;
+  docs/factory/roadmap.md; authorized: judgement on bid-0069).

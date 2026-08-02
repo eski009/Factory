@@ -84,3 +84,43 @@
   open question, and the target persona personally pays the bill
   (source: .factory/items/0001-focus-group-research-structured-intervie/reviews/round-1/commercial.md;
   .factory/runs/research/synthesis.md; authorized: judgement on bid-0002).
+- Any gate, cap, or breaker must derive its trigger from events the engine
+  writes unconditionally — `stage.advance`, appended by `machine.advance()`
+  itself — never from skill-logged evidence events. `review.rejected` and
+  `assure.rejected` are written only by convention and merely read by the
+  engine, so a check built on them silently does not fire in exactly the runs
+  where it matters most. **The existing rework caps are a live instance, not a
+  hypothetical:** on the 2026-08-02 ParkSnap run they never fired and the engine
+  never noticed (source: scripts/factory/lib/machine.py:279-296;
+  skills/factory-review/SKILL.md:16; skills/factory-assure/SKILL.md:12,80;
+  .factory/items/0016-cost-circuit-breaker-on-engine-authorita/reviews/round-2/architecture.md;
+  authorized: judgement on bid-0064).
+- Every `waiting-human` pause ships with five things or it is a trap: a named
+  answer verb, the artifact that verb writes, an engine precondition that reads
+  the artifact, a `factory-dispatch` resume clause, and a packet naming the
+  verb. The resume branch applies no gate — it checks only that the destination
+  equals `paused-from` — so a park with no recorded answer returns the item to
+  the stage that just parked it and re-parks immediately. `packet.py`'s generic
+  "run `/factory:run` to resume" is correct only for pauses that need no answer;
+  `design/choice.md` is the working model to copy (source:
+  scripts/factory/lib/machine.py:270-278; scripts/factory/lib/packet.py:170-177;
+  scripts/factory/lib/machine.py:196;
+  .factory/items/0016-cost-circuit-breaker-on-engine-authorita/reviews/round-2/customer.md;
+  authorized: judgement on bid-0065).
+- The provenance rule extends from reported figures to **derived statistics**: a
+  median, baseline, multiplier, or per-tier average is never rendered when its
+  population cannot supply it — an empty or unrepresentative population reports
+  UNMEASURED, not a number. Verified instances: all nine `done` items predate the
+  `tier` field, so every per-tier median bucket is empty; and exactly 2 of 17
+  items have ever had a rework edge (one each), so any "typical rework" baseline
+  would be fabricated (source:
+  .factory/items/0016-cost-circuit-breaker-on-engine-authorita/reviews/round-2/product.md;
+  authorized: judgement on bid-0066).
+- The canonical-spend-sink convention is honoured on **9 of 17 items** (0002,
+  0003, 0004, 0007, 0008, 0009, 0010, 0012, 0013 have spend events; 0001, 0005,
+  0006, 0011, 0014–0017 have none) and on a minority of transitions within them —
+  0013 logged 2 events for an entire spec plus triage. This is the empirical case
+  for engine-derived triggers: the convention is real, documented, and unevenly
+  followed, so anything gating on it inherits the gaps (source:
+  .factory/items/0016-cost-circuit-breaker-on-engine-authorita/reviews/round-1/commercial.md;
+  recount over .factory/items/*/log.jsonl; authorized: judgement on bid-0068).

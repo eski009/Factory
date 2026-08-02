@@ -7,6 +7,26 @@
      high-risk, touched by current work, implicated by an escape). Every
      claim cites a source: (source: <path-or-url>) or is tagged (assumption). -->
 
-_Not yet written. Brownfield intake infers an inventory from routes, screens,
-navigation, and the test suite; the init interview asks the owner about the
-gaps; the spec stage registers new journeys as work introduces them._
+_Brownfield intake infers an inventory from routes, screens, navigation, and the
+test suite; the init interview asks the owner about the gaps; the spec stage
+registers new journeys as work introduces them. This list is not yet complete —
+entries below were registered by the work that touched them._
+
+- **J-001 — Assure outcome readout** (`assure-outcome-readout`, criticality
+  `high`, status `draft`, contract `contracts/J-001-assure-outcome-readout.md`).
+  Persona: The Overnight Operator (source: docs/factory/brain/personas.md).
+  Trigger: an item's assure walk produces at least one non-`pass` scenario
+  verdict. Outcome: the operator can tell from the packet's first screen and
+  `factory status --json` whether the item shipped with known non-blocking fails
+  — each terminating in an open owning item — or was blocked and reworked, and
+  has exactly one next action (source:
+  .factory/items/0013-assure-attribution-gate-only-on-regressi/spec.md).
+- **J-002 — Cost breaker decision** (`cost-breaker-decision`, criticality
+  `high`, status `draft`, contract `contracts/J-002-cost-breaker-decision.md`).
+  Persona: The Overnight Operator (source: docs/factory/brain/personas.md).
+  Trigger: an item enters an implement round with rework edges at or above the
+  threshold while `"cost"` is in the configured gates. Outcome: the operator
+  learns from the packet alone what the item has consumed, what it is blocking,
+  and the consequence of each of continue / narrow / defer, and records one with
+  a single command that provably unblocks the item exactly once (source:
+  .factory/items/0016-cost-circuit-breaker-on-engine-authorita/spec.md).
