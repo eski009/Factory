@@ -4,6 +4,9 @@ import unittest
 from pathlib import Path
 
 from scripts.factory.lib import initrepo, items, logs, packet, paths
+# One pattern, one definition: a second copy here could drift back to the
+# unfalsifiable single-form filter without the self-check noticing.
+from tests.test_packet import REWORK_FIGURE_RE
 
 
 class TestPacketHtml(unittest.TestCase):
@@ -141,6 +144,48 @@ class TestCostDecisionHtml(unittest.TestCase):
         self.assertNotIn("0 actionable items", section)
         self.assertNotIn("nothing else is waiting at this priority", section)
         self.assertIn("factory priority", section)
+
+    def test_html_exactly_one_rework_figure_in_the_cost_decision_section(self):
+        """B2 against the HTML render: packet.py builds its own section,
+        so the markdown-scoped count leaves this surface unguarded."""
+        lines = [l for l in self.section().splitlines()
+                 if REWORK_FIGURE_RE.search(l)]
+        self.assertEqual(len(lines), 1, lines)
+
+    def test_html_rework_figures_outside_the_section_are_the_two_known_surfaces(self):
+        """The HTML analogue of the markdown three-surface accounting.
+        `render_packet_html` builds its own markup — the waiting-on-you
+        callout, the decision list and the Spend receipt are three
+        separate constructions — so a fourth rework surface added to the
+        HTML render *only*, carrying the same number, would satisfy both
+        the section-scoped count and the numbers-agree assertion and slip
+        through. Each of the three is pinned by identity here, so a
+        fourth anywhere in the document fails."""
+        page = packet.render_packet_html(self.repo, "0001-runaway")
+        every = [l for l in page.splitlines() if REWORK_FIGURE_RE.search(l)]
+        self.assertEqual(len(every), 3, every)
+        section = self.section().splitlines()
+        inside = [l for l in every if l in section]
+        self.assertEqual(len(inside), 1, inside)
+        outside = [l for l in every if l not in section]
+        ask = page.split('<section class="ask" id="waiting-on-you">', 1)[1] \
+                  .split("</section>", 1)[0].splitlines()
+        echo = [l for l in outside if l in ask]
+        self.assertEqual(len(echo), 1, echo)
+        self.assertIn("<p>cost breaker: 2 rework edges", echo[0])
+        spend = page.split("<h2>Spend</h2>", 1)[1].split(
+            "</section>", 1)[0].splitlines()
+        receipt = [l for l in outside if l in spend]
+        self.assertEqual(len(receipt), 1, receipt)
+        self.assertIn("<li>[proxy] active ", receipt[0])
+        self.assertEqual(len(echo) + len(receipt), len(outside), outside)
+
+    def test_html_every_rework_number_in_the_page_agrees(self):
+        page = packet.render_packet_html(self.repo, "0001-runaway")
+        numbers = set()
+        for match in REWORK_FIGURE_RE.finditer(page):
+            numbers.add(match.group(1) or match.group(2))
+        self.assertEqual(numbers, {"2"}, numbers)
 
     def test_html_section_leads_with_the_proxy_substrate(self):
         section = self.section()

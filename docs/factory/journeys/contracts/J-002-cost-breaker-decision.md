@@ -40,9 +40,13 @@ more spend on an item they did not watch, against a backlog they did not audit.
   never zero, a dash, or estimated dollars (`brain/constraints.md`, judgement on
   bid-0018). Measured figures on this journey are additionally suffixed
   `LOWER BOUND` — the aggregate is untrustworthy (judgement on bid-0063).
-- **Exactly one rework number** appears in the packet — the one the breaker
-  fired on. A second, differently-derived figure beside it is the exact defect
-  this journey exists to remove.
+- **Exactly one rework figure** appears at the decision — the one the breaker
+  fired on, inside `## Cost decision`. Every echo of it elsewhere on the packet
+  (the `- waiting on you:` paused-reason line, the `## Spend` receipt, which is
+  the operator's cross-check) is derived from the same aggregation and is
+  numerically identical to it; each is named and counted, so an unaccounted
+  fourth appearance fails. A second, **differently-derived** figure beside it is
+  the exact defect this journey exists to remove.
 - The **proxy substrate leads**; no token headline appears above it.
 - The recommendation is **never `continue`**: an unpriced choice defaulting to
   "continue" is the behaviour the item exists to stop. Each of continue / narrow
@@ -64,7 +68,7 @@ more spend on an item they did not watch, against a backlog they did not audit.
 | fired | `breaker.verdict(...)["fired"]` and the presence of a `cost.breaker` event in `log.jsonl` |
 | requested stage preserved | stdout of `factory advance <id> implement` names the **requested** stage and exit status is `0` |
 | park | `item.md` frontmatter `stage: waiting-human`, `paused-from: implement`, `paused-reason` starting `cost breaker:` |
-| one rework figure | count of digit-bearing rework lines in the rendered packet == 1 |
+| one rework figure | count of digit-bearing rework lines inside `## Cost decision` == 1, **and** every rework number in the packet agrees with it, **and** the only repetitions outside the block are the `- waiting on you:` paused-reason echo and the `## Spend` receipt line; the count pattern matches both `rework edges: N` and `N rework edges` |
 | provenance | every cost-bearing line in the packet matches `^\s*[-•]?\s*\[(measured\|proxy\|unmeasured)\]` |
 | recommendation | the `Recommended:` line names `defer` when `backlog.at_or_above >= 1`, `narrow` when it is `0`, and — when it is `None`, i.e. the item carries no priority so the comparison is impossible — names neither, directing the operator to `factory priority <id> <n>`; never `continue` in any case |
 | one action | count of `factory ` command lines under `## Respond` == 1, and that line names `factory cost-answer` |

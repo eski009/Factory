@@ -7,6 +7,14 @@ from unittest import mock
 
 from scripts.factory.lib import cost, initrepo, items, logs, packet, paths
 
+# AC11 / J-002's `one rework figure` oracle. The packet renders the figure in
+# two surface forms — `rework edges: N` at the decision and `N rework edges` in
+# the ## Spend receipt — so a pattern that matches only the first cannot fail
+# and guards nothing. Both alternatives are pinned by
+# test_rework_figure_pattern_matches_both_surface_forms before this is used to
+# filter anything.
+REWORK_FIGURE_RE = re.compile(r"rework edges: (\d+)|(\d+) rework edges")
+
 
 class TestPacket(unittest.TestCase):
     def setUp(self):
@@ -125,6 +133,9 @@ class TestCostDecisionPacket(unittest.TestCase):
 
     def section(self, text):
         return text.split("## Cost decision\n", 1)[1].split("\n## ", 1)[0]
+
+    def section_named(self, text, name):
+        return text.split(f"## {name}\n", 1)[1].split("\n## ", 1)[0]
 
     def unprioritise(self):
         meta, body = items.load_item(self.repo, "0001-runaway")
@@ -246,17 +257,58 @@ class TestCostDecisionPacket(unittest.TestCase):
         self.assertLess(section.index("[proxy] rework edges:"),
                         section.index("[unmeasured] tokens:"))
 
-    def test_exactly_one_rework_line_and_one_rework_number(self):
+    def rework_lines(self, text):
+        return [line for line in text.splitlines()
+                if REWORK_FIGURE_RE.search(line)]
+
+    def test_rework_figure_pattern_matches_both_surface_forms(self):
+        """A self-check on the filter itself, before it is used to count
+        anything. The old guard matched only `rework edges: N`, so its
+        count was unfalsifiable; without this test a future edit can
+        narrow it back to unfalsifiable in silence."""
+        self.assertTrue(REWORK_FIGURE_RE.search(
+            "- [proxy] rework edges: 2 (backward stage.advance edges into "
+            "implement; threshold 2)"))
+        self.assertTrue(REWORK_FIGURE_RE.search(
+            "- [proxy] active 05h 00m (waiting 00h 00m), 2 advances, "
+            "0 dispatches, 2 rework edges"))
+
+    def test_exactly_one_rework_figure_inside_the_cost_decision_section(self):
+        section = self.section(packet.render_packet(self.repo, "0001-runaway"))
+        lines = self.rework_lines(section)
+        self.assertEqual(len(lines), 1, lines)
+
+    def test_every_rework_number_in_the_packet_agrees(self):
         text = packet.render_packet(self.repo, "0001-runaway")
-        decision_lines = [line for line in text.splitlines()
-                          if re.search(r"rework edges: \d", line)]
-        self.assertEqual(len(decision_lines), 1, decision_lines)
         numbers = set()
         for line in text.splitlines():
-            for match in re.finditer(
-                    r"rework edges: (\d+)|(\d+) rework edges", line):
+            for match in REWORK_FIGURE_RE.finditer(line):
                 numbers.add(match.group(1) or match.group(2))
         self.assertEqual(numbers, {"2"}, numbers)
+
+    def test_rework_figures_outside_the_decision_section_are_the_two_known_surfaces(self):
+        """The two repetitions outside `## Cost decision` are deliberate
+        and derived from the same `summary["rework_edges"]`: the
+        `- waiting on you:` paused-reason echo and the `## Spend`
+        receipt's proxy line, which is the operator's cross-check. They
+        are named and counted here so a *fourth* surface — a
+        differently-derived second figure, the defect J-002 exists to
+        remove — fails this test rather than passing unnoticed."""
+        text = packet.render_packet(self.repo, "0001-runaway")
+        section = self.section(text)
+        every = self.rework_lines(text)
+        self.assertEqual(len(every), 3, every)
+        outside = [l for l in every if l not in section.splitlines()]
+        self.assertEqual(len(outside), 2, outside)
+        receipt = self.section_named(text, "Spend")
+        receipt_lines = [l for l in outside if l in receipt.splitlines()]
+        self.assertEqual(len(receipt_lines), 1, receipt_lines)
+        self.assertTrue(receipt_lines[0].startswith("- [proxy] active "),
+                        receipt_lines[0])
+        echo = [l for l in outside if l not in receipt_lines]
+        self.assertEqual(len(echo), 1, echo)
+        self.assertTrue(
+            echo[0].startswith("- waiting on you: cost breaker:"), echo[0])
 
     def test_measured_figure_is_labelled_or_loudly_unmeasured(self):
         text = packet.render_packet(self.repo, "0001-runaway")
