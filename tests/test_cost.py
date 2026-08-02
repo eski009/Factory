@@ -281,6 +281,96 @@ class SpendRollupTest(CostTestCase):
             sum(b["dispatches"] for b in summary["stages"].values()), 0)
 
 
+class PerStageAttributionTest(CostTestCase):
+    """AC3/AC4: the stage bucket is the unit of attribution, and the two
+    provenance classes never share a line."""
+
+    def seed(self):
+        self.advance_at("2026-07-03T00:00:00Z", "plan", "implement")
+        self.advance_at("2026-07-03T01:00:00Z", "implement", "review")
+        self.log_at("2026-07-03T01:05:00Z", "spend",
+                    {"provenance": "measured", "stage": "implement",
+                     "dispatches": 3, "tokens": {"input": 1000, "output": 200}})
+        self.log_at("2026-07-03T01:06:00Z", "spend",
+                    {"provenance": "measured", "stage": "implement",
+                     "dispatches": 1, "tokens": {"total": 50}})
+        self.log_at("2026-07-03T01:07:00Z", "spend",
+                    {"provenance": "proxy", "stage": "review",
+                     "dispatches": 2})
+        os.environ["FACTORY_NOW"] = "2026-07-03T02:00:00Z"
+        return cost.summarize(self.repo, ITEM)
+
+    def test_bucket_key_set_is_fixed(self):
+        summary = self.seed()
+        for name, bucket in summary["stages"].items():
+            self.assertEqual(
+                set(bucket),
+                {"active_seconds", "entries", "dispatches", "measured",
+                 "proxy_events"}, name)
+
+    def test_measured_tokens_attributed_to_the_named_stage(self):
+        summary = self.seed()
+        self.assertEqual(summary["stages"]["implement"]["measured"],
+                         {"events": 2, "input": 1000, "output": 200,
+                          "total": 50})
+        self.assertEqual(summary["stages"]["implement"]["proxy_events"], 0)
+
+    def test_proxy_events_counted_per_stage_without_tokens(self):
+        summary = self.seed()
+        self.assertEqual(summary["stages"]["review"]["proxy_events"], 1)
+        self.assertIsNone(summary["stages"]["review"]["measured"])
+
+    def test_stage_less_spend_never_distributed_across_stages(self):
+        self.log_at("2026-07-03T10:00:00Z", "spend",
+                    {"provenance": "measured", "dispatches": 1,
+                     "tokens": {"total": 999}})
+        os.environ["FACTORY_NOW"] = "2026-07-03T10:05:00Z"
+        summary = cost.summarize(self.repo, ITEM)
+        self.assertEqual(summary["measured"]["total"], 999)
+        for bucket in summary["stages"].values():
+            self.assertIsNone(bucket["measured"])
+
+    def test_render_text_separate_measured_and_unmeasured_stage_lines(self):
+        text = cost.render_text(self.seed())
+        self.assertIn(
+            "[measured] stage implement: tokens input 1000, output 200, "
+            "total 50 (2 spend events)", text)
+        self.assertIn(
+            "[unmeasured] stage review: tokens UNMEASURED "
+            "(no spend events logged)", text)
+        self.assertIn("[proxy] stage implement: active", text)
+
+    def test_no_rendered_line_carries_two_provenance_tags(self):
+        text = cost.render_text(self.seed())
+        tags = ("[proxy]", "[measured]", "[unmeasured]")
+        for line in text.splitlines():
+            if line.startswith("["):
+                self.assertEqual(sum(line.count(tag) for tag in tags), 1, line)
+
+    def test_no_stage_line_is_silently_omitted(self):
+        text = cost.render_text(self.seed())
+        for name in ("implement", "review"):
+            self.assertIn(f"[proxy] stage {name}:", text)
+            self.assertTrue(
+                f"[measured] stage {name}:" in text
+                or f"[unmeasured] stage {name}:" in text, name)
+
+    def test_receipt_appends_one_bullet_per_measured_stage(self):
+        receipt = cost.render_receipt(self.seed())
+        lines = receipt.splitlines()
+        self.assertEqual(len(lines), 4)
+        self.assertEqual(
+            lines[3],
+            "- [measured] stage implement: input 1000, output 200, total 50 "
+            "(2 events)")
+
+    def test_receipt_unchanged_when_no_per_stage_measured_spend(self):
+        self.advance_at("2026-07-03T00:00:00Z", "spec", "design")
+        os.environ["FACTORY_NOW"] = "2026-07-03T01:00:00Z"
+        receipt = cost.render_receipt(cost.summarize(self.repo, ITEM))
+        self.assertEqual(len(receipt.splitlines()), 3)
+
+
 class RenderTextTest(CostTestCase):
     def figure_summary(self):
         self.advance_at("2026-07-03T00:00:00Z", "spec", "design")

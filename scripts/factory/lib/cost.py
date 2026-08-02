@@ -46,9 +46,19 @@ def _seconds_between(start, end):
     return max(0, int((end - start).total_seconds()))
 
 
+def _add_tokens(target, tokens):
+    target["events"] += 1
+    for key in TOKEN_KEYS:
+        target[key] += tokens.get(key, 0)
+
+
 def _bucket(stages, name):
+    """A stage bucket. `measured` stays None until a valid measured spend
+    event names this stage — never zero, so a stage with no measurement
+    renders the loud UNMEASURED literal rather than a fabricated 0."""
     return stages.setdefault(
-        name, {"active_seconds": 0, "entries": 0, "dispatches": 0})
+        name, {"active_seconds": 0, "entries": 0, "dispatches": 0,
+               "measured": None, "proxy_events": 0})
 
 
 def summarize(repo, item_id):
@@ -134,9 +144,15 @@ def summarize(repo, item_id):
         if data["provenance"] == "measured":
             if measured is None:
                 measured = {"events": 0, "input": 0, "output": 0, "total": 0}
-            measured["events"] += 1
-            for key in TOKEN_KEYS:
-                measured[key] += data["tokens"].get(key, 0)
+            _add_tokens(measured, data["tokens"])
+            if stage is not None:
+                bucket = _bucket(stages, stage)
+                if bucket["measured"] is None:
+                    bucket["measured"] = {"events": 0, "input": 0,
+                                          "output": 0, "total": 0}
+                _add_tokens(bucket["measured"], data["tokens"])
+        elif stage is not None:
+            _bucket(stages, stage)["proxy_events"] += 1
 
     active = sum(b["active_seconds"] for b in stages.values())
     return {
@@ -213,6 +229,14 @@ def render_text(summary):
         if bucket["dispatches"]:
             line += f", dispatches {bucket['dispatches']}"
         lines.append(line)
+        segments = _token_segments(bucket["measured"])
+        if segments:
+            lines.append(f"[measured] stage {name}: tokens "
+                         f"{', '.join(segments)} "
+                         f"({bucket['measured']['events']} spend events)")
+        else:
+            lines.append(f"[unmeasured] stage {name}: tokens UNMEASURED "
+                         "(no spend events logged)")
     lines.append(f"[proxy] advances: {summary['advances']}, "
                  f"rework edges: {summary['rework_edges']}, "
                  f"dispatches: {summary['dispatches']}")
@@ -246,8 +270,17 @@ def render_receipt(summary):
     else:
         measured_line = (f"- [measured] tokens: {', '.join(segments)} "
                          f"({measured['events']} events)")
-    return "\n".join([
+    lines = [
         proxy,
         measured_line,
         f"- [unmeasured] UNMEASURED: {UNMEASURED_NOTE}",
-    ])
+    ]
+    for name in machine.STAGES:
+        bucket = summary["stages"].get(name)
+        if bucket is None:
+            continue
+        segments = _token_segments(bucket["measured"])
+        if segments:
+            lines.append(f"- [measured] stage {name}: {', '.join(segments)} "
+                         f"({bucket['measured']['events']} events)")
+    return "\n".join(lines)
