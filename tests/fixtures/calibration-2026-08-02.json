@@ -1,0 +1,29 @@
+{
+  "provenance": {
+    "branch": "factory/0016-cost-circuit-breaker-on-engine-authorita",
+    "generated": "2026-08-02",
+    "method": "Generated on 2026-08-02 by reading this repo's live, gitignored .factory/items/*/log.jsonl through scripts.factory.lib.cost.summarize(...)['rework_edges'] and freezing the result. .factory/ is gitignored (.gitignore:6), so the live state is unavailable on CI and on any fresh clone; this file is the versioned, reproducible record of the evidence that justifies breaker.REWORK_THRESHOLD = 2 (item 0016, AC16).",
+    "note": "A snapshot, deliberately frozen. It is NOT expected to track the live backlog: live drift is the live dogfood test's job (tests/test_breaker.py::LiveDogfoodCalibrationTest). Do not refresh this file to make a test pass.",
+    "regenerate": "python3 tests/fixtures/calibration_2026_08_02_regen.py",
+    "repo": "anthony/factory (this repository)"
+  },
+  "rework_edges_by_item": {
+    "0001-focus-group-research-structured-intervie": 0,
+    "0002-claude-design-mcp-as-the-single-source-o": 0,
+    "0003-interactive-decision-pages-clickable-cho": 0,
+    "0004-per-item-cost-meter-measure-and-report-t": 1,
+    "0005-generalize-the-interactive-decision-mech": 0,
+    "0006-design-polish-integration-as-an-opt-in-c": 0,
+    "0007-tolerant-log-reading-corrupt-log-jsonl-l": 0,
+    "0008-design-mirror-refinements-pull-bid-diver": 0,
+    "0009-finish-the-never-bricks-promise-crash-pr": 1,
+    "0010-factory-bug-command-understand-replicate": 0,
+    "0011-create-factory-bug-command-understand-th": 0,
+    "0012-adapt-the-design-options-decision-block-": 0,
+    "0013-assure-attribution-gate-only-on-regressi": 0,
+    "0014-approach-gate-at-plan-judge-convergence-": 0,
+    "0015-approach-rejected-a-redesign-loop-back-t": 0,
+    "0016-cost-circuit-breaker-on-engine-authorita": 0,
+    "0017-factory-scope-engine-validated-scope-nar": 0
+  }
+}

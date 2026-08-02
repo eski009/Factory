@@ -10,7 +10,22 @@ from scripts.factory.lib.machine import GateError as GateErrorAlias
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests/fixtures/parksnap-2026-08-02/log.jsonl"
+CALIBRATION = ROOT / "tests/fixtures/calibration-2026-08-02.json"
+REGEN = ROOT / "tests/fixtures/calibration_2026_08_02_regen.py"
 ITEM = "0001-parksnap"
+
+
+def has_live_items():
+    """True only when this checkout carries real live factory state.
+
+    `.factory/` is gitignored (`.gitignore:6`), so it is absent on CI and
+    in a fresh clone — except that one stray file under it
+    (`.factory/items/0012-.../plan.md`) is tracked, which makes
+    `.factory/items` *exist* in a clone while holding no item at all.
+    Testing for the directory alone therefore admits an empty, vacuous
+    run on CI; the guard tests for an actual `item.md`.
+    """
+    return any((ROOT / ".factory/items").glob("*/item.md"))
 
 
 class BreakerTestCase(unittest.TestCase):
@@ -488,6 +503,7 @@ class ReplayTest(BreakerTestCase):
 
     def test_no_implement_round_follows_the_fire(self):
         got = self.replay()
+        self.assertIsNotNone(got, "the breaker never fired on the replay")
         # The replay returns at the fire, so the 4th and 5th implement
         # entries in the fixture are never reached.
         self.assertEqual(got["implement_entries"], 3)
@@ -496,6 +512,11 @@ class ReplayTest(BreakerTestCase):
                       if e["event"] == "stage.advance"
                       and e["data"]["to"] == "implement")
         self.assertEqual(entered, 3)
+        # Exactly the prefix up to and including the firing edge: the
+        # fixture's 1 item.created + its first 12 stage.advance events
+        # (fixture line 13 is the assure -> implement edge that fires).
+        # The full fixture is 21 events, so 8 never reached disk.
+        self.assertEqual(len(events), 13)
         self.assertLess(len(events), 21)
 
     def test_fires_exactly_once_across_the_replay(self):
@@ -521,34 +542,232 @@ class ReplayTest(BreakerTestCase):
                     answered = True
         self.assertEqual(fires, [2])
 
+    def full_replay_with_park_and_resume(self, answer):
+        """Replay the whole fixture, modelling what actually happens at a
+        fire: the firing transition is admitted, the caller parks the
+        item, and the operator resumes it. The park/resume pair the
+        engine writes (`implement -> waiting-human`, then
+        `waiting-human -> implement`) adds no rework edge by design
+        (`cost.REWORK_FROM`), so the resume re-enters implement at the
+        *same* count — which is the only place a re-fire can happen and
+        the only place `record_answer` can suppress one.
 
-class CalibrationTest(unittest.TestCase):
-    """AC16: two is the only threshold that satisfies AC14 and has a zero
-    false-fire rate on this repo's real logs."""
+        `answer=False` is the same replay with the remedy withheld.
+        """
+        self.set_gates("design", "cost")
+        meta = self.put(stage="idea")
+        path = paths.item_dir(self.repo, ITEM) / "log.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
+        advances = 0
+        fires = []
+        refusals = []
+        for raw in FIXTURE.read_text(encoding="utf-8").splitlines():
+            # One open() per line: record_answer and append_event write to
+            # this same log, so the replay must not hold a buffered handle
+            # open across them.
+            with path.open("a", encoding="utf-8") as handle:
+                handle.write(raw + "\n")
+            event = json.loads(raw)
+            if event["event"] != "stage.advance":
+                continue
+            advances += 1
+            to = event["data"]["to"]
+            meta["stage"] = to
+            verdict = breaker.verdict(self.repo, ITEM, meta, to)
+            if not verdict["fired"]:
+                continue
+            fires.append((event["data"], verdict["rework_edges"]))
+            if answer:
+                breaker.record_answer(self.repo, ITEM, "continue")
+            logs.append_event(self.repo, ITEM, "stage.advance",
+                              {"from": "implement", "to": "waiting-human"})
+            logs.append_event(self.repo, ITEM, "stage.advance",
+                              {"from": "waiting-human", "to": "implement"})
+            meta["stage"] = "implement"
+            resumed = breaker.verdict(self.repo, ITEM, meta, "implement")
+            if resumed["fired"]:
+                fires.append(("re-fire on resume", resumed["rework_edges"]))
+            try:
+                breaker.precondition(self.repo, ITEM, meta, "implement")
+            except GateErrorAlias as exc:
+                refusals.append(str(exc))
+        return {"advances": advances, "fires": fires, "refusals": refusals}
+
+    def test_fires_once_per_edge_count_under_real_suppression(self):
+        """AC16/AC18 proved through the real mechanism rather than a local
+        flag. `answered` in the test above only gates list-appending, so
+        that test would pass even if the breaker fired on every implement
+        entry. Here every fire is followed by breaker.record_answer and a
+        real park/resume back into implement at the same count; a re-fire
+        would land in `fires` and break the assertion."""
+        got = self.full_replay_with_park_and_resume(answer=True)
+        self.assertEqual(got["advances"], 20)
+        # Exactly one fire per distinct edge count at or above the
+        # threshold, in order, never twice at the same count. The first is
+        # the AC16 fire: the assure -> implement edge at 2.
+        self.assertEqual(got["fires"], [
+            ({"from": "assure", "to": "implement"}, 2),
+            ({"from": "review", "to": "implement"}, 3),
+            ({"from": "assure", "to": "implement"}, 4),
+        ])
+        self.assertEqual(len(got["fires"]), 3)
+        # The answered resume is admitted, every time (B3: no park loop).
+        self.assertEqual(got["refusals"], [])
+
+    def test_withholding_the_answer_re_fires_on_every_resume(self):
+        """The control arm that gives the test above its teeth: the same
+        replay with record_answer withheld doubles the fire count, because
+        each resume re-enters implement at an uncovered count, and the
+        resume precondition refuses each time naming the remedy."""
+        got = self.full_replay_with_park_and_resume(answer=False)
+        self.assertEqual(got["advances"], 20)
+        self.assertEqual(got["fires"], [
+            ({"from": "assure", "to": "implement"}, 2),
+            ("re-fire on resume", 2),
+            ({"from": "review", "to": "implement"}, 3),
+            ("re-fire on resume", 3),
+            ({"from": "assure", "to": "implement"}, 4),
+            ("re-fire on resume", 4),
+        ])
+        self.assertEqual(len(got["refusals"]), 3)
+        for message in got["refusals"]:
+            self.assertIn("cost breaker unanswered", message)
+            self.assertIn(f"factory cost-answer {ITEM}", message)
+
+    def test_the_fixture_carries_four_rework_edges(self):
+        """Pins what the two replays above are counting against."""
+        rework = 0
+        for line in FIXTURE.read_text(encoding="utf-8").splitlines():
+            event = json.loads(line)
+            if event["event"] != "stage.advance":
+                continue
+            data = event["data"]
+            if data["from"] in breaker.REWORK_FROM and data["to"] == "implement":
+                rework += 1
+        # Four edges, of which the first sits below the threshold — hence
+        # three fires, not four.
+        self.assertEqual(rework, 4)
+
+
+class CalibrationEvidenceTest(unittest.TestCase):
+    """AC16, against versioned evidence.
+
+    The calibration that justifies REWORK_THRESHOLD = 2 was measured on
+    this repo's own `.factory/items/*/log.jsonl`, which is gitignored
+    (`.gitignore:6`) and so does not exist on CI or in a fresh clone.
+    The measurement is therefore frozen into a checked-in fixture, whose
+    provenance block names the date, the repo and the derivation. This
+    class runs everywhere; `LiveDogfoodCalibrationTest` below is the
+    part that needs live state.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.doc = json.loads(
+            CALIBRATION.read_text(encoding="utf-8"))
+        cls.rows = cls.doc["rework_edges_by_item"]
 
     def test_threshold_is_two(self):
         self.assertEqual(breaker.REWORK_THRESHOLD, 2)
 
-    def test_zero_fires_across_every_real_item_log_in_this_repo(self):
-        # A failure here means a real item crossed the threshold — that is
-        # the breaker doing its job, and the fix is to record an answer
-        # with `factory cost-answer`, never to loosen this assertion.
-        over = []
-        for item_dir in sorted((ROOT / ".factory/items").iterdir()):
-            if not (item_dir / "item.md").exists():
-                continue
-            edges = cost.summarize(ROOT, item_dir.name)["rework_edges"]
-            if edges >= breaker.REWORK_THRESHOLD:
-                over.append((item_dir.name, edges))
+    def test_evidence_names_its_provenance(self):
+        provenance = self.doc["provenance"]
+        self.assertEqual(provenance["generated"], "2026-08-02")
+        self.assertIn("factory", provenance["repo"])
+        self.assertIn(".factory/items/*/log.jsonl", provenance["method"])
+        self.assertIn("gitignored", provenance["method"])
+        self.assertIn("calibration_2026_08_02_regen.py",
+                      provenance["regenerate"])
+
+    def test_threshold_two_fires_on_zero_of_the_measured_population(self):
+        over = sorted((name, edges) for name, edges in self.rows.items()
+                      if edges >= breaker.REWORK_THRESHOLD)
         self.assertEqual(over, [], f"items at or over threshold: {over}")
 
-    def test_threshold_of_one_would_fire_on_historical_items(self):
+    def test_threshold_of_one_would_fire_on_two_named_items(self):
         """Stated, not implied: 1 also satisfies AC14 but fires on runs
-        nobody considered pathological."""
-        with_any = [d.name for d in sorted((ROOT / ".factory/items").iterdir())
-                    if (d / "item.md").exists()
-                    and cost.summarize(ROOT, d.name)["rework_edges"] >= 1]
-        self.assertGreaterEqual(len(with_any), 1)
+        nobody considered pathological. Pinned by name and by count, not
+        by a loose lower bound — a bound of `>= 1` would pass on an empty
+        population."""
+        would_fire = sorted(name for name, edges in self.rows.items()
+                            if edges >= 1)
+        self.assertEqual(would_fire, [
+            "0004-per-item-cost-meter-measure-and-report-t",
+            "0009-finish-the-never-bricks-promise-crash-pr",
+        ])
+        self.assertEqual(len(would_fire), 2)
+        self.assertTrue(all(self.rows[name] == 1 for name in would_fire))
+
+    def test_measured_population_is_the_one_the_spec_describes(self):
+        """Spec AC16: "2 items have one rework edge each, 15 have none"."""
+        self.assertEqual(len(self.rows), 17)
+        self.assertEqual(sum(1 for n in self.rows.values() if n == 1), 2)
+        self.assertEqual(sum(1 for n in self.rows.values() if n == 0), 15)
+        self.assertEqual(max(self.rows.values()), 1)
+
+    def test_regenerator_is_not_collected_as_a_test(self):
+        """The derivation ships beside the evidence so anyone can rerun
+        it, but it must never be picked up by `unittest discover`."""
+        self.assertTrue(REGEN.exists())
+        self.assertFalse(REGEN.name.startswith("test"))
+
+
+@unittest.skipUnless(
+    has_live_items(),
+    ".factory/ is gitignored: live dogfood state is absent on CI and in a "
+    "fresh clone (the versioned evidence is CalibrationEvidenceTest)")
+class LiveDogfoodCalibrationTest(unittest.TestCase):
+    """The live half of AC16: this repo eats its own breaker.
+
+    The assertion is deliberately "nothing is over the threshold
+    *unanswered*", not "nothing is over the threshold". An item reaching
+    two rework edges is the breaker working, not a regression, and
+    `factory cost-answer` is the honest remedy — which only greens a test
+    that reads the answer artifact. A test asserting the raw count could
+    never be greened by the remedy its own comment prescribes.
+    """
+
+    def live_rows(self):
+        """items.list_items_safe, as breaker.py:60 does, so one malformed
+        real item.md is reported rather than exploding the suite."""
+        metas, errors = items.list_items_safe(ROOT)
+        rows = [(m["id"], cost.summarize(ROOT, m["id"])["rework_edges"])
+                for m in sorted(metas, key=lambda m: m["id"])]
+        return rows, errors
+
+    def test_no_live_item_is_over_the_threshold_without_an_answer(self):
+        rows, errors = self.live_rows()
+        unanswered = []
+        for item_id, edges in rows:
+            if edges < breaker.REWORK_THRESHOLD:
+                continue
+            answer = breaker.read_answer(ROOT, item_id)
+            covered = (answer is not None
+                       and isinstance(answer["rework_edges"], int)
+                       and answer["rework_edges"] >= edges
+                       and answer["answer"] in breaker.ANSWERS)
+            if not covered:
+                unanswered.append((item_id, edges, answer))
+        self.assertEqual(
+            unanswered, [],
+            "items at or over the threshold with no answer covering the "
+            f"current count: {unanswered}. This is the breaker doing its "
+            "job. Record an answer with `factory cost-answer <id> "
+            "<continue|narrow|defer>` — never loosen this assertion. "
+            f"(unreadable items, omitted: {errors})")
+
+    def test_the_guard_and_the_reader_agree(self):
+        """Non-vacuity: the skip guard globs for item.md, the assertion
+        reads through items.list_items_safe. If those two ever disagree
+        the class could run and assert over nothing.
+
+        The invariant is read-or-reported, not read: an unreadable real
+        item.md must land in `errors`, never be silently dropped."""
+        rows, errors = self.live_rows()
+        self.assertGreater(len(rows), 0)
+        on_disk = list((ROOT / ".factory/items").glob("*/item.md"))
+        self.assertEqual(len(rows) + len(errors), len(on_disk))
 
 
 if __name__ == "__main__":

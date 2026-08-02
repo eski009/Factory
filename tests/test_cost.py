@@ -8,6 +8,13 @@ from scripts.factory.lib import cost, initrepo, items, logs
 
 ITEM = "0001-x"
 
+# `.factory/` is gitignored (`.gitignore:6`), so this repo's own item
+# specs are absent on CI and in a fresh clone. Prose assertions against
+# them are guarded on the file, never weakened.
+SPEC_0016 = (Path(__file__).resolve().parents[1]
+             / ".factory/items/0016-cost-circuit-breaker-on-engine-authorita"
+               "/spec.md")
+
 
 class CostTestCase(unittest.TestCase):
     """Shared fixture: one item, log lines stamped via FACTORY_NOW."""
@@ -227,10 +234,12 @@ class ReworkEdgeSubstrateTest(CostTestCase):
         self.assertIn("rework edges: 4", text)
         self.assertNotIn("retries", text)
 
+    @unittest.skipUnless(
+        SPEC_0016.is_file(),
+        ".factory/ is gitignored: item 0016's spec is absent on CI and in a "
+        "fresh clone")
     def test_spec_states_the_undercount(self):
-        spec = (Path(__file__).resolve().parents[1]
-                / ".factory/items/0016-cost-circuit-breaker-on-engine-authorita"
-                  "/spec.md").read_text(encoding="utf-8")
+        spec = SPEC_0016.read_text(encoding="utf-8")
         self.assertIn("rework routed through `waiting-human` is not counted",
                       spec)
 
