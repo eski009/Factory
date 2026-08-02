@@ -18,6 +18,7 @@ does. Item spec 0016 §5.
 """
 
 import json
+import re
 import subprocess
 from pathlib import PurePosixPath
 
@@ -115,6 +116,47 @@ def assure_attribution_enabled(repo):
     if not isinstance(assure, dict):
         return False
     return assure.get("attribution") is True
+
+
+_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+
+
+def _git(repo, *args):
+    """Read-only git call. Returns stripped stdout, or None on a non-zero
+    exit, a missing ref, or no git at all. Precedent: _gate_review already
+    shells to git via subprocess."""
+    try:
+        result = subprocess.run(["git", *args], cwd=repo,
+                                capture_output=True, text=True)
+    except OSError:
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip()
+
+
+def _default_branch(repo):
+    """Resolve the integration branch (item 0013 §4): origin/HEAD with the
+    'origin/' prefix stripped, else main, else master, else None. None is a
+    blocking condition wherever attribution depends on it."""
+    head = _git(repo, "symbolic-ref", "--quiet", "--short",
+                "refs/remotes/origin/HEAD")
+    if head:
+        return head[len("origin/"):] if head.startswith("origin/") else head
+    for name in ("main", "master"):
+        if _git(repo, "rev-parse", "--verify", "--quiet",
+                "refs/heads/" + name) is not None:
+            return name
+    return None
+
+
+def _merge_base(repo, branch, item_id):
+    """git merge-base <branch> factory/<item_id> -> 40-hex sha, or None on
+    any non-zero exit, missing ref, or unparseable output (item 0013 §4)."""
+    if not branch:
+        return None
+    out = _git(repo, "merge-base", branch, f"factory/{item_id}")
+    return out if out and _SHA_RE.match(out) else None
 
 
 def _validate_assurance_artifacts(repo, meta):
