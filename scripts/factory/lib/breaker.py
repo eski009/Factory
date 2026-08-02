@@ -119,3 +119,43 @@ def record_answer(repo, item_id, answer, notes=None):
     logs.append_event(repo, item_id, "cost.answered",
                       {"answer": answer, "rework_edges": edges})
     return path
+
+
+def precondition(repo, item_id, meta, to):
+    """One ordered rule, run before the branch dispatch in
+    machine.advance(). An implement entry past the threshold requires a
+    recorded answer covering the *pre-transition* edge count.
+
+    Consequences, deliberate: the transition that fires the breaker is
+    always admitted (its pre-count is below threshold), so the engine
+    hands back the stage it was asked for; the next entry into implement
+    is refused until answered; and the rule reads only edge counts and
+    the artifact, never paused-reason, so a mistyped reason string
+    degrades packet copy and never the gate. `meta` is accepted for
+    symmetry with verdict() and deliberately unread."""
+    if to != "implement" or "cost" not in _config_gates(repo):
+        return
+    edges = rework_edges(repo, item_id)
+    if edges < REWORK_THRESHOLD:
+        return
+    retry = (f"re-record with factory cost-answer {item_id} "
+             "<continue|narrow|defer>")
+    answer = read_answer(repo, item_id)
+    if answer is None:
+        raise GateError(
+            f"cost breaker unanswered: {edges} rework edges "
+            f"(threshold {REWORK_THRESHOLD}); record an answer with "
+            f"factory cost-answer {item_id} <continue|narrow|defer>")
+    if answer["answer"] not in ANSWERS:
+        raise GateError(
+            f"cost breaker answer malformed: recorded option "
+            f"{answer['answer']!r} is not one of {', '.join(ANSWERS)}; "
+            + retry)
+    if not isinstance(answer["rework_edges"], int):
+        raise GateError(
+            "cost breaker answer malformed: no '- rework-edges: N' line; "
+            + retry)
+    if answer["rework_edges"] < edges:
+        raise GateError(
+            f"cost breaker answer stale: recorded at "
+            f"{answer['rework_edges']} rework edges, now {edges}; " + retry)

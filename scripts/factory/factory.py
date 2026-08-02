@@ -184,11 +184,20 @@ def cmd_cleanup(args):
 
 def cmd_advance(args):
     try:
-        machine.advance(args.repo, args.item, args.stage, reason=args.reason)
+        _meta, verdict = machine.advance(args.repo, args.item, args.stage,
+                                         reason=args.reason)
     except (machine.GateError, items.ItemError) as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 2
+    # Always the REQUESTED stage: a silent redirect stays unimplementable
+    # rather than merely inelegant.
     print(f"{args.item} -> {args.stage}")
+    if verdict["fired"]:
+        print(f"cost breaker: {verdict['rework_edges']} rework edges "
+              f"(threshold {verdict['threshold']}) — park and answer "
+              "before the next implement round")
+        print(f"next: factory cost-answer {args.item} "
+              "<continue|narrow|defer>")
     return 0
 
 

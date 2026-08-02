@@ -1,12 +1,13 @@
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.factory.lib import items, logs, machine, paths
+from scripts.factory.lib import breaker, initrepo, items, logs, machine, paths
 
 
 def make_item(repo, kind="ui", stage="idea", priority=None, bug=False, journeys=None):
@@ -83,7 +84,7 @@ class TestLegality(MachineTest):
 
     def test_advance_idea_to_triage(self):
         make_item(self.repo)
-        meta = machine.advance(self.repo, "0001-thing", "triage")
+        meta, _verdict = machine.advance(self.repo, "0001-thing", "triage")
         self.assertEqual(meta["stage"], "triage")
         self.assertEqual(logs.count_events(self.repo, "0001-thing", "stage.advance"), 1)
 
@@ -101,7 +102,7 @@ class TestLegality(MachineTest):
         self.assertEqual(meta["paused-from"], "design")
         with self.assertRaises(machine.GateError):
             machine.advance(self.repo, "0001-thing", "plan")
-        meta = machine.advance(self.repo, "0001-thing", "design")
+        meta, _verdict = machine.advance(self.repo, "0001-thing", "design")
         self.assertNotIn("paused-from", meta)
 
     def test_advance_on_copied_dir_with_stale_id_raises_item_error(self):
@@ -141,7 +142,7 @@ class TestGates(MachineTest):
             machine.advance(self.repo, "0001-thing", "design")
         items.set_journeys(self.repo, "0001-thing", "none")
         self.assertEqual(
-            machine.advance(self.repo, "0001-thing", "design")["stage"], "design")
+            machine.advance(self.repo, "0001-thing", "design")[0]["stage"], "design")
 
     def test_plan_requires_journey_impact_for_backend(self):
         make_item(self.repo, kind="backend", stage="spec", priority=1)
@@ -160,7 +161,7 @@ class TestGates(MachineTest):
     def test_spec_allowed_with_triage_and_priority(self):
         make_item(self.repo, stage="triage", priority=1)
         write(self.repo, "triage.md")
-        meta = machine.advance(self.repo, "0001-thing", "spec")
+        meta, _verdict = machine.advance(self.repo, "0001-thing", "spec")
         self.assertEqual(meta["stage"], "spec")
 
     def test_plan_requires_design_choice_for_ui(self):
@@ -169,7 +170,7 @@ class TestGates(MachineTest):
         with self.assertRaises(machine.GateError):
             machine.advance(self.repo, "0001-thing", "plan")
         write(self.repo, "design/choice.md", "choice: option-b\n")
-        meta = machine.advance(self.repo, "0001-thing", "plan")
+        meta, _verdict = machine.advance(self.repo, "0001-thing", "plan")
         self.assertEqual(meta["stage"], "plan")
 
     def test_plan_requires_repro_for_bug(self):
@@ -183,7 +184,7 @@ class TestGates(MachineTest):
             machine.advance(self.repo, "0001-thing", "plan")
         logs.append_event(self.repo, "0001-thing", "repro.confirmed",
                           {"command": "foo", "exit": 1, "mode": "command"})
-        self.assertEqual(machine.advance(self.repo, "0001-thing", "plan")["stage"], "plan")
+        self.assertEqual(machine.advance(self.repo, "0001-thing", "plan")[0]["stage"], "plan")
 
     def test_plan_requires_repro_event_even_with_file(self):
         make_item(self.repo, kind="backend", stage="spec", priority=1, bug=True,
@@ -196,7 +197,7 @@ class TestGates(MachineTest):
     def test_plan_without_bug_flag_needs_no_repro(self):
         make_item(self.repo, kind="backend", stage="spec", priority=1, journeys="none")
         write(self.repo, "spec.md", SPEC_MD)
-        self.assertEqual(machine.advance(self.repo, "0001-thing", "plan")["stage"], "plan")
+        self.assertEqual(machine.advance(self.repo, "0001-thing", "plan")[0]["stage"], "plan")
 
     def test_plan_bug_ui_item_needs_both_choice_and_repro(self):
         make_item(self.repo, kind="ui", stage="design", priority=1, bug=True,
@@ -207,7 +208,7 @@ class TestGates(MachineTest):
             machine.advance(self.repo, "0001-thing", "plan")
         write(self.repo, "repro.md", "# Repro\n")
         logs.append_event(self.repo, "0001-thing", "repro.confirmed")
-        self.assertEqual(machine.advance(self.repo, "0001-thing", "plan")["stage"], "plan")
+        self.assertEqual(machine.advance(self.repo, "0001-thing", "plan")[0]["stage"], "plan")
 
     def test_implement_requires_plan_with_task(self):
         make_item(self.repo, stage="plan", priority=1)
@@ -215,7 +216,7 @@ class TestGates(MachineTest):
         with self.assertRaises(machine.GateError):
             machine.advance(self.repo, "0001-thing", "implement")
         write(self.repo, "plan.md", "- [ ] Task 1\n")
-        self.assertEqual(machine.advance(self.repo, "0001-thing", "implement")["stage"], "implement")
+        self.assertEqual(machine.advance(self.repo, "0001-thing", "implement")[0]["stage"], "implement")
 
     def test_review_requires_branch_and_completion_event(self):
         subprocess.run(["git", "init", "-q"], cwd=self.repo, check=True)
@@ -229,7 +230,7 @@ class TestGates(MachineTest):
         with self.assertRaises(machine.GateError):
             machine.advance(self.repo, "0001-thing", "review")
         logs.append_event(self.repo, "0001-thing", "implement.completed")
-        self.assertEqual(machine.advance(self.repo, "0001-thing", "review")["stage"], "review")
+        self.assertEqual(machine.advance(self.repo, "0001-thing", "review")[0]["stage"], "review")
 
     def test_verify_requires_synthesis_and_approval(self):
         make_item(self.repo, stage="review", priority=1)
@@ -237,7 +238,7 @@ class TestGates(MachineTest):
             machine.advance(self.repo, "0001-thing", "verify")
         write(self.repo, "reviews/synthesis.md")
         logs.append_event(self.repo, "0001-thing", "review.approved")
-        self.assertEqual(machine.advance(self.repo, "0001-thing", "verify")["stage"], "verify")
+        self.assertEqual(machine.advance(self.repo, "0001-thing", "verify")[0]["stage"], "verify")
 
     def test_ship_and_done_require_evidence_events(self):
         make_item(self.repo, stage="verify", priority=1, journeys="none")
@@ -248,7 +249,7 @@ class TestGates(MachineTest):
         with self.assertRaises(machine.GateError):
             machine.advance(self.repo, "0001-thing", "done")
         logs.append_event(self.repo, "0001-thing", "ship.merged")
-        self.assertEqual(machine.advance(self.repo, "0001-thing", "done")["stage"], "done")
+        self.assertEqual(machine.advance(self.repo, "0001-thing", "done")[0]["stage"], "done")
 
     def test_review_rework_capped(self):
         make_item(self.repo, stage="review", priority=1)
@@ -269,7 +270,7 @@ class TestGates(MachineTest):
             machine.advance(self.repo, "0001-thing", "assure")
         logs.append_event(self.repo, "0001-thing", "verify.green")
         self.assertEqual(
-            machine.advance(self.repo, "0001-thing", "assure")["stage"], "assure")
+            machine.advance(self.repo, "0001-thing", "assure")[0]["stage"], "assure")
 
     def test_assure_rework_capped(self):
         make_item(self.repo, stage="assure", priority=1)
@@ -291,7 +292,7 @@ class TestGates(MachineTest):
         self.assertEqual(machine.next_stage(meta), "ship")
         logs.append_event(self.repo, "0001-thing", "verify.green")
         self.assertEqual(
-            machine.advance(self.repo, "0001-thing", "ship")["stage"], "ship")
+            machine.advance(self.repo, "0001-thing", "ship")[0]["stage"], "ship")
 
 
 class TestGateCorruption(MachineTest):
@@ -318,7 +319,7 @@ class TestGateCorruption(MachineTest):
         self.corrupt_line('{"event": "spend", "ts": ')
         logs.append_event(self.repo, "0001-thing", "review.approved")
         self.assertEqual(
-            machine.advance(self.repo, "0001-thing", "verify")["stage"],
+            machine.advance(self.repo, "0001-thing", "verify")[0]["stage"],
             "verify")
 
     def test_rejection_cap_counts_parsed_events_only(self):
@@ -329,7 +330,7 @@ class TestGateCorruption(MachineTest):
         logs.append_event(self.repo, "0001-thing", "review.rejected")
         logs.append_event(self.repo, "0001-thing", "review.rejected")
         self.corrupt_line('{"event": "review.rejected", "ts": ')
-        meta = machine.advance(self.repo, "0001-thing", "implement")
+        meta, _verdict = machine.advance(self.repo, "0001-thing", "implement")
         self.assertEqual(meta["stage"], "implement")
 
     def test_undecodable_evidence_file_fails_closed(self):
@@ -386,7 +387,7 @@ class TestShipGateAssurance(MachineTest):
             machine.advance(self.repo, "0001-thing", "ship")
         logs.append_event(self.repo, "0001-thing", "assure.passed")
         self.assertEqual(
-            machine.advance(self.repo, "0001-thing", "ship")["stage"], "ship")
+            machine.advance(self.repo, "0001-thing", "ship")[0]["stage"], "ship")
 
     def test_stale_assure_passed_from_before_rework_refused(self):
         self._to_assure()
@@ -401,7 +402,7 @@ class TestShipGateAssurance(MachineTest):
         logs.append_event(self.repo, "0001-thing", "assure.waived",
                           {"reason": "browser unavailable in CI"})
         self.assertEqual(
-            machine.advance(self.repo, "0001-thing", "ship")["stage"], "ship")
+            machine.advance(self.repo, "0001-thing", "ship")[0]["stage"], "ship")
 
     def test_failing_verdict_refused(self):
         self._to_assure()
@@ -472,7 +473,7 @@ class TestShipGateAssurance(MachineTest):
             json.dumps(verdicts), encoding="utf-8")
         logs.append_event(self.repo, "0001-thing", "assure.passed")
         self.assertEqual(
-            machine.advance(self.repo, "0001-thing", "ship")["stage"], "ship")
+            machine.advance(self.repo, "0001-thing", "ship")[0]["stage"], "ship")
 
     def test_config_assure_gate_requires_confirmation(self):
         cfg = paths.config_path(self.repo)
@@ -486,7 +487,7 @@ class TestShipGateAssurance(MachineTest):
             machine.advance(self.repo, "0001-thing", "ship")
         logs.append_event(self.repo, "0001-thing", "assure.confirmed")
         self.assertEqual(
-            machine.advance(self.repo, "0001-thing", "ship")["stage"], "ship")
+            machine.advance(self.repo, "0001-thing", "ship")[0]["stage"], "ship")
 
     def test_journeys_none_ship_gate_unchanged(self):
         meta = make_item(self.repo, stage="verify", priority=1)
@@ -495,7 +496,7 @@ class TestShipGateAssurance(MachineTest):
         items.save_item(self.repo, meta, body)
         logs.append_event(self.repo, "0001-thing", "verify.green")
         self.assertEqual(
-            machine.advance(self.repo, "0001-thing", "ship")["stage"], "ship")
+            machine.advance(self.repo, "0001-thing", "ship")[0]["stage"], "ship")
 
     def test_absolute_evidence_path_refused(self):
         self._to_assure()
@@ -557,7 +558,7 @@ class TestShipGateAssurance(MachineTest):
         logs.append_event(self.repo, "0001-thing", "assure.waived",
                           {"reason": "known cosmetic fail; shipping anyway"})
         self.assertEqual(
-            machine.advance(self.repo, "0001-thing", "ship")["stage"], "ship")
+            machine.advance(self.repo, "0001-thing", "ship")[0]["stage"], "ship")
 
     def test_config_gates_scalar_string_treated_as_no_gates(self):
         cfg = paths.config_path(self.repo)
@@ -565,6 +566,184 @@ class TestShipGateAssurance(MachineTest):
         cfg.write_text(json.dumps({"version": 1, "merge": "auto",
                                    "gates": "assure"}), encoding="utf-8")
         self.assertEqual(machine._config_gates(self.repo), [])
+
+
+class TestCostBreakerSeam(MachineTest):
+    """AC20/AC21/AC25: the engine/caller seam, the gate enum, and the
+    untouched rejection caps."""
+
+    def seed(self, gates=("design", "cost"), edges=2):
+        initrepo.init(self.repo)
+        config = json.loads(paths.config_path(self.repo).read_text(
+            encoding="utf-8"))
+        config["gates"] = list(gates)
+        paths.config_path(self.repo).write_text(
+            json.dumps(config, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8")
+        make_item(self.repo, kind="backend", stage="implement", priority=1)
+        for i in range(edges):
+            logs.append_event(self.repo, "0001-thing", "stage.advance",
+                              {"from": "review", "to": "implement"})
+        write(self.repo, "plan.md", "- [ ] task\n")
+
+    def test_advance_returns_meta_and_verdict(self):
+        self.seed(edges=0)
+        # Deviation from the plan's snippet, which omits this: the
+        # implement -> review gate needs a factory/<id> branch and an
+        # implement.completed event (see
+        # test_review_requires_branch_and_completion_event).
+        subprocess.run(["git", "init", "-q"], cwd=self.repo, check=True)
+        subprocess.run(
+            ["git", "commit", "-q", "--allow-empty", "-m", "x"],
+            cwd=self.repo, check=True,
+            env=dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
+                     GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t"))
+        subprocess.run(["git", "branch", "factory/0001-thing"],
+                       cwd=self.repo, check=True)
+        logs.append_event(self.repo, "0001-thing", "implement.completed")
+        meta, verdict = machine.advance(self.repo, "0001-thing", "review")
+        self.assertEqual(meta["stage"], "review")
+        self.assertEqual(verdict["stage"], "review")
+        self.assertFalse(verdict["fired"])
+
+    def test_firing_transition_is_admitted_and_logs_one_event(self):
+        # one pre-existing edge: the pre-count is 1 (< 2), so this
+        # transition is admitted and the verdict fires afterwards at 2.
+        self.seed(edges=1)
+        meta = items.load_item(self.repo, "0001-thing")[0]
+        meta["stage"] = "review"
+        items.save_item(self.repo, meta, "# Thing\n")
+        write(self.repo, "plan.md", "- [ ] task\n")
+        meta, verdict = machine.advance(self.repo, "0001-thing", "implement")
+        self.assertEqual(meta["stage"], "implement")
+        self.assertTrue(verdict["fired"])
+        self.assertEqual(verdict["rework_edges"], 2)
+        events = logs.read_events(self.repo, "0001-thing")
+        self.assertEqual(events[-1]["event"], "cost.breaker")
+        self.assertEqual(events[-1]["data"],
+                         {"rework_edges": 2, "threshold": 2})
+        self.assertEqual(events[-2]["event"], "stage.advance")
+
+    def test_second_entry_past_threshold_is_refused_without_an_answer(self):
+        self.seed(edges=2)
+        meta = items.load_item(self.repo, "0001-thing")[0]
+        meta["stage"] = "waiting-human"
+        meta["paused-from"] = "implement"
+        meta["paused-reason"] = "cost breaker: 2 rework edges (threshold 2)"
+        items.save_item(self.repo, meta, "# Thing\n")
+        with self.assertRaises(machine.GateError) as ctx:
+            machine.advance(self.repo, "0001-thing", "implement")
+        self.assertIn("factory cost-answer", str(ctx.exception))
+        # the item stays parked: no infinite park/resume loop
+        self.assertEqual(
+            items.load_item(self.repo, "0001-thing")[0]["stage"],
+            "waiting-human")
+
+    def test_gate_off_applies_no_precondition(self):
+        self.seed(gates=("design",), edges=2)
+        meta = items.load_item(self.repo, "0001-thing")[0]
+        meta["stage"] = "waiting-human"
+        meta["paused-from"] = "implement"
+        items.save_item(self.repo, meta, "# Thing\n")
+        meta, verdict = machine.advance(self.repo, "0001-thing", "implement")
+        self.assertEqual(meta["stage"], "implement")
+        self.assertTrue(verdict["over_threshold"])
+        self.assertFalse(verdict["fired"])
+        self.assertFalse(verdict["gate"])
+        self.assertNotIn(
+            "cost.breaker",
+            [e["event"] for e in logs.read_events(self.repo, "0001-thing")])
+
+    def test_cost_is_in_the_gates_enum(self):
+        schema = json.loads(
+            (Path(__file__).resolve().parents[1]
+             / "schemas/config.schema.json").read_text(encoding="utf-8"))
+        self.assertIn("cost", schema["properties"]["gates"]["items"]["enum"])
+
+    def test_default_config_still_has_exactly_the_design_gate(self):
+        self.assertEqual(initrepo.DEFAULT_CONFIG["gates"], ["design"])
+
+    def test_validate_passes_on_a_config_containing_cost(self):
+        # Deviation from the plan's `edges=0`: validate_tree also
+        # cross-checks the item's stage against its log, and an item
+        # seeded at implement with an empty log fails that unrelated
+        # check. The two seeded edges are what put it at implement.
+        self.seed(edges=2)
+        self.assertEqual(initrepo.validate_tree(self.repo), [])
+
+    def test_validate_still_refuses_a_gate_outside_the_enum(self):
+        """The enum change must be proven through the real validation
+        path, not a raw config write: _config_gates does no schema
+        validation, so only validate_tree distinguishes an enum that
+        contains "cost" from one that does not."""
+        self.seed(gates=("design", "bogus"), edges=2)
+        errors = initrepo.validate_tree(self.repo)
+        self.assertEqual(len(errors), 1, errors)
+        self.assertIn("config.gates[1]: 'bogus' not one of", errors[0])
+        # the enum the validator actually consulted is the shipped one
+        self.assertIn("'cost'", errors[0])
+
+    def test_rejection_caps_are_byte_unchanged(self):
+        src = (Path(__file__).resolve().parents[1]
+               / "scripts/factory/lib/machine.py").read_text(encoding="utf-8")
+        self.assertIn("MAX_REVIEW_REJECTIONS = 2", src)
+        self.assertIn("MAX_ASSURE_REJECTIONS = 2", src)
+        self.assertIn(
+            '    elif frm == "review" and to == "implement":\n'
+            '        if logs.count_events(repo, item_id, "review.rejected") '
+            '> MAX_REVIEW_REJECTIONS:\n'
+            '            raise GateError("review rejected too many times; '
+            'move item to blocked")\n'
+            '    elif frm == "assure" and to == "implement":\n'
+            '        if logs.count_events(repo, item_id, "assure.rejected") '
+            '> MAX_ASSURE_REJECTIONS:\n'
+            '            raise GateError("assurance rejected too many times; '
+            'move item to blocked")\n', src)
+
+    def test_cap_still_refuses_on_a_fourth_rejection_event(self):
+        self.seed(gates=("design",), edges=0)
+        meta = items.load_item(self.repo, "0001-thing")[0]
+        meta["stage"] = "review"
+        items.save_item(self.repo, meta, "# Thing\n")
+        for _ in range(4):
+            logs.append_event(self.repo, "0001-thing", "review.rejected")
+        with self.assertRaises(machine.GateError) as ctx:
+            machine.advance(self.repo, "0001-thing", "implement")
+        self.assertIn("review rejected too many times", str(ctx.exception))
+
+    def test_breaker_reaches_the_operator_before_any_cap_could(self):
+        """AC25 dominance: the breaker fires at 2 rework edges while the
+        cap can only refuse past 2 rejection events — and the fixture run
+        logged none, so no cap was ever going to fire on it."""
+        self.seed(gates=("design", "cost"), edges=2)
+        self.assertEqual(
+            logs.count_events(self.repo, "0001-thing", "review.rejected"), 0)
+        self.assertEqual(
+            logs.count_events(self.repo, "0001-thing", "assure.rejected"), 0)
+        meta = items.load_item(self.repo, "0001-thing")[0]
+        verdict = breaker.verdict(self.repo, "0001-thing", meta, "implement")
+        self.assertTrue(verdict["fired"])
+        self.assertLess(verdict["threshold"], machine.MAX_REVIEW_REJECTIONS + 2)
+
+    def test_every_advance_call_site_unpacks_two_values(self):
+        root = Path(__file__).resolve().parents[1]
+        found = 0
+        # Deviation from the plan's literal `"machine.advance(" not in line`:
+        # that substring also matches the bare prose form `machine.advance()`
+        # in breaker.py's and machine.py's docstrings, which are not call
+        # sites. Requiring a first argument keeps every real call site in
+        # scope and drops the prose.
+        call_site = re.compile(r"machine\.advance\(\s*\w")
+        for path in sorted((root / "scripts").rglob("*.py")):
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if not call_site.search(line):
+                    continue
+                found += 1
+                self.assertRegex(
+                    line.strip(), r"^\w+,\s*\w+\s*=\s*machine\.advance\(",
+                    f"{path}: advance() returns (meta, verdict); this call "
+                    "site drops the verdict")
+        self.assertGreaterEqual(found, 1)
 
 
 if __name__ == "__main__":

@@ -113,7 +113,7 @@ class TestUiPipelineWalk(unittest.TestCase):
         logs.append_event(self.repo, self.item, "assure.passed")
         machine.advance(self.repo, self.item, "ship")
         logs.append_event(self.repo, self.item, "ship.merged")
-        meta = machine.advance(self.repo, self.item, "done")
+        meta, _verdict = machine.advance(self.repo, self.item, "done")
         self.assertEqual(meta["stage"], "done")
         # tree still validates cleanly after the whole journey -- including
         # the assurance/verdicts.json artifact validated against its schema
@@ -148,7 +148,7 @@ class TestUiPipelineWalk(unittest.TestCase):
         logs.append_event(self.repo, self.item, "verify.green")
         machine.advance(self.repo, self.item, "ship")     # verify -> ship directly
         logs.append_event(self.repo, self.item, "ship.merged")
-        meta = machine.advance(self.repo, self.item, "done")
+        meta, _verdict = machine.advance(self.repo, self.item, "done")
         self.assertEqual(meta["stage"], "done")
         advances = [e for e in logs.read_events(self.repo, self.item)
                    if e["event"] == "stage.advance"]
@@ -168,13 +168,13 @@ class TestUiPipelineWalk(unittest.TestCase):
                                     "created": now, "updated": now}, "")
         logs.append_event(self.repo, self.item, "verify.green")
         # the engine still forces the undeclared item through assure
-        meta = machine.advance(self.repo, self.item, "assure")
+        meta, _verdict = machine.advance(self.repo, self.item, "assure")
         self.assertEqual(meta["stage"], "assure")
         # ship refuses: no assurance evidence at all yet
         with self.assertRaises(machine.GateError):
             machine.advance(self.repo, self.item, "ship")
         assure.record_waiver(self.repo, self.item, "pre-assurance item")
-        meta = machine.advance(self.repo, self.item, "ship")
+        meta, _verdict = machine.advance(self.repo, self.item, "ship")
         self.assertEqual(meta["stage"], "ship")
         self.assertEqual(initrepo.validate_tree(self.repo), [])
 

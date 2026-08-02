@@ -316,5 +316,135 @@ class VerdictIsReadOnlyTest(BreakerTestCase):
         self.assertEqual(item_md.read_bytes(), before_item)
 
 
+class PreconditionTest(BreakerTestCase):
+    """AC18/AC19: a park with no recorded answer must not ping-pong, and
+    an answer is a monotone watermark, not a permanent off switch."""
+
+    def parked(self):
+        self.set_gates("design", "cost")
+        meta = self.put(stage="waiting-human")
+        meta["paused-from"] = "implement"
+        meta["paused-reason"] = "cost breaker: 4 rework edges (threshold 2)"
+        items.save_item(self.repo, meta, "")
+        self.install_fixture()
+        return meta
+
+    def test_resume_without_answer_is_refused_naming_the_verb(self):
+        self.parked()
+        with self.assertRaises(GateErrorAlias) as ctx:
+            breaker.precondition(self.repo, ITEM, None, "implement")
+        message = str(ctx.exception)
+        self.assertIn("cost breaker unanswered: 4 rework edges "
+                      "(threshold 2)", message)
+        self.assertIn(f"factory cost-answer {ITEM} "
+                      "<continue|narrow|defer>", message)
+
+    def test_resume_with_covering_answer_is_admitted(self):
+        self.parked()
+        breaker.record_answer(self.repo, ITEM, "continue")
+        self.assertIsNone(
+            breaker.precondition(self.repo, ITEM, None, "implement"))
+
+    def test_gate_off_applies_no_precondition(self):
+        self.set_gates("design")
+        self.put(stage="waiting-human")
+        self.install_fixture()
+        self.assertIsNone(
+            breaker.precondition(self.repo, ITEM, None, "implement"))
+
+    def test_non_implement_destination_applies_no_precondition(self):
+        self.parked()
+        self.assertIsNone(
+            breaker.precondition(self.repo, ITEM, None, "review"))
+
+    def test_stale_answer_at_lower_count_is_refused(self):
+        self.parked()
+        breaker.answer_path(self.repo, ITEM).parent.mkdir(
+            parents=True, exist_ok=True)
+        breaker.answer_path(self.repo, ITEM).write_text(
+            "# Cost breaker answer\n\n- answer: continue\n"
+            "- rework-edges: 2\n- ts: 2026-08-02T05:00:00Z\n\nx\n",
+            encoding="utf-8")
+        with self.assertRaises(GateErrorAlias) as ctx:
+            breaker.precondition(self.repo, ITEM, None, "implement")
+        self.assertIn("cost breaker answer stale: recorded at 2 rework "
+                      "edges, now 4", str(ctx.exception))
+
+    def test_answer_outside_answers_is_refused_distinctly(self):
+        self.parked()
+        breaker.answer_path(self.repo, ITEM).parent.mkdir(
+            parents=True, exist_ok=True)
+        breaker.answer_path(self.repo, ITEM).write_text(
+            "# Cost breaker answer\n\n- answer: abandon\n"
+            "- rework-edges: 9\n- ts: 2026-08-02T05:00:00Z\n\nx\n",
+            encoding="utf-8")
+        with self.assertRaises(GateErrorAlias) as ctx:
+            breaker.precondition(self.repo, ITEM, None, "implement")
+        self.assertIn("cost breaker answer malformed: recorded option "
+                      "'abandon'", str(ctx.exception))
+
+    def test_artifact_without_edge_count_is_refused_distinctly(self):
+        self.parked()
+        breaker.answer_path(self.repo, ITEM).parent.mkdir(
+            parents=True, exist_ok=True)
+        breaker.answer_path(self.repo, ITEM).write_text(
+            "# Cost breaker answer\n\n- answer: continue\n\nx\n",
+            encoding="utf-8")
+        with self.assertRaises(GateErrorAlias) as ctx:
+            breaker.precondition(self.repo, ITEM, None, "implement")
+        self.assertIn("no '- rework-edges: N' line", str(ctx.exception))
+
+    def test_three_refusals_have_three_distinct_messages(self):
+        messages = set()
+        for body, in (
+            ("# Cost breaker answer\n\n- answer: continue\n\nx\n",),
+            ("# Cost breaker answer\n\n- answer: abandon\n"
+             "- rework-edges: 9\n\nx\n",),
+            ("# Cost breaker answer\n\n- answer: continue\n"
+             "- rework-edges: 2\n\nx\n",),
+        ):
+            self.tearDown()
+            self.setUp()
+            self.parked()
+            path = breaker.answer_path(self.repo, ITEM)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(body, encoding="utf-8")
+            with self.assertRaises(GateErrorAlias) as ctx:
+                breaker.precondition(self.repo, ITEM, None, "implement")
+            messages.add(str(ctx.exception))
+        self.assertEqual(len(messages), 3)
+
+
+class MonotoneAnswerTest(BreakerTestCase):
+    """AC19/S8: continue at 2 admits the resume at 2 and does not
+    suppress the fire at 3."""
+
+    def two_edges(self):
+        return [json.dumps(
+            {"data": {"from": "review", "to": "implement"},
+             "event": "stage.advance", "ts": ts}, sort_keys=True)
+            for ts in ("2026-08-02T01:00:00Z", "2026-08-02T02:00:00Z")]
+
+    def test_answer_at_two_admits_two_and_does_not_suppress_three(self):
+        self.set_gates("design", "cost")
+        meta = self.put()
+        self.install_fixture(lines=self.two_edges())
+        breaker.record_answer(self.repo, ITEM, "continue")
+        self.assertIsNone(
+            breaker.precondition(self.repo, ITEM, meta, "implement"))
+        v = breaker.verdict(self.repo, ITEM, meta, "implement")
+        self.assertEqual(v["answered_at"], 2)
+        self.assertFalse(v["fired"])
+        # a third edge arrives
+        logs.append_event(self.repo, ITEM, "stage.advance",
+                          {"from": "assure", "to": "implement"})
+        v = breaker.verdict(self.repo, ITEM, meta, "implement")
+        self.assertEqual(v["rework_edges"], 3)
+        self.assertEqual(v["answered_at"], 2)
+        self.assertTrue(v["fired"])
+        with self.assertRaises(GateErrorAlias):
+            breaker.precondition(self.repo, ITEM, meta, "implement")
+
+
 if __name__ == "__main__":
     unittest.main()
