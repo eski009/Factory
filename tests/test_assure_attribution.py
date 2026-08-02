@@ -186,6 +186,14 @@ class TestAttributionOff(GateTest):
         self.write_verdicts(self.scenario(base=self.base()))
         self.assertIn("unsolicited attribution", self.refusal())
 
+    def test_unsolicited_owner_alone_is_rejected(self):
+        # F5: `owner` is in the tagged set — a fail carrying only `owner`
+        # hits rule 2's unsolicited rejection, not rule 3's generic refusal.
+        self.make_item()
+        self.make_owner()
+        self.write_verdicts(self.scenario(owner=OWNER))
+        self.assertIn("unsolicited attribution", self.refusal())
+
     def test_schema_invalid_payload_is_a_gate_error_not_a_traceback(self):
         self.make_item()
         self.write_verdicts(self.scenario(attribution="out-of-scope"))
@@ -227,6 +235,14 @@ class TestAttributionOn(GateTest):
             base=self.base()))
         self.assertIn("passing scenario", self.refusal())
 
+    def test_owner_alone_on_a_passing_scenario_blocks(self):
+        # F5: a pass carrying only `owner` must not ship silently — owner
+        # is in the tagged set, so rule 1 rejects it.
+        self.make_item()
+        self.make_owner()
+        self.write_verdicts(self.scenario(verdict="pass", owner=OWNER))
+        self.assertIn("passing scenario", self.refusal())
+
     def test_absent_attribution_on_a_non_pass_blocks(self):
         self.make_item()
         self.write_verdicts(self.scenario())
@@ -262,7 +278,7 @@ class TestAttributionOn(GateTest):
             attribution="pre-existing", owner=OWNER,
             base={"branch": "main", "merge_base": self.base_sha,
                   "evidence": []}))
-        self.assertIn("without base evidence", self.refusal())
+        self.assertIn("empty base.evidence", self.refusal())
 
     def test_absolute_base_evidence_path_blocks(self):
         self.make_item()
@@ -406,6 +422,10 @@ class TestAttributionOn(GateTest):
         self.make_owner()
         cases = [
             self.scenario(attribution="pre-existing", owner=OWNER),
+            self.scenario(attribution="pre-existing", owner=OWNER,
+                          base={"branch": "main",
+                                "merge_base": self.base_sha,
+                                "evidence": []}),
             self.scenario(verdict="pass", attribution="regression"),
             self.scenario(verdict="ambiguity", attribution="pre-existing",
                           owner=OWNER, base=self.base()),

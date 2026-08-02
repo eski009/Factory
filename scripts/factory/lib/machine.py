@@ -187,7 +187,7 @@ def _attribution_error(repo, meta, item_dir, journey_id, s, attr_on):
     verdict = s.get("verdict")
     attribution = s.get("attribution")
     base = s.get("base")
-    tagged = "attribution" in s or "base" in s
+    tagged = "attribution" in s or "base" in s or "owner" in s
 
     # 1. attribution recorded on a passing scenario
     if verdict == "pass":
@@ -218,9 +218,14 @@ def _attribution_error(repo, meta, item_dir, journey_id, s, attr_on):
     if verdict != "fail":
         return (f"attribution 'pre-existing' on verdict {verdict!r}: only "
                 "an objective 'fail' can be attributed")
-    # 7. presence and non-emptiness of base evidence
-    if not isinstance(base, dict) or not base.get("evidence"):
+    # 7. presence and non-emptiness of base evidence - two distinct
+    #    refusals (AC7): absence and emptiness name their own causes
+    if not isinstance(base, dict):
         return "pre-existing without base evidence is an ordinary non-pass"
+    if not base.get("evidence"):
+        return ("pre-existing with an empty base.evidence list: record the "
+                "base walk's evidence files under "
+                "assurance/base/<merge-base-sha>/ before attributing")
     # 8. sha-match, recomputed here at ship - never trusted from write time
     branch = _default_branch(repo)
     sha = _merge_base(repo, branch, meta["id"])

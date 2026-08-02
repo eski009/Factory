@@ -72,6 +72,11 @@ def file_base_defect(repo, item_id, journey, scenario, fingerprint, title,
     if not title:
         raise GateError("--title must not be empty")
     marker = f"- base-defect-fingerprint: {fingerprint}"
+    # Line-anchored, not substring containment: a body that merely QUOTES
+    # the fingerprint line inside other text must not dedupe-match.
+    marker_re = re.compile(
+        r"^- base-defect-fingerprint: " + re.escape(fingerprint) + r"$",
+        re.MULTILINE)
     root = paths.items_dir(repo)
     if root.exists():
         for sub in sorted(root.iterdir()):
@@ -81,7 +86,7 @@ def file_base_defect(repo, item_id, journey, scenario, fingerprint, title,
                 meta, body = items.load_item(repo, sub.name)
             except items.ItemError:
                 continue
-            if meta.get("stage") == "done" or marker not in body:
+            if meta.get("stage") == "done" or not marker_re.search(body):
                 continue
             logs.append_event(repo, item_id, "assure.filed",
                               {"owner": meta["id"], "journey": journey,

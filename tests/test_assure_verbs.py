@@ -188,6 +188,23 @@ class TestFileBaseDefect(unittest.TestCase):
         second, _ = self.file(fingerprint="f" * 64, title="Other defect")
         self.assertNotEqual(first, second)
 
+    def test_a_quoted_fingerprint_inside_prose_does_not_dedupe(self):
+        # F2a: dedupe is a line-anchored body match, not substring
+        # containment — an item that merely QUOTES the fingerprint line
+        # inside other text must not become the returned owner.
+        items.save_item(self.repo, {
+            "id": "0002-docs", "title": "Docs", "stage": "idea",
+            "kind": "backend", "tier": "feature",
+            "created": "2026-07-03T10:00:00Z",
+            "updated": "2026-07-03T10:00:00Z"},
+            "# Docs\n\nThe filing format is quoted here: "
+            f"`- base-defect-fingerprint: {self.fingerprint}` inside a "
+            "sentence, not as a body line.\n")
+        logs.append_event(self.repo, "0002-docs", "item.created")
+        owner, deduped = self.file()
+        self.assertFalse(deduped)
+        self.assertNotEqual(owner, "0002-docs")
+
     def test_bad_fingerprint_refused(self):
         with self.assertRaises(machine.GateError):
             self.file(fingerprint="not-hex")
