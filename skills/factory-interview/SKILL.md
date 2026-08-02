@@ -33,7 +33,9 @@ Build one question set from four sources:
 2. `(assumption)`-tagged claims in `personas.md` / `market.md` and
    `docs/factory/journeys/inventory.md` (e.g. `(assumption)`-tagged
    criticality) — research's guesses, each turned into a confirm-or-correct
-   question.
+   question. Also `docs/factory/brain/design-principles.md` (the
+   defaults-not-dogma header — one confirm-or-strike question for the set,
+   not one per principle).
 3. Brain surfaces and `docs/factory/journeys/inventory.md` still showing the
    `_Not yet written.` marker (every brain template's placeholder text begins
    with it — whole-surface placeholders continue with a sentence,

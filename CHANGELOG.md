@@ -4,7 +4,35 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [0.10.1] - 2026-07-23
+## [0.12.0] - 2026-08-02
+
+Integration release: merges the upstream line (through 0.11.0 — the polish
+battery and design principles) into this fork. A clean merge — no content
+conflict on any skill, agent, template, or test; the two upstream features
+touch surfaces the fork had not diverged on. Fork-only work is untouched
+(blind visual verification, HTML decision packets, forked-context stage
+skills, the model-routing reference). Suite: 550 → 555 tests.
+
+The two lines both used `0.10.x` for different releases, so the historical
+entries below are tagged **(fork)** for what this repo released and
+**(upstream)** for what merged in from `jzjq567/Factory`. Full detail for the
+merged features lives in their upstream entries; the summary:
+
+### Added (merged from upstream)
+
+- **The polish battery** (upstream 0.10.0) — `factory-spec` seeds four AI
+  judgement questions (density, craft, consistency, trust) on every touched
+  journey node, and the journey reviewer answers them at a stated bar: a
+  demanding first-time customer of a world-class product. Objective craft
+  defects fail the gate and drive rework; subjective findings land in the
+  assure packet's new `## Polish` section as advisories that never block.
+- **Design principles** (upstream 0.11.0) — a new brain surface,
+  `brain/design-principles.md`, seeded with seven "defaults, not dogma"
+  principles that `factory-design`, the polish battery, and the ui-taste
+  council seat all generate and judge against; the product's own
+  `design-system.md` or a recorded decision always wins.
+
+## [0.10.1] - 2026-07-23 (fork)
 
 ### Added
 
@@ -17,7 +45,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   implementer, `model:` set explicitly per dispatch to defeat the omitted-model
   inheritance trap). `model-tiering.md` stays model-agnostic and cross-links to it.
 
-## [0.10.0] - 2026-07-18
+## [0.10.0] - 2026-07-18 (fork)
 
 Integration release: merges the upstream line (through 0.9.2 — codex
 subscription workers, DesignSync journeys, journey assurance, `/factory:do`)
@@ -54,6 +82,55 @@ upstream's assurance artifacts/verbs *and* renders the fork's HTML packet).
   `context: fork`, each executing in an isolated subagent context and returning a
   compact outcome report, so a long `/factory:run loop` or `/factory:autopilot`
   session no longer accumulates every stage's working context.
+
+## [0.11.0] - 2026-07-19 (upstream)
+
+### Added
+
+- **Design principles — a seeded, overridable UI baseline.** A new brain
+  surface, `brain/design-principles.md`, ships content-bearing with seven
+  defaults (KISS — one job per screen; progressive disclosure; visual
+  hierarchy; consistency, internal and platform; feedback and visible
+  state; error prevention over error messages; accessible by default)
+  under a "defaults, not dogma" header: strike or amend any of them per
+  product, and where a principle conflicts with the product's
+  `design-system.md` or a recorded decision, the product wins. The single
+  `(assumption)` tag makes the init interview ask one confirm-or-strike
+  question for the set. Three consumers give it force: factory-design
+  generates every mockup direction against it; the polish battery's
+  density/consistency questions anchor to it (the journey reviewer never
+  cites a principle the product struck); and the ui-taste council seat
+  reads it alongside `design-system.md`, citing principles in bids until
+  the product's own accumulated taste supersedes them. No engine changes —
+  principles bind through generation, advisories, and bids, never through
+  a gate. Suite: 545 → 547 tests.
+
+## [0.10.0] - 2026-07-18 (upstream)
+
+### Added
+
+- **The polish battery — a written world-class bar for the journey
+  reviewer.** Journey-contract "AI judgement questions" are now
+  operationalized end to end: factory-spec seeds four default questions on
+  every touched node (density — "what on this screen is not needed for
+  what the customer is doing at this node?"; craft — "what would a
+  first-time customer visually notice as unfinished?"; consistency — "does
+  this screen read as the same product as the previous node?"; trust —
+  "would a first-time customer trust this screen with their data or
+  money?"; authors add more, never fewer), and the journey reviewer
+  answers them at an explicit standard: a demanding first-time customer of
+  a world-class product, never softened because the product "mostly
+  works." Findings split cleanly: **objective craft defects** (clipping,
+  broken imagery, unstyled error/empty states, placeholder content,
+  viewport collapse) are ordinary fails that drive the rework loop —
+  brownfield gets pulled toward production-ready by the gate itself —
+  while **nameable-but-subjective findings** land in the assure packet's
+  new `## Polish` section as advisories: never failing the gate, never
+  parking the item, surfaced every run as the punch list the human
+  adjudicates at confirmation. A ratified advisory promotes (escape
+  promotion or contract amendment) and binds the next run. No engine
+  changes. Suite: 542 → 545 tests (the 0.9.1–0.9.2
+  hardening landed six more in parallel).
 
 ## [0.9.2] - 2026-07-17
 
