@@ -18,6 +18,7 @@ does. Item spec 0016 §5.
 """
 
 import json
+import re
 import subprocess
 from pathlib import PurePosixPath
 
@@ -90,16 +91,179 @@ def _last_index(events, name):
     return idx
 
 
-def _config_gates(repo):
+def _config_dict(repo):
     try:
         raw = json.loads(paths.config_path(repo).read_text(
             encoding="utf-8", errors="replace"))
     except (OSError, json.JSONDecodeError):
-        return []
-    gates = raw.get("gates", []) if isinstance(raw, dict) else []
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _config_gates(repo):
+    gates = _config_dict(repo).get("gates", [])
     if not isinstance(gates, list):
         return []
     return [g for g in gates if isinstance(g, str)]
+
+
+def assure_attribution_enabled(repo):
+    """Item 0013 §2: the one explicit key that gates the base walk's
+    trigger AND the gate's acceptance of attribution fields. An absent
+    key, an unreadable or malformed config, or any non-boolean value all
+    read as False - the default path is the safe path."""
+    assure = _config_dict(repo).get("assure")
+    if not isinstance(assure, dict):
+        return False
+    return assure.get("attribution") is True
+
+
+_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+
+
+def _git(repo, *args):
+    """Read-only git call. Returns stripped stdout, or None on a non-zero
+    exit, a missing ref, or no git at all. Precedent: _gate_review already
+    shells to git via subprocess."""
+    try:
+        result = subprocess.run(["git", *args], cwd=repo,
+                                capture_output=True, text=True)
+    except OSError:
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip()
+
+
+def _default_branch(repo):
+    """Resolve the integration branch (item 0013 §4): origin/HEAD with the
+    'origin/' prefix stripped, else main, else master, else None. None is a
+    blocking condition wherever attribution depends on it."""
+    head = _git(repo, "symbolic-ref", "--quiet", "--short",
+                "refs/remotes/origin/HEAD")
+    if head:
+        return head[len("origin/"):] if head.startswith("origin/") else head
+    for name in ("main", "master"):
+        if _git(repo, "rev-parse", "--verify", "--quiet",
+                "refs/heads/" + name) is not None:
+            return name
+    return None
+
+
+def _merge_base(repo, branch, item_id):
+    """git merge-base <branch> factory/<item_id> -> 40-hex sha, or None on
+    any non-zero exit, missing ref, or unparseable output (item 0013 §4)."""
+    if not branch:
+        return None
+    out = _git(repo, "merge-base", branch, f"factory/{item_id}")
+    return out if out and _SHA_RE.match(out) else None
+
+
+# Item 0013 §1/§5: the complete, exhaustive list of what the engine checks
+# about an attribution. It never checks the TRUTH of a walk - it reads no
+# `expected` or `actual` free-text string anywhere in the ladder below.
+ATTRIBUTION_CHECKS = ("shape", "presence", "path-containment", "existence",
+                      "non-emptiness", "sha-match", "owner-resolution")
+
+_OWNER_RE = re.compile(r"^[0-9]{4}-[a-z0-9-]+$")
+
+
+def _path_escape_error(rel):
+    """Relative, no '..' - the same containment rule the branch evidence
+    already uses (machine.py:134-144). Returns a message suffix or None."""
+    parts = PurePosixPath(rel).parts
+    if not rel or PurePosixPath(rel).is_absolute() or ".." in parts:
+        return f"evidence path escapes the item dir: {rel}"
+    return None
+
+
+def _attribution_error(repo, meta, item_dir, journey_id, s, attr_on):
+    """The ordered attribution rules of item 0013 §5. Returns a message
+    suffix when the scenario BLOCKS the advance to ship, or None when it
+    does not block - a pass, or a validated non-blocking pre-existing fail.
+
+    Every inability to classify falls through to a block; there is no path
+    from 'unclassifiable' to 'ships', and none to a park."""
+    verdict = s.get("verdict")
+    attribution = s.get("attribution")
+    base = s.get("base")
+    tagged = "attribution" in s or "base" in s or "owner" in s
+
+    # 1. attribution recorded on a passing scenario
+    if verdict == "pass":
+        if tagged:
+            return ("attribution recorded on a passing scenario "
+                    "(attribution classifies fails only)")
+        return None
+    # 2. attribution fields present while the config key is off - rejected,
+    #    never ignored: a skill cannot emit pre-existing where no base walk
+    #    was authorised.
+    if not attr_on and tagged:
+        return ("unsolicited attribution: `assure.attribution` is not "
+                "enabled for this repo (remove the attribution/base fields "
+                "or enable the config key)")
+    # 3. attribution off: today's refusal, today's wording, byte for byte
+    if not attr_on:
+        return f"verdict {verdict!r} is not pass"
+    # 4. absent attribution is never a pass
+    if attribution is None:
+        return (f"verdict {verdict!r} is not pass and carries no "
+                "attribution (an unclassified fail always blocks)")
+    # 5. the one class this item exists to block
+    if attribution == "regression":
+        return (f"verdict {verdict!r} is attributed 'regression' - a defect "
+                "this change caused blocks ship")
+    # 6. attribution classifies objective fails only; ambiguity and blocker
+    #    keep today's park-or-block semantics untouched
+    if verdict != "fail":
+        return (f"attribution 'pre-existing' on verdict {verdict!r}: only "
+                "an objective 'fail' can be attributed")
+    # 7. presence and non-emptiness of base evidence - two distinct
+    #    refusals (AC7): absence and emptiness name their own causes
+    if not isinstance(base, dict):
+        return "pre-existing without base evidence is an ordinary non-pass"
+    if not base.get("evidence"):
+        return ("pre-existing with an empty base.evidence list: record the "
+                "base walk's evidence files under "
+                "assurance/base/<merge-base-sha>/ before attributing")
+    # 8. sha-match, recomputed here at ship - never trusted from write time
+    branch = _default_branch(repo)
+    sha = _merge_base(repo, branch, meta["id"])
+    recorded = base.get("merge_base")
+    if branch is None or sha is None:
+        return (f"base evidence is stale: recorded {recorded}, merge base "
+                "is now unresolvable (no integration branch, or no merge "
+                f"base for factory/{meta['id']})")
+    if recorded != sha or base.get("branch") != branch:
+        return (f"base evidence is stale: recorded {recorded} on branch "
+                f"{base.get('branch')!r}, merge base is now {sha} on branch "
+                f"{branch!r}")
+    # 9. base evidence is keyed by the sha structurally
+    prefix = f"assurance/base/{sha}/"
+    for ev in base.get("evidence", []):
+        rel = ev.get("path", "")
+        escape = _path_escape_error(rel)
+        if escape:
+            return "base " + escape
+        if not rel.startswith(prefix):
+            return f"base evidence path is not under {prefix}: {rel}"
+        if not (item_dir / rel).exists():
+            return f"base evidence missing on disk: {rel}"
+    # 10. an unvalidated free-text id is a waiver wearing a filing's clothes
+    owner = s.get("owner") or ""
+    if not _OWNER_RE.match(owner):
+        return ("a pre-existing fail must name an open owning item "
+                f"(owner {owner!r} is absent or malformed)")
+    try:
+        owner_meta, _body = items.load_item(repo, owner)
+    except items.ItemError:
+        return ("a pre-existing fail must name an open owning item "
+                f"(no such item: {owner})")
+    if owner_meta.get("stage") == "done":
+        return ("a pre-existing fail must name an open owning item "
+                f"({owner} is at stage done)")
+    # 11. non-blocking: recorded, counted, surfaced - and it ships
+    return None
 
 
 def _validate_assurance_artifacts(repo, meta):
@@ -125,16 +289,18 @@ def _validate_assurance_artifacts(repo, meta):
     if missing:
         raise GateError("assurance verdicts missing journeys: " + ", ".join(missing))
     item_dir = paths.item_dir(repo, meta["id"])
+    attr_on = assure_attribution_enabled(repo)
     for j in verdicts.get("journeys", []):
         if not j.get("scenarios"):
             raise GateError(
                 f"journey {j.get('id')}: verdicts contain no scenarios — "
                 "nothing was exercised")
         for s in j.get("scenarios", []):
-            if s.get("verdict") != "pass":
+            problem = _attribution_error(
+                repo, meta, item_dir, j.get("id"), s, attr_on)
+            if problem:
                 raise GateError(
-                    f"journey {j.get('id')} scenario {s.get('id')}: "
-                    f"verdict {s.get('verdict')!r} is not pass")
+                    f"journey {j.get('id')} scenario {s.get('id')}: {problem}")
             for ev in s.get("evidence", []):
                 rel = ev.get("path", "")
                 parts = PurePosixPath(rel).parts

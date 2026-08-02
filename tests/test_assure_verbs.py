@@ -1,12 +1,15 @@
+import hashlib
+import io
 import os
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
 from scripts.factory import factory
-from scripts.factory.lib import assure, items, logs, machine
+from scripts.factory.lib import assure, initrepo, items, logs, machine, paths
 
 
 def make_item(repo, stage="assure", paused_from=None):
@@ -103,3 +106,150 @@ class AssureVerbTest(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertIn("factory waive", err.getvalue())
             self.assertIn("human verb", err.getvalue())
+
+
+class TestFileBaseDefect(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        os.environ["FACTORY_NOW"] = "2026-07-03T12:00:00Z"
+        initrepo.init(self.repo, product="demo")
+        items.save_item(self.repo, {
+            "id": "0001-thing", "title": "Thing", "stage": "assure",
+            "kind": "backend", "tier": "feature",
+            "created": "2026-07-03T10:00:00Z",
+            "updated": "2026-07-03T10:00:00Z"}, "# Thing\n")
+        # validate_tree reconciles stage against the log (item 0009); seed
+        # the stage.advance so the assure-stage fixture is log-consistent
+        # once filing appends assure.filed to it.
+        logs.append_event(self.repo, "0001-thing", "item.created")
+        logs.append_event(self.repo, "0001-thing", "stage.advance",
+                          {"to": "assure"})
+        self.fingerprint = hashlib.sha256(
+            "J-001\nS2\ncard is gated on restrictions.length".encode("utf-8")
+        ).hexdigest()
+
+    def tearDown(self):
+        os.environ.pop("FACTORY_NOW", None)
+        self.tmp.cleanup()
+
+    def file(self, fingerprint=None, title="Card gated on restrictions.length"):
+        return assure.file_base_defect(
+            self.repo, "0001-thing", "J-001", "S2",
+            fingerprint or self.fingerprint, title,
+            expected="card shows", actual="card missing")
+
+    def test_first_filing_creates_an_open_unprioritised_bug_item(self):
+        owner, deduped = self.file()
+        self.assertFalse(deduped)
+        meta, body = items.load_item(self.repo, owner)
+        self.assertEqual(meta["stage"], "idea")
+        self.assertEqual(meta["kind"], "backend")
+        self.assertEqual(meta["tier"], "bug")
+        self.assertNotIn("priority", meta)
+        self.assertNotIn("bug", meta)
+        self.assertIn(f"- base-defect-fingerprint: {self.fingerprint}", body)
+        self.assertIn("- filed-from: 0001-thing", body)
+        self.assertIn("- journey: J-001", body)
+        self.assertIn("- scenario: S2", body)
+        self.assertEqual(initrepo.validate_tree(self.repo), [])
+
+    def test_second_filing_dedupes_to_the_same_item(self):
+        first, _ = self.file()
+        second, deduped = self.file()
+        self.assertEqual(first, second)
+        self.assertTrue(deduped)
+        dirs = [p.name for p in paths.items_dir(self.repo).iterdir()
+                if (p / "item.md").exists()]
+        self.assertEqual(sorted(dirs), sorted(["0001-thing", first]))
+
+    def test_filing_logs_assure_filed_on_the_originating_item(self):
+        owner, _ = self.file()
+        self.file()
+        events = [e for e in logs.read_events(self.repo, "0001-thing")
+                  if e["event"] == "assure.filed"]
+        self.assertEqual(len(events), 2)
+        self.assertEqual(events[0]["data"], {
+            "owner": owner, "journey": "J-001", "scenario": "S2",
+            "deduped": False})
+        self.assertEqual(events[1]["data"]["deduped"], True)
+
+    def test_a_done_owner_does_not_dedupe(self):
+        first, _ = self.file()
+        meta, body = items.load_item(self.repo, first)
+        meta["stage"] = "done"
+        items.save_item(self.repo, meta, body)
+        second, deduped = self.file()
+        self.assertNotEqual(first, second)
+        self.assertFalse(deduped)
+
+    def test_a_different_fingerprint_files_a_new_item(self):
+        first, _ = self.file()
+        second, _ = self.file(fingerprint="f" * 64, title="Other defect")
+        self.assertNotEqual(first, second)
+
+    def test_a_quoted_fingerprint_inside_prose_does_not_dedupe(self):
+        # F2a: dedupe is a line-anchored body match, not substring
+        # containment — an item that merely QUOTES the fingerprint line
+        # inside other text must not become the returned owner.
+        items.save_item(self.repo, {
+            "id": "0002-docs", "title": "Docs", "stage": "idea",
+            "kind": "backend", "tier": "feature",
+            "created": "2026-07-03T10:00:00Z",
+            "updated": "2026-07-03T10:00:00Z"},
+            "# Docs\n\nThe filing format is quoted here: "
+            f"`- base-defect-fingerprint: {self.fingerprint}` inside a "
+            "sentence, not as a body line.\n")
+        logs.append_event(self.repo, "0002-docs", "item.created")
+        owner, deduped = self.file()
+        self.assertFalse(deduped)
+        self.assertNotEqual(owner, "0002-docs")
+
+    def test_bad_fingerprint_refused(self):
+        with self.assertRaises(machine.GateError):
+            self.file(fingerprint="not-hex")
+
+    def test_empty_title_refused(self):
+        with self.assertRaises(machine.GateError):
+            self.file(title="   ")
+
+    def test_unknown_originating_item_refused(self):
+        with self.assertRaises(items.ItemError):
+            assure.file_base_defect(self.repo, "0099-nope", "J-001", "S2",
+                                    self.fingerprint, "T")
+
+
+class TestFileBaseDefectCli(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = self.tmp.name
+        os.environ["FACTORY_NOW"] = "2026-07-03T12:00:00Z"
+        factory.main(["--repo", self.repo, "init"])
+        factory.main(["--repo", self.repo, "add", "Thing", "--kind", "backend"])
+
+    def tearDown(self):
+        os.environ.pop("FACTORY_NOW", None)
+        self.tmp.cleanup()
+
+    def run_cli(self, *args):
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = factory.main(["--repo", self.repo, *args])
+        return code, out.getvalue(), err.getvalue()
+
+    def test_verb_prints_the_owner_id_and_is_idempotent(self):
+        args = ("file-base-defect", "0001-thing", "--journey", "J-001",
+                "--scenario", "S2", "--fingerprint", "a" * 64,
+                "--title", "Stale values")
+        code, first, _ = self.run_cli(*args)
+        self.assertEqual(code, 0)
+        code, second, _ = self.run_cli(*args)
+        self.assertEqual(code, 0)
+        self.assertEqual(first.strip(), second.strip())
+
+    def test_bad_fingerprint_exits_2(self):
+        code, _, err = self.run_cli(
+            "file-base-defect", "0001-thing", "--journey", "J-001",
+            "--scenario", "S2", "--fingerprint", "nope", "--title", "T")
+        self.assertEqual(code, 2)
+        self.assertIn("refused:", err)

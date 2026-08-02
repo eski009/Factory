@@ -4,6 +4,40 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.13.0] - 2026-08-02
+
+### Added
+
+- **Assure attribution — the ship gate blocks only on regressions this item
+  caused.** Opt-in per repo via a new config key `assure: {"attribution":
+  true}` (default `false`; `factory doctor --json` reports
+  `assure_attribution`). When enabled, a failing assurance scenario carries
+  an `attribution` (`regression | pre-existing`), an `owner` naming an open
+  work item, and `base` evidence recorded under
+  `assurance/base/<merge-base-sha>/`. The gate validates shape, presence,
+  path-containment, existence, non-emptiness, sha-match (recomputed at ship,
+  never trusted from write time) and owner-resolution — and refuses ship only
+  on `regression`. It never judges the truth of a walk: no check reads the
+  free-text `expected`/`actual` strings. Any inability to classify blocks.
+- **`factory file-base-defect`** — an idempotent machine-facing verb that
+  files (or dedupes to) the open, unprioritised `tier: bug` item owning a
+  pre-existing fail, keyed by a caller-supplied sha256 fingerprint recorded
+  in the item body. Factory never ignores a failure; it files it.
+
+### Notes
+
+- With `assure.attribution` absent or `false`, behaviour is unchanged: a
+  golden-byte test (`tests/test_default_path_invariance.py`) pins the gate
+  outcome, both packet renderings and `status --json` on the default path.
+- **UNMEASURED.** The claim that this is the largest token saver in the
+  system remains **UNMEASURED**: the engine has no per-stage token
+  attribution, so nothing here reports a saving figure.
+- **Accepted residual.** Sha-match plus presence does not prove the evidence
+  was produced by running that scenario at that sha; branch-run evidence
+  copied into the `base/` directory passes every engine check. The hole is
+  bounded — it requires the assure skill itself to fabricate evidence, at the
+  same trust level as every other artifact it writes — and is accepted in v1.
+
 ## [0.12.0] - 2026-08-02
 
 Integration release: merges the upstream line (through 0.11.0 — the polish

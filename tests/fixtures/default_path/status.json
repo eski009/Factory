@@ -1,0 +1,31 @@
+[
+  {
+    "created": "2026-07-03T10:00:00Z",
+    "id": "0001-thing",
+    "journeys": "J-001",
+    "kind": "backend",
+    "priority": 1,
+    "spend": {
+      "active_seconds": 0,
+      "advances": 0,
+      "corrupt_log_lines": 0,
+      "dispatches": 0,
+      "elapsed_seconds": 0,
+      "invalid_spend_events": 0,
+      "item": "0001-thing",
+      "measured": null,
+      "rework_edges": 0,
+      "unmeasured": "orchestrator main-loop tokens",
+      "waiting_seconds": 0,
+      "window": {
+        "end": "2026-07-03T12:00:00Z",
+        "open": true,
+        "start": "2026-07-03T12:00:00Z"
+      }
+    },
+    "stage": "assure",
+    "tier": "feature",
+    "title": "Thing",
+    "updated": "2026-07-03T10:00:00Z"
+  }
+]
