@@ -87,3 +87,30 @@ consequences of that direction, both taken transparently:
    `factory status --json | jq '.items[] | select(.id|startswith("0016")) | .spend'`.
 4. Ratify or edit the two draft contracts, and answer the three judgement calls
    above — each answer binds every future run.
+
+## Answers from the contract owner (2026-08-02)
+
+Recorded by the day-two session executing the hygiene sequence; both contracts
+ratified `status: approved` with these settlements written in.
+
+1. **One job per screen — yes, the furniture goes.** The empty
+   `## View the options` heading and the generic `## Artifacts` block serve no
+   job at J-002 N3. Bound as a *direction with an owning item*
+   (`0023-packet-furniture-and-readout-polish-drop`), not a gating oracle —
+   gating the next walk on pre-existing furniture would block items for a
+   defect they did not cause, the disease this batch exists to cure. The item
+   that ships the fix extends J-001's permitted-diffs enumeration in the same
+   change.
+2. **LOWER BOUND binds the decision block only.** The `## Spend` receipt and
+   `factory cost` cross-checks stay unsuffixed. Correction recorded in J-002:
+   the suffix's directional claim is itself false-stronger (bid-0083) — the
+   aggregate is unreliable in both directions (bid-0063: unlogged events
+   under-count, nested double-count inflates) — so the bid-0063 fix must
+   replace it with a non-directional qualifier.
+3. **One-action oracle reworded to intent** in both contracts: exactly one
+   action bullet under `## Respond`, its leading command the verb that answers
+   this pause; slash commands count, and an inline recorded-escape alternative
+   on the same bullet is not a second action.
+
+Polish advisories: not ratified as binding oracles (they would gate future
+items on inherited noise); all folded into item 0023's scope instead.

@@ -1,10 +1,13 @@
 # J-002 — Cost breaker decision
 
-_status: draft — minimal contract drafted at the spec stage of
+_status: approved — ratified 2026-08-02 by the contract owner after the 0016
+assure walk (9/9 pass), with the three judgement calls from that walk's report
+settled in this revision (LOWER BOUND scope, one-action oracle wording,
+one-job-per-screen ruling). Drafted at the spec stage of
 `0016-cost-circuit-breaker-on-engine-authorita` (assure profile for tier
 `feature` is `affected`, so depth covers the touched nodes and their immediate
-neighbours, not the whole pipeline). Amending this file once it reaches
-`status: approved` goes through a `council-judgement` bid with
+neighbours, not the whole pipeline). Amending this file now goes through a
+`council-judgement` bid with
 `--surface journeys/contracts/J-002-cost-breaker-decision.md`._
 
 - **Persona:** The Overnight Operator (`docs/factory/brain/personas.md`) — pays
@@ -38,8 +41,17 @@ more spend on an item they did not watch, against a backlog they did not audit.
 - No cost figure appears anywhere on this journey without a
   `measured | proxy | unmeasured` provenance tag; UNMEASURED is a loud literal,
   never zero, a dash, or estimated dollars (`brain/constraints.md`, judgement on
-  bid-0018). Measured figures on this journey are additionally suffixed
-  `LOWER BOUND` — the aggregate is untrustworthy (judgement on bid-0063).
+  bid-0018). Measured figures **inside `## Cost decision`** are additionally
+  suffixed `LOWER BOUND` — the aggregate is untrustworthy (judgement on
+  bid-0063). *Scope settled 2026-08-02:* the suffix binds the decision block
+  only; the `## Spend` receipt and `factory cost` cross-checks render the same
+  figure unsuffixed (suffixing them adds no decision value and would breach
+  J-001's closed permitted-diffs oracle). *Known wording defect, owned:* the
+  suffix is directional while bid-0063 shows the aggregate unreliable in both
+  directions (unlogged events under-count; nested-dispatch double-count
+  inflates) — per the false-contract-worse-than-loose constraint (bid-0083),
+  the item that resolves bid-0063 must replace `LOWER BOUND` with a
+  non-directional unreliability qualifier on this same line.
 - **Exactly one rework figure** appears at the decision — the one the breaker
   fired on, inside `## Cost decision`. Every echo of it elsewhere on the packet's
   **rendered cost surfaces** (the `- waiting on you:` line, the `## Spend`
@@ -73,7 +85,13 @@ more spend on an item they did not watch, against a backlog they did not audit.
 - The refusal at N5 names the verb (`factory cost-answer`) and the recorded vs
   required edge counts — never a bare "refused".
 - One job per screen (`brain/design-principles.md` KISS): the packet's job at N3
-  is the cost decision; nothing on it serves another job.
+  is the cost decision; nothing on it serves another job. *Ruling 2026-08-02:*
+  the inherited generic furniture — an empty `## View the options` heading and
+  the `## Artifacts` audit block — does not serve the N3 job and should go; this
+  binds as a direction with a filed owning item, **not** as a gating oracle,
+  because gating the next walk on pre-existing furniture would block items for
+  a defect they did not cause. When the owning item ships the fix it extends
+  J-001's permitted-diffs enumeration in the same change.
 
 ## Deterministic oracles
 
@@ -86,7 +104,7 @@ more spend on an item they did not watch, against a backlog they did not audit.
 | derived, not echoed | parking with a mistyped reason (`cost breaker: 7 rework edges` against a 2-edge log) still renders `2` on every rendered cost surface, `- waiting on you:` included, in both renderers — the guard above is falsifiable, and this is what falsifies it |
 | provenance | every cost-bearing line in the packet matches `^\s*[-•]?\s*\[(measured\|proxy\|unmeasured)\]` |
 | recommendation | the `Recommended:` line names `defer` when `backlog.at_or_above >= 1`, `narrow` when it is `0`, and — when it is `None`, i.e. the item carries no priority so the comparison is impossible — names neither, directing the operator to `factory priority <id> <n>`; never `continue` in any case |
-| one action | count of `factory ` command lines under `## Respond` == 1, and that line names `factory cost-answer` |
+| one action | exactly one action bullet under `## Respond`, and its leading command is the verb that answers this pause — here `factory cost-answer` (oracle reworded 2026-08-02 from "count of `factory ` command lines == 1" to the intent: a slash-command action counts, and an inline recorded-escape alternative on the same bullet does not make it two actions) |
 | answer written | `breaker.record_answer` returns the path; `cost/answer.md` contains `- answer:`, `- rework-edges:`, `- ts:` |
 | single writer | `factory log <id> cost.answered` is refused |
 | precondition | exit status and `GateError` message of `factory advance <id> implement` with and without a valid `cost/answer.md` |

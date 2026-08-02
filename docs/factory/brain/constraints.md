@@ -116,6 +116,81 @@
   would be fabricated (source:
   .factory/items/0016-cost-circuit-breaker-on-engine-authorita/reviews/round-2/product.md;
   authorized: judgement on bid-0066).
+- **Skill produces proof; engine validates proof.** For any evidence produced
+  by driving a running product, the engine asserts shape, presence, sha-match
+  and non-emptiness only — never the truth of the walk. `machine.py` launches
+  nothing (its sole subprocess call is `git rev-parse`, line 216), so any
+  acceptance criterion demanding the engine determine a behavioural fact
+  "without a human or reviewer asserting it" is unachievable and must be
+  restated as this boundary — with the residual hole (evidence copied into the
+  proof directory passes every engine check) named in plain words
+  (source: scripts/factory/lib/machine.py;
+  .factory/items/0013-assure-attribution-gate-only-on-regressi/reviews/round-1/architecture.md;
+  authorized: judgement on bid-0053).
+- **Re-routing, not waiving:** every failure the system observes but does not
+  block on must terminate in a required, validated, deduped, open work-item
+  id — never a free-text note, never silence. An unvalidated id is a waiver
+  wearing a filing's clothes; an undeduped auto-filing makes the backlog the
+  new place nothing surfaces. Neither existing surface fits: packets/reports/
+  is assure's non-nagging home, hooks/session-start.sh globs only top-level
+  packets, and escapes.py's closed MISS_TYPES enum is scoped to post-assurance
+  human finds (source: scripts/factory/lib/escapes.py; hooks/session-start.sh;
+  .factory/items/0013-assure-attribution-gate-only-on-regressi/reviews/round-2/customer.md;
+  authorized: judgement on bid-0054).
+- **Opt-in means trigger-side and engine-observable** (refines the bid-0002
+  constraint): an optional output field secures the schema, not the bill. A
+  new fan-out step is genuinely opt-in only when the engine rejects
+  unsolicited evidence objects and ignores the optional field entirely when
+  the feature is off, and the config key carries an explicit stated default in
+  `initrepo.py`'s DEFAULT_CONFIG rather than being opt-in by accident of
+  nobody setting it (source: scripts/factory/lib/initrepo.py:20;
+  .factory/items/0013-assure-attribution-gate-only-on-regressi/reviews/round-2/commercial.md;
+  authorized: judgement on bid-0055).
+- **A guard test is trusted only when shown red in the form the defect
+  actually takes, against the production path.** A pattern that cannot match
+  the failing form converts an unverified claim into a claimed-verified one —
+  worse than no test (instance: the AC11 `rework edges: \d` filter never
+  matched the `2 rework edges` receipt form; fixed by REWORK_FIGURE_RE
+  matching both). And red demonstrated against a hand-built fixture is not
+  red: pass 1 honoured red-first to the letter and still let B3 through
+  because the fixture reached waiting-human via `items.save_item` instead of
+  `machine.advance(..., reason=...)` (source: tests/test_packet.py;
+  .factory/items/0016-cost-circuit-breaker-on-engine-authorita/reviews/synthesis.md;
+  authorized: judgements on bid-0076, bid-0082).
+- **Incomparable must not be encoded as zero** (extends the bid-0066
+  derived-statistics rule from empty populations to incommensurable ones): a
+  population that cannot supply a comparison must not be rendered as the
+  number 0. Instances: `breaker.backlog_counts` collapsed "this item has no
+  priority, so nothing was compared" into `at_or_above=0` rendered as
+  "nothing else is waiting" while items were waiting; `cost.summarize_all`'s
+  coverage denominator silently excluded unreadable items; and the
+  recommendation sentence read the unqualified population even where the
+  backlog line qualified it (fixed at d347434) (source:
+  .factory/items/0016-cost-circuit-breaker-on-engine-authorita/reviews/synthesis.md;
+  authorized: judgements on bid-0077, bid-0085).
+- **A pause whose answer does not change stage needs a packet-clearing rule at
+  answer-record time.** The five-part waiting-human contract (bid-0065) misses
+  the case where the recorded answer deliberately leaves the item parked:
+  `breaker.record_answer` never touches stage and packet deletion happens only
+  on a successful resume advance, so a `narrow`/`defer` answer leaves
+  session-start announcing an already-answered packet forever. A sweep keyed
+  on "no longer waiting-human" cannot fix it; deletion must happen when the
+  answer is recorded (source: scripts/factory/lib/breaker.py:118-141;
+  .factory/items/0016-cost-circuit-breaker-on-engine-authorita/reviews/synthesis.md;
+  authorized: judgement on bid-0078).
+- **A contract stronger in form but false in fact is worse than the loose one
+  it replaced.** Silence under-promises; a false assurance is load-bearing,
+  because it is what a future item cites to skip re-checking the property
+  (source: .factory/items/0016-cost-circuit-breaker-on-engine-authorita/reviews/round-2/customer.md;
+  authorized: judgement on bid-0083).
+- **Free text on a control-flow path needs a guard or a derivation.**
+  `packet.py` gates the entire "## Cost decision" block (and the waiting
+  line's rework rewrite) on `paused-reason.startswith(PAUSE_PREFIX)`:
+  agent-authored free text is load-bearing for control flow, not just for a
+  rendered digit, and no fixture varies it
+  (source: scripts/factory/lib/packet.py:48-70;
+  .factory/items/0016-cost-circuit-breaker-on-engine-authorita/reviews/round-2/engineering-quality.md;
+  authorized: judgement on bid-0086).
 - The canonical-spend-sink convention is honoured on **9 of 17 items** (0002,
   0003, 0004, 0007, 0008, 0009, 0010, 0012, 0013 have spend events; 0001, 0005,
   0006, 0011, 0014–0017 have none) and on a minority of transitions within them —

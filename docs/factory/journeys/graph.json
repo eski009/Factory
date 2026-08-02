@@ -4,12 +4,12 @@
     {
       "id": "J-001",
       "slug": "assure-outcome-readout",
-      "title": "Assure outcome readout — the operator learns what shipped, what was filed, what blocked",
+      "title": "Assure outcome readout \u2014 the operator learns what shipped, what was filed, what blocked",
       "persona": "The Overnight Operator (docs/factory/brain/personas.md)",
       "trigger": "An item's assure walk produces at least one non-pass scenario verdict",
-      "outcome": "The operator can tell, from the packet's first screen and factory status --json, whether the item shipped with known non-blocking fails (each terminating in an open owning item) or was blocked/reworked — and has exactly one next action",
+      "outcome": "The operator can tell, from the packet's first screen and factory status --json, whether the item shipped with known non-blocking fails (each terminating in an open owning item) or was blocked/reworked \u2014 and has exactly one next action",
       "criticality": "high",
-      "status": "draft",
+      "status": "approved",
       "contract": "contracts/J-001-assure-outcome-readout.md",
       "links": {
         "apis": [
@@ -29,12 +29,12 @@
     {
       "id": "J-002",
       "slug": "cost-breaker-decision",
-      "title": "Cost breaker decision — the operator meets a parked runaway item and chooses continue, narrow, or defer",
+      "title": "Cost breaker decision \u2014 the operator meets a parked runaway item and chooses continue, narrow, or defer",
       "persona": "The Overnight Operator (docs/factory/brain/personas.md)",
       "trigger": "An item enters an implement round with rework edges at or above the threshold while \"cost\" is in the configured gates",
       "outcome": "The operator learns from the packet alone what the item has consumed, what it is blocking, and the consequence of each of continue / narrow / defer, and records one with a single command that provably unblocks the item exactly once",
       "criticality": "high",
-      "status": "draft",
+      "status": "approved",
       "contract": "contracts/J-002-cost-breaker-decision.md",
       "links": {
         "apis": [

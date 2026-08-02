@@ -253,3 +253,42 @@
   renderers; `factory cost-answer` is the single writer of cost/answer.md.
   Assure walked J-001/J-002 11/11; J-001's default-path oracle amended 3->4
   permitted diffs on S11 evidence.
+- **2026-08-02, judged the 30 outstanding bids from the 0013 triage and 0016
+  reviews** (bid-0053…0062, bid-0071…0090): 26 accepted/merged, 2 deferred as
+  overtaken (bid-0056's three-verb Respond block and bid-0057's cost.py
+  retries gap were both fixed by 0016's own rework before judgement — verified
+  in packet.py:177-193 and the rewritten cost.py). constraints.md gained eight
+  entries: the engine-validates-proof-shape boundary (bid-0053), re-routing-
+  not-waiving (bid-0054), trigger-side engine-observable opt-in (bid-0055),
+  guard-tests-red-in-the-failing-form-against-production (bid-0076+0082),
+  incomparable-is-never-zero (bid-0077+0085), packet-clearing-at-answer-record
+  (bid-0078), false-contract-worse-than-loose (bid-0083), and free-text-on-
+  control-flow (bid-0086). open-questions.md gained a dated section of 15
+  entries (bid-0059…0062, 0071…0073, 0075, 0079, 0080+0089, 0081, 0084, 0087,
+  0088, 0090) plus two instances merged into the config-extension-point
+  question (bid-0058, bid-0074). Highest-leverage now-recorded gaps:
+  ship.obligation is decorative (bid-0084), the breaker has no advisory arm
+  and 0016's prose overpromises (bid-0090), and spend-magnitude runaways stay
+  uncovered until 0018 (bid-0080).
+- **2026-08-02, day-two hygiene closed out**: answered the 0016 assure report's
+  three judgement calls and ratified both journey contracts to
+  `status: approved` (J-001, J-002 — settlements written into the contracts;
+  answers recorded in the assure report). Filed the four pipeline-defect items
+  the day-one run evidenced (0019 scratchpad clobber, 0020 concurrent
+  implementers, 0021 lost child replies, 0022 gitignored .factory state) plus
+  0023 as the named owner of the packet-furniture ruling and the walk's polish
+  advisories (per the bid-0054 re-routing constraint). 0017 given priority 6 —
+  behind the 0013/0015/0014/0018 fix batch, since 0013 consumes its only
+  observed trigger and `factory waive` covers the reported run's need.
+- **2026-08-02, 0013 plan narrowed at the recorded re-judgement deal** (step
+  mode, human sign-off pending before any implement dispatch): plan Tasks 7
+  (packet readout) and 8 (`status --json` surface) shed to
+  `0024-assure-readout-periphery-known-fails-fir` with ACs 13–15; spec amended
+  in place. Deviation from the field-report directive, stated: Task 6
+  (`factory file-base-defect`) **stays in the core** because the bid-0054
+  re-routing constraint ratified this morning requires auto-filed owners to be
+  deduped, the ship gate's owner rule depends on the verb for unattended
+  operation, and Task 10's skill prose and coherence test consume it. With
+  Task 7 shed, no remaining task regenerates the default-path goldens, so AC1
+  byte-identity holds unqualified (0016 already shipped the Respond one-verb
+  refactor). Narrowed roster: Tasks 1–6, 10, 11 of the original 11.

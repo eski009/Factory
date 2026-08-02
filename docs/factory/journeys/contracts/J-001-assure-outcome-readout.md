@@ -1,10 +1,13 @@
 # J-001 — Assure outcome readout
 
-_status: draft — minimal contract drafted at the spec stage of
+_status: approved — ratified 2026-08-02 by the contract owner after the 0016
+assure walk (S10–S11 pass, permitted diff (d) amendment reviewed and kept),
+with the one-action oracle reworded to intent per that walk's judgement call.
+Drafted at the spec stage of
 `0013-assure-attribution-gate-only-on-regressi` (assure profile for tier
 `feature` is `affected`, so depth covers the touched nodes and their immediate
-neighbours, not the whole pipeline). Amending this file once it reaches
-`status: approved` goes through a `council-judgement` bid with
+neighbours, not the whole pipeline). Amending this file now goes through a
+`council-judgement` bid with
 `--surface journeys/contracts/J-001-assure-outcome-readout.md`._
 
 - **Persona:** The Overnight Operator (`docs/factory/brain/personas.md`) — pays
@@ -49,7 +52,7 @@ merge they did not watch, that carried known failures.
 | block vs ship | exit status and stderr of `factory advance <id> ship` |
 | refusal cause | the `GateError` message string contains the journey id, scenario id, and the cause token |
 | readout | `docs/factory/packets/<id>.md` contains the first-screen `- shipped with known fails: <n>` line and a `## Shipped with known fails` section |
-| one action | count of `factory ` command lines under `## Respond` == 1 |
+| one action | exactly one action bullet under `## Respond`, and its leading command is the verb that answers this pause (oracle reworded 2026-08-02 from "count of `factory ` command lines == 1", which scored the generic pause's single `/factory:run` action as 0 and the assure pause's confirm-plus-inline-waive bullet as 2 — both satisfy the intent: one copy-pasteable action, slash commands included, an inline alternative on the same bullet not counted twice) |
 | status | `factory status --json` → item row `assurance.non_blocking_fails` |
 | owner | the owner id resolves to an item dir whose `stage != "done"` |
 | default path | byte comparison of gate outcome, packet markdown, packet HTML and `status --json` against the pre-change engine — **narrowed by item 0016** to byte-identical except (a) the `## Spend` receipt's `retries` → `rework edges` label and its value, (b) `status --json`'s `spend.retries` → `spend.rework_edges`, and (c) the `## Respond` block in both renderers, which now names the one verb that answers this pause instead of listing every verb and closing with `/factory:run` (source: .factory/items/0016-cost-circuit-breaker-on-engine-authorita/spec.md §6 B3 mandates (c) on every packet; its narrowing paragraph names only (a) and (b), so this contract records the third diff the shipped renderers actually make — a two-diff list would make this oracle report a false regression), and (d) the packet HTML head's style rule `.ask { … }` → `.ask, #cost-decision { … }` — two CSS lines emitted on every HTML packet, the styling of the same §6-mandated cost-decision block as (c), visually inert on packets with no cost section (amended 2026-08-02 from the assure walk of item 0016: S11's byte comparison found (d) as a fourth textual diff; same enumeration-omission class as the 2→3 correction above — evidence `.factory/items/0016-cost-circuit-breaker-on-engine-authorita/assurance/transcripts/J-001/S11.txt`) |

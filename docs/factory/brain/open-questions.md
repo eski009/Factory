@@ -51,7 +51,15 @@
   .factory/items/0001-focus-group-research-structured-intervie/spec.md;
   authorized: judgement on bid-0004). Resolved by: a maintainer decision —
   either grow the schema per feature, add a validated `extensions` object, or
-  affirm CLI-argument gating as the convention.
+  affirm CLI-argument gating as the convention. *Two further instances
+  (merged):* 0013 chose the reversible default — grow config.schema.json per
+  feature with a first-class explicitly-defaulted key (`assure.attribution:
+  false` in DEFAULT_CONFIG) — recorded as an assumption, not a ratified
+  convention (authorized: judgement on bid-0058); and 0016 ships
+  `breaker.REWORK_THRESHOLD` as a module constant with only `cost in gates`
+  as the dial, so per-repo threshold tuning has no home until this question
+  is decided or the first operator needs a different number (authorized:
+  judgement on bid-0074).
 - **Should brownfield repos default to a human ship-gate?** The category
   convention hard-gates the merge (Copilot agents cannot self-approve),
   while Factory defaults `merge: auto` with the sole human gate at design —
@@ -200,6 +208,113 @@
   single item (source:
   .factory/items/0013-assure-attribution-gate-only-on-regressi/log.jsonl;
   skills/factory-dispatch/SKILL.md:59; authorized: judgement on bid-0063).
+## Raised by the 0013 spec and 0016 reviews (2026-08-02)
+
+- **Integration-branch resolution is skill prose, not an engine primitive.**
+  The brain names no integration branch and factory-ship says "the repo's
+  default branch" in prose only. 0013 assumes `origin/HEAD → main → master`
+  with unresolvable treated as blocking, recording the resolved branch in
+  every dependent artifact (source: .factory/items/0013-…/spec.md;
+  authorized: judgement on bid-0059). Resolved by: a helper primitive or a
+  ratified convention.
+- **Defaults for engine-filed work items are unset.** 0013 assumes stage
+  `idea`, kind `backend`, tier `bug`, no priority (sorts last), no bug flag.
+  Note the no-priority default interacts with the bid-0087 finding below
+  (source: .factory/items/0013-…/spec.md; authorized: judgement on bid-0060).
+  Resolved by: a maintainer defaults decision.
+- **Dedupe scope for engine-filed defects.** 0013 assumes repo-wide dedupe
+  across all not-done items, keyed by (scenario id + failing-step
+  fingerprint) stored plain-text in the filed item's body (source:
+  .factory/items/0013-…/spec.md; authorized: judgement on bid-0061).
+  Resolved by: the recipe surviving or failing real filings.
+- **Freshness rule for counterfactual (merge-base) evidence.** 0013
+  implements exactly the bound rule (recompute the merge base at ship, refuse
+  mismatch) and names the residual it does not close: when the integration
+  branch advances without the item's branch changing, a defect fixed on the
+  integration branch mid-run can still be cited as pre-existing (source:
+  .factory/items/0013-…/spec.md; authorized: judgement on bid-0062).
+  Resolved by: a strictly-additional freshness check if the residual bites.
+- **Does one recorded answer cover later recurrences of a pause?** 0016 chose
+  a monotone watermark: the answer artifact records the engine-observable
+  count it answers (`- rework-edges: N`) and suppresses the pause only while
+  the current count ≤ N (source: .factory/items/0016-…/spec.md; authorized:
+  judgement on bid-0071). Resolved by: ratifying this as the convention for
+  every answerable pause, or the second answerable pause choosing otherwise.
+- **Answer-verb naming precedent.** 0016 chose `factory cost-answer <id>
+  <option>` writing `cost/answer.md` on the design/choice.md model. Is
+  `factory <topic>-answer` / `<topic>/answer.md` the naming rule? (source:
+  .factory/items/0016-…/spec.md; authorized: judgement on bid-0072).
+- **Who enacts a park's options?** 0016's engine treats every recorded answer
+  identically; factory-dispatch routes on the recorded option — the same
+  skill-owned seam as `- option: none`. Does that seam generalise? (source:
+  .factory/items/0016-…/spec.md; authorized: judgement on bid-0073).
+- **Backlog-wide readouts: flag or verb?** 0016 chose `factory cost --all` on
+  the per-item command (item becomes nargs=?; neither/both refused). Decide
+  before the next aggregate surface lands (source:
+  .factory/items/0016-…/spec.md; authorized: judgement on bid-0075).
+- **The cost breaker's miss-path is worse than its no-op path.** The park
+  converting the breaker verdict into an operator decision is skill prose
+  with no engine-side obligation and no test. If the session dies between the
+  firing advance and the park, the next implement entry is refused, dispatch's
+  two-failures rule sends the item to blocked, and the blocked packet's
+  fallback Respond line says `/factory:run` — the exact instruction the pause
+  forbids, sending the operator back into the spend the breaker just stopped
+  (source: .factory/items/0016-…/reviews/synthesis.md; authorized: judgement
+  on bid-0079). Resolved by: an engine-side park obligation or a
+  breaker-aware blocked packet.
+- **Spend-magnitude runaways remain uncovered after 0016.** The field
+  report's Defect 5 proposed a disjunction (spend-multiple OR rework count);
+  only the rework disjunct shipped. 0016 itself burned ~2.0M measured tokens
+  by its first implement pass (3.0M final) with zero rework edges — its own
+  breaker scores it 0, and nothing on any surface tells the next reader that
+  a non-rework-shaped runaway still burns unnoticed. Item 0018 is the filed
+  fix and is absent from the roadmap; gating on a token figure also waits on
+  the bid-0063 double-count (source: .factory/items/0016-…/reviews/synthesis.md;
+  authorized: judgements on bid-0080, bid-0089). Resolved by: 0018 shipping
+  the wall-clock/spend arm.
+- **Verify rework is structurally uncountable until 0014/0015.**
+  `REWORK_FROM` includes `verify` but `machine.advance` admits no
+  `verify → implement` transition, so a verify failure ping-pongs through
+  waiting-human and counts zero rework edges — unbounded burn with the
+  breaker permanently dormant. Disclosed in REWORK_SUBSTRATE_NOTE and tested,
+  but disclosure is not mitigation: 0016's breaker coverage is conditional on
+  0015/0014 landing the backward edge, and the roadmap must not read 0016 as
+  closing Defect 5 independently (source: .factory/items/0016-…/reviews/synthesis.md;
+  authorized: judgement on bid-0081). Resolved by: 0015.
+- **`ship.obligation` is decorative.** "obligation" appears zero times in
+  scripts/, skills/ and commands/, and factory-ship never reads log.jsonl —
+  so "high severity, non-blocking, with an obligation" is the ship vote with
+  better manners, which is why a high finding with a ~30-line fix cost a full
+  rejection; 0013's unpark had to be done by hand. Measured on 0016:
+  ride-alongs 1-for-3, obligations 0-for-1, rejections 2-for-2 (source:
+  grep over scripts/ skills/ commands/;
+  .factory/items/0016-…/reviews/round-2/commercial.md; authorized: judgement
+  on bid-0084). Resolved by: a mechanism (ship reads obligations, or an
+  engine-filed follow-up item per bid-0054's re-routing rule) or removing the
+  disposition.
+- **`factory add` records no priority**, so the create verb manufactures the
+  degraded no-priority class at 100% and the first cost-breaker fire a new
+  operator sees is the worst case. Live instance: 0017 was invisible to
+  `factory next` until given a priority by hand (source:
+  .factory/items/0016-…/reviews/round-1/commercial.md; authorized: judgement
+  on bid-0087). Resolved by: a default or required priority at `factory add`.
+- **The cost instrument ships dark.** getting-started.md never names the
+  cost gate, `cost-answer`, or the threshold; "threshold" appears zero times
+  in cost.py. Off by default and unnamed on every operator surface (source:
+  docs/getting-started.md; authorized: judgement on bid-0088). Resolved by:
+  an operator-docs pass when 0018 lands, or sooner.
+- **The breaker has no ungated advisory mode — and 0016's prose says it
+  does.** `breaker.py:105` computes `fired` as requiring `cost in gates`, so
+  the CLI advisory print is suppressed on default config: the breaker is
+  binary (fully off, or advisory AND hard-gated together). Item 0016's body
+  describes "a soft circuit breaker — advisory, not a hard stop", which read
+  literally is not what ships. Verified by execution: a genuine rework edge 2
+  on default config printed only the stage line and exited 0. Deliberate
+  (the no-second-default-gate decision, L2) — the defect is prose describing
+  behaviour the code does not have (source: scripts/factory/lib/breaker.py:105;
+  scripts/factory/factory.py:195-200; authorized: judgement on bid-0090).
+  Resolved by: an advisory-only arm, or correcting the item/doc prose.
+
 - **0005 being blocked now has a named cost.** The cost circuit breaker (0016)
   is a second binding consumer of 0005's generalized `waiting-human` decision
   mechanism — its park is exactly the "one real gate use" 0005 is waiting on.
