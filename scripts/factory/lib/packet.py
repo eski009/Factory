@@ -50,7 +50,34 @@ def waiting_line(meta, summary):
     if reason.startswith(breaker.PAUSE_PREFIX):
         return (f"{breaker.PAUSE_PREFIX} {summary['rework_edges']} rework "
                 f"edges (threshold {breaker.REWORK_THRESHOLD})")
+    if reason.startswith("approach cap:"):
+        # Derived, never echoed (the same B3/F4 rule as the breaker
+        # branch above): the count is the engine's, not the reason's.
+        from . import machine
+        return (f"approach cap: {summary.get('approach_edges', 0)} "
+                f"redesign(s) used (cap {machine.MAX_APPROACH_REJECTIONS})")
     return reason
+
+
+def redesign_population_lines(summary):
+    """The two labelled populations every redesigned item's packet
+    renders (item 0015 SS8, B4): a redesign never masquerades as a
+    fresh start. [] for items with zero approach edges, so their
+    packets stay byte-identical to the pre-change engine. Both figures
+    come from the caller's single summarize read; the cumulative echo
+    is numerically the receipt/breaker figure by construction."""
+    from . import machine
+    n = summary.get("approach_edges", 0)
+    if not n:
+        return []
+    since = summary.get("rework_edges_since_last_redesign", 0)
+    return [
+        f"- [proxy] redesigns: {n} of {machine.MAX_APPROACH_REJECTIONS} "
+        "(engine-counted approach.rejected edges; lifetime, never reset)",
+        f"- [proxy] rework edges since last redesign: {since} "
+        f"(cumulative {summary['rework_edges']} — the breaker counts "
+        "the cumulative figure)",
+    ]
 
 
 def cost_decision_lines(repo, item_id, meta, summary=None):
@@ -178,9 +205,13 @@ def respond_action_lines(repo, item_id, meta):
     """Exactly one copy-pasteable action, naming the verb that actually
     answers THIS pause. One branch, shared by both renderers, so the HTML
     can never tell a cost-breaker pause to run /factory:run."""
-    from . import breaker
+    from . import approach, breaker
     paused_from = meta.get("paused-from")
     reason = meta.get("paused-reason", "")
+    if reason.startswith(approach.PAUSE_PREFIX):
+        return [f"- `factory approach-answer {item_id} "
+                "<continue|narrow|defer>` — record the redesign "
+                "decision."]
     if paused_from == "design":
         return [f"- `factory choice {item_id} <option>` — record your pick."]
     if paused_from == "assure":
@@ -225,6 +256,7 @@ def render_packet(repo, item_id, summary=None):
                      + (f" {event['data']}" if "data" in event else ""))
     lines += ["", "## Spend"]
     lines += cost.render_receipt(summary).splitlines()
+    lines += redesign_population_lines(summary)
     lines += ["", "## Respond",
               "Reply in session, or use the factory CLI to record your "
               "decision.", ""]
@@ -379,6 +411,8 @@ def render_packet_html(repo, item_id, summary=None):
     out += ["    </ul>", "  </section>", "  <section>", "    <h2>Spend</h2>",
             "    <ul>"]
     for line in receipt:
+        out.append(f"      <li>{_e(line.removeprefix('- '))}</li>")
+    for line in redesign_population_lines(summary):
         out.append(f"      <li>{_e(line.removeprefix('- '))}</li>")
     out += ["    </ul>", "  </section>", "  <section id=\"respond\">",
             "    <h2>Respond</h2>",

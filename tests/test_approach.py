@@ -621,3 +621,76 @@ class TestCostApproachKeys(ApproachTest):
         summary = cost.summarize(self.repo, ITEM)
         self.assertNotIn("approach_edges", summary)
         self.assertNotIn("rework_edges_since_last_redesign", summary)
+
+
+class TestPacketPopulations(ApproachTest):
+    """AC16.5/AC20: dual populations on every redesigned packet; the
+    derived waiting line; the respond verb. Render-only fixtures:
+    these seed log events directly (aggregation of log shape, not gate
+    admission - the bid-0076/0082 rule binds cap/gate guards)."""
+
+    def seed_redesigned(self, stage="waiting-human",
+                        reason="approach cap: 1 redesign(s) used (cap 1)",
+                        paused_from="review"):
+        now = logs.now_stamp()
+        meta = {"id": ITEM, "title": "Thing", "stage": stage,
+                "kind": "backend", "priority": 1,
+                "created": now, "updated": now}
+        if stage == "waiting-human":
+            meta["paused-from"] = paused_from
+            meta["paused-reason"] = reason
+        items.save_item(self.repo, meta, "# Thing\n")
+        for frm in ("review", "review"):
+            logs.append_event(self.repo, ITEM, "stage.advance",
+                              {"from": frm, "to": "implement"})
+        logs.append_event(self.repo, ITEM, "stage.advance",
+                          {"from": "review", "to": "spec"})
+        self.forbid("review")
+
+    def test_redesigned_packet_renders_both_labelled_populations(self):
+        self.seed_redesigned(stage="spec")
+        md = packet.render_packet(self.repo, ITEM)
+        html = packet.render_packet_html(self.repo, ITEM)
+        pop1 = ("- [proxy] redesigns: 1 of 1 (engine-counted "
+                "approach.rejected edges; lifetime, never reset)")
+        pop2 = ("- [proxy] rework edges since last redesign: 0 "
+                "(cumulative 2 — the breaker counts the cumulative "
+                "figure)")
+        self.assertIn(pop1, md)
+        self.assertIn(pop2, md)
+        self.assertIn("redesigns: 1 of 1", html)
+        self.assertIn("rework edges since last redesign: 0", html)
+        # the cumulative echo agrees numerically with the receipt line
+        self.assertIn("2 rework edges", md)
+
+    def test_zero_approach_packet_carries_no_population_lines(self):
+        # AC20's other half (full byte-identity is the default-path
+        # golden's job - Task 5 step 5).
+        now = logs.now_stamp()
+        items.save_item(self.repo, {
+            "id": ITEM, "title": "Thing", "stage": "implement",
+            "kind": "backend", "priority": 1,
+            "created": now, "updated": now}, "# Thing\n")
+        md = packet.render_packet(self.repo, ITEM)
+        self.assertNotIn("redesigns:", md)
+        self.assertNotIn("since last redesign", md)
+
+    def test_waiting_line_derived_from_summary_not_free_text(self):
+        # A typo in the hand-copied park reason must not reach the
+        # operator as a figure (the B3/F4 cost-breaker precedent).
+        self.seed_redesigned(
+            reason="approach cap: 9999 redesign(s) used (cap 7)")
+        md = packet.render_packet(self.repo, ITEM)
+        self.assertIn("approach cap: 1 redesign(s) used (cap 1)", md)
+        self.assertNotIn("9999", md)
+
+    def test_respond_names_approach_answer_even_when_paused_from_assure(self):
+        # The approach branch must be checked BEFORE the paused_from
+        # branches: an approach park from assure is not a confirm/waive
+        # pause.
+        self.seed_redesigned(paused_from="assure")
+        meta, _ = items.load_item(self.repo, ITEM)
+        lines = packet.respond_action_lines(self.repo, ITEM, meta)
+        self.assertEqual(len(lines), 1)
+        self.assertIn(f"factory approach-answer {ITEM}", lines[0])
+        self.assertNotIn("factory confirm", lines[0])
