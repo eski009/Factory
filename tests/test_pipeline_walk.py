@@ -166,6 +166,8 @@ class TestUiPipelineWalk(unittest.TestCase):
         items.save_item(self.repo, {"id": self.item, "title": "Legacy checkout fix",
                                     "stage": "verify", "kind": "ui",
                                     "created": now, "updated": now}, "")
+        logs.append_event(self.repo, self.item, "stage.advance",
+                          {"from": "plan", "to": "implement"})
         logs.append_event(self.repo, self.item, "verify.green")
         # the engine still forces the undeclared item through assure
         meta, _verdict = machine.advance(self.repo, self.item, "assure")

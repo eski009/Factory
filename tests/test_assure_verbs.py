@@ -60,6 +60,8 @@ class AssureVerbTest(unittest.TestCase):
 
     def test_confirm_requires_assure_passed(self):
         make_item(self.repo, stage="waiting-human", paused_from="assure")
+        logs.append_event(self.repo, "0001-a", "stage.advance",
+                          {"from": "plan", "to": "implement"})
         with self.assertRaises(machine.GateError):
             assure.record_confirmation(self.repo, "0001-a")
         logs.append_event(self.repo, "0001-a", "assure.passed")
@@ -69,8 +71,11 @@ class AssureVerbTest(unittest.TestCase):
 
     def test_confirm_refuses_stale_assure_passed_after_rework(self):
         make_item(self.repo, stage="waiting-human", paused_from="assure")
+        logs.append_event(self.repo, "0001-a", "stage.advance",
+                          {"from": "plan", "to": "implement"})
         logs.append_event(self.repo, "0001-a", "assure.passed")
-        logs.append_event(self.repo, "0001-a", "implement.completed")
+        logs.append_event(self.repo, "0001-a", "stage.advance",
+                          {"from": "assure", "to": "implement"})
         with self.assertRaises(machine.GateError):
             assure.record_confirmation(self.repo, "0001-a")
 
@@ -81,6 +86,8 @@ class AssureVerbTest(unittest.TestCase):
         code = factory.main(["--repo", str(self.repo), "waive", "0001-a",
                              "--reason", "env blocker"])
         self.assertEqual(code, 0)
+        logs.append_event(self.repo, "0001-a", "stage.advance",
+                          {"from": "plan", "to": "implement"})
         logs.append_event(self.repo, "0001-a", "assure.passed")
         self.assertEqual(factory.main(["--repo", str(self.repo), "confirm", "0001-a"]), 0)
         with patch("sys.stderr", new_callable=StringIO) as err:

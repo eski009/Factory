@@ -179,6 +179,8 @@ class TestE2ECli(unittest.TestCase):
         item_md.write_text(item_md.read_text().replace(
             "stage: idea", "stage: verify"), encoding="utf-8")
         self.cli("log", item, "stage.advance",
+                 "--data", json.dumps({"from": "plan", "to": "implement"}))
+        self.cli("log", item, "stage.advance",
                  "--data", json.dumps({"from": "idea", "to": "verify"}))
         self.cli("log", item, "verify.green")
         self.cli("validate")
