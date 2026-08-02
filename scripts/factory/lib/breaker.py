@@ -93,3 +93,29 @@ def verdict(repo, item_id, meta, to):
         "backlog": backlog_counts(repo, meta),
         "stage": to,
     }
+
+
+def record_answer(repo, item_id, answer, notes=None):
+    """The single writer of cost/answer.md, modelled on
+    design.record_choice. The engine treats all three answers
+    identically — any recorded answer satisfies the precondition;
+    routing on which one was recorded belongs to factory-dispatch, never
+    here (gap G3)."""
+    items.load_item(repo, item_id)
+    if answer not in ANSWERS:
+        raise GateError(
+            f"answer must be one of {', '.join(ANSWERS)}, got {answer!r}")
+    edges = rework_edges(repo, item_id)
+    if edges < REWORK_THRESHOLD:
+        raise GateError(f"nothing to answer: {edges} rework edges, "
+                        f"threshold {REWORK_THRESHOLD}")
+    path = answer_path(repo, item_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    body = notes if notes else "(no notes)"
+    path.write_text(
+        f"# Cost breaker answer\n\n- answer: {answer}\n"
+        f"- rework-edges: {edges}\n- ts: {logs.now_stamp()}\n\n{body}\n",
+        encoding="utf-8")
+    logs.append_event(repo, item_id, "cost.answered",
+                      {"answer": answer, "rework_edges": edges})
+    return path

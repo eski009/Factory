@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from scripts.factory.lib import breaker, cost, initrepo, items, logs, paths
+from scripts.factory.lib.machine import GateError as GateErrorAlias
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests/fixtures/parksnap-2026-08-02/log.jsonl"
@@ -210,6 +211,109 @@ class InvarianceTest(BreakerTestCase):
             self.assertEqual(value, values[0], name)
         self.assertIn('"rework_edges": 4', values[0])
         self.assertIn('"fired": true', values[0])
+
+
+class RecordAnswerTest(BreakerTestCase):
+    def test_writes_artifact_logs_event_and_returns_path(self):
+        self.put()
+        self.install_fixture()
+        path = breaker.record_answer(self.repo, ITEM, "continue")
+        self.assertEqual(path, breaker.answer_path(self.repo, ITEM))
+        text = path.read_text(encoding="utf-8")
+        self.assertEqual(text, "# Cost breaker answer\n\n"
+                               "- answer: continue\n"
+                               "- rework-edges: 4\n"
+                               "- ts: 2026-08-02T06:00:00Z\n\n"
+                               "(no notes)\n")
+        events = logs.read_events(self.repo, ITEM)
+        self.assertEqual(events[-1]["event"], "cost.answered")
+        self.assertEqual(events[-1]["data"],
+                         {"answer": "continue", "rework_edges": 4})
+
+    def test_notes_are_written_verbatim(self):
+        self.put()
+        self.install_fixture()
+        path = breaker.record_answer(self.repo, ITEM, "narrow",
+                                     notes="drop the regex approach")
+        self.assertIn("drop the regex approach",
+                      path.read_text(encoding="utf-8"))
+
+    def test_option_outside_answers_is_refused(self):
+        self.put()
+        self.install_fixture()
+        with self.assertRaises(GateErrorAlias) as ctx:
+            breaker.record_answer(self.repo, ITEM, "abandon")
+        self.assertIn("continue, narrow, defer", str(ctx.exception))
+
+    def test_below_threshold_is_refused(self):
+        self.put()
+        self.install_fixture(lines=[
+            json.dumps({"data": {"from": "review", "to": "implement"},
+                        "event": "stage.advance",
+                        "ts": "2026-08-02T01:00:00Z"}, sort_keys=True)])
+        with self.assertRaises(GateErrorAlias) as ctx:
+            breaker.record_answer(self.repo, ITEM, "continue")
+        self.assertIn("nothing to answer: 1 rework edges, threshold 2",
+                      str(ctx.exception))
+
+    def test_unknown_item_raises(self):
+        with self.assertRaises(items.ItemError):
+            breaker.record_answer(self.repo, "0999-nope", "continue")
+
+
+class AnswerCoversThenLapsesTest(BreakerTestCase):
+    """The anti-ping-pong core: an answer recorded at N edges covers the
+    verdict at N and stops covering it at N+1."""
+
+    EDGE_TS = ("2026-08-02T01:00:00Z", "2026-08-02T02:00:00Z",
+               "2026-08-02T03:00:00Z")
+
+    def edge(self, ts):
+        return json.dumps({"data": {"from": "review", "to": "implement"},
+                           "event": "stage.advance", "ts": ts},
+                          sort_keys=True)
+
+    def test_answer_at_n_edges_covers_n_and_lapses_at_n_plus_one(self):
+        self.set_gates("design", "cost")
+        meta = self.put()
+        log = self.install_fixture(
+            lines=[self.edge(ts) for ts in self.EDGE_TS[:2]])
+
+        before = breaker.verdict(self.repo, ITEM, meta, "implement")
+        self.assertEqual(before["rework_edges"], breaker.REWORK_THRESHOLD)
+        self.assertTrue(before["fired"])
+        self.assertIsNone(before["answered_at"])
+
+        breaker.record_answer(self.repo, ITEM, "continue")
+
+        covered = breaker.verdict(self.repo, ITEM, meta, "implement")
+        self.assertEqual(covered["rework_edges"], breaker.REWORK_THRESHOLD)
+        self.assertEqual(covered["answered_at"], breaker.REWORK_THRESHOLD)
+        self.assertTrue(covered["over_threshold"])
+        self.assertFalse(covered["fired"])
+
+        with log.open("a", encoding="utf-8") as handle:
+            handle.write(self.edge(self.EDGE_TS[2]) + "\n")
+
+        lapsed = breaker.verdict(self.repo, ITEM, meta, "implement")
+        self.assertEqual(lapsed["rework_edges"], breaker.REWORK_THRESHOLD + 1)
+        self.assertEqual(lapsed["answered_at"], breaker.REWORK_THRESHOLD)
+        self.assertTrue(lapsed["fired"])
+
+
+class VerdictIsReadOnlyTest(BreakerTestCase):
+    """breaker.verdict never writes and never logs — record_answer is the
+    only writer in this module."""
+
+    def test_verdict_leaves_log_and_item_byte_identical(self):
+        meta = self.put()
+        log = self.install_fixture()
+        item_md = paths.item_dir(self.repo, ITEM) / "item.md"
+        before_log = log.read_bytes()
+        before_item = item_md.read_bytes()
+        breaker.verdict(self.repo, ITEM, meta, "implement")
+        self.assertEqual(log.read_bytes(), before_log)
+        self.assertEqual(item_md.read_bytes(), before_item)
 
 
 if __name__ == "__main__":

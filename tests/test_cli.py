@@ -351,6 +351,42 @@ class CliTest(unittest.TestCase):
         self.assertIn("0001-thing", out)
         self.assertEqual(err, "")
 
+    def seed_over_threshold(self):
+        """An item at implement with two backward edges into implement."""
+        self.run_cli("init")
+        self.run_cli("add", "Thing", "--kind", "backend")
+        log = Path(self.repo) / ".factory/items/0001-thing/log.jsonl"
+        with log.open("a", encoding="utf-8") as f:
+            for ts in ("2026-07-03T01:00:00Z", "2026-07-03T02:00:00Z"):
+                f.write(json.dumps(
+                    {"data": {"from": "review", "to": "implement"},
+                     "event": "stage.advance", "ts": ts},
+                    sort_keys=True) + "\n")
+
+    def test_cost_answer_writes_artifact_and_exits_zero(self):
+        self.seed_over_threshold()
+        code, out, _ = self.run_cli("cost-answer", "0001-thing", "continue")
+        self.assertEqual(code, 0)
+        path = Path(out.strip())
+        self.assertTrue(path.exists())
+        body = path.read_text(encoding="utf-8")
+        self.assertIn("- answer: continue", body)
+        self.assertIn("- rework-edges: 2", body)
+        self.assertIn("- ts: ", body)
+
+    def test_cost_answer_below_threshold_is_refused(self):
+        self.run_cli("init")
+        self.run_cli("add", "Thing", "--kind", "backend")
+        code, _out, err = self.run_cli("cost-answer", "0001-thing", "continue")
+        self.assertEqual(code, 2)
+        self.assertIn("nothing to answer", err)
+
+    def test_cost_answered_is_refused_by_factory_log(self):
+        self.seed_over_threshold()
+        code, _out, err = self.run_cli("log", "0001-thing", "cost.answered")
+        self.assertEqual(code, 1)
+        self.assertIn("written only by its human verb", err)
+
 
 if __name__ == "__main__":
     unittest.main()
