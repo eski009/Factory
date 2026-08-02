@@ -35,7 +35,7 @@ ITEM = "0001-thing"
 FROZEN_NOW = "2026-07-03T12:00:00Z"
 
 
-def build(repo, verdict="pass"):
+def build(repo, verdict="pass", marker=False):
     """A deterministic default-path fixture: a backend item parked at
     assure whose single scenario carries `verdict`, with no attribution
     anywhere and the stock config. No git: the default path never reaches
@@ -60,6 +60,9 @@ def build(repo, verdict="pass"):
     (item_dir / "assurance" / "verdicts.json").write_text(
         json.dumps(verdicts, indent=2, sort_keys=True) + "\n",
         encoding="utf-8")
+    if marker:
+        logs.append_event(repo, ITEM, "stage.advance",
+                          {"from": "plan", "to": "implement"})
     for event in ("implement.completed", "verify.green", "assure.passed"):
         logs.append_event(repo, ITEM, event)
 
@@ -89,7 +92,14 @@ def capture():
     for name, verdict in (("gate-pass.txt", "pass"), ("gate-fail.txt", "fail")):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            build(repo, verdict)
+            # Item 0025: the round-scoped gates key on the engine-written
+            # entry-into-implement marker, so the gate captures seed it —
+            # a first-round event then postdates the item's only entry
+            # into implement and the golden bytes are unchanged. The
+            # packet/status capture below stays marker=False: rendering
+            # evaluates no gate, and its "Recent events" last-5 window
+            # would otherwise show the extra line and change golden bytes.
+            build(repo, verdict, marker=True)
             out[name] = normalise(_gate_outcome(repo), repo)
     with tempfile.TemporaryDirectory() as tmp:
         repo = Path(tmp)
