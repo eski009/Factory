@@ -40,7 +40,11 @@ merge they did not watch, that carried known failures.
 - Every known fail renders its scenario name **and its owning item id on the same
   line**. A fail without a resolvable open owner is not a known fail; it blocks.
 - The refusal messages at N2 name the cause (`regression`, stale base sha,
-  unresolvable owner, missing base evidence), never a bare "not pass".
+  unresolvable owner, missing base evidence), never a bare "not pass" — **on
+  the attribution-enabled path** *(scoped 2026-08-02, judgement on bid-0095:
+  with `assure.attribution` off, the default path deliberately keeps today's
+  bare `verdict 'fail' is not pass` — byte-identity to the pre-change engine
+  wins over message richness there; the Empty section and S3 bind that arm)*.
 - No cost or saving figure appears anywhere on this journey without a
   `measured | proxy | unmeasured` provenance tag (`brain/constraints.md`).
 - Exactly one copy-pasteable next action per packet (`brain/design-system.md`).
@@ -89,11 +93,24 @@ item touching this journey re-declares its own subset in its own impact.json.
 ## Empty / error / interruption / recovery
 
 - **Empty:** default config, attribution absent — behaviour byte-identical to the
-  pre-change engine (S3).
+  pre-change engine (S3). *Evidence class (amended 2026-08-02, judgement on
+  bid-0093):* no pre-change engine build is obtainable from the driven product,
+  so this oracle is discharged by the checked-in default-path golden suite
+  (`tests/test_default_path_invariance.py` fixtures, run via the contract's
+  named test entry point) — a full-suite `OK` transcript is the accepted
+  evidence; a direct byte diff is not required of the walk.
 - **Error:** unsolicited attribution (S4), bad owner (S5), bad base evidence
   (S6), stale merge base (S7). Every one blocks; none parks; none crashes.
 - **Interruption:** a rework round starts mid-journey — sha-matching base
-  evidence survives, non-matching base evidence is deleted (S9).
+  evidence survives, non-matching base evidence is deleted (S9). *Evidence
+  class (amended 2026-08-02, judgement on bid-0093):* the fresh-round deletion
+  is **skill-side behaviour** (factory-assure SKILL.md's fresh-round list, with
+  the conditional `assure/base/<sha>/` exemption), pinned by the AC11
+  plugin-coherence grep test — it is not a CLI verb and cannot be walked from
+  this journey's surface. The walk discharges S9 with two pieces of evidence:
+  the coherence test green, and a transcript proving the enforced *outcome*
+  (a surviving stale base dir is refused at ship as stale, and a prior round's
+  `assure.passed` does not satisfy the round-scoped gate).
 - **Recovery:** after a stale-sha refusal, a fresh base walk at the recomputed
   merge base unblocks the item (S8).
 

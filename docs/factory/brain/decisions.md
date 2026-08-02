@@ -292,3 +292,38 @@
   Task 7 shed, no remaining task regenerates the default-path goldens, so AC1
   byte-identity holds unqualified (0016 already shipped the Respond one-verb
   refactor). Narrowed roster: Tasks 1–6, 10, 11 of the original 11.
+- **2026-08-02, 0013 assure round 1: rework on J-001/S5** (7 pass, 1 fail,
+  1 ambiguity; `assure.rejected` round 1 logged — rework edge 1 of threshold
+  2, breaker armed but under threshold). The fail is objective against the
+  approved contract's refusal-cause oracle: empty/malformed owner arms are
+  refused by the schema layer with an index-addressed message naming neither
+  journey, scenario, nor the owner rule, while rule 10's message falsely
+  claims to cover them ("owner '' is absent or malformed") — a live instance
+  of the false-contract-worse-than-loose constraint (bid-0083). Judgement
+  call 1 settled by the verdict itself: S5 binds all five arms. S9's
+  ambiguity and S3's byte-comparison discharge settled by contract amendment
+  through the firewall (bid-0093 accepted): fresh-round deletion is
+  skill-side, discharged by the AC11 coherence test plus the enforced-outcome
+  transcript; S3 discharged by the default-path golden suite.
+- **2026-08-02, validation layering rule (bid-0094 accepted, jdg-0094; from
+  0013's rework-round review).** JSON-schema layers do shape checks only;
+  semantic validation that needs journey/scenario addressing or item-store
+  state (owner resolution, open/done status) belongs to the gate ladder,
+  whose refusals can name the journey, scenario and rule. Ratified in
+  practice by 0013 commit 6552144: the assurance-verdicts `owner` pattern
+  moved from the schema (array-index refusals, rejected by the J-001/S5
+  assure walk) to ship-gate rule 10 (`machine.py`, `_OWNER_RE` before
+  `items.load_item`; traversal closed, call-spy verified). Named open
+  corollaries, recorded so a recurrence is a decision, not a surprise:
+  (D6) the `attribution` enum still does vocabulary enforcement schema-side —
+  the same refusal class S5 rejected for `owner`; (W2-F4) the relaxation cost
+  `factory validate` its owner-shape pre-flight signal — `attribution` and
+  `merge_base` are caught at validate, `owner` only at the ship gate: a
+  stated trade of gate message quality over early feedback.
+- **2026-08-02, shipped 0013** (mode: auto, ref: 3596906): assure attribution —
+  ship gate blocks on regressions this item caused, validating pre-existing
+  attribution behind the opt-in `assure.attribution` config key; owner semantic
+  validation lives in ship-gate rule 10, default path byte-identical to the
+  pre-change engine (golden suite). Assure passed round 2 with 2 pre-existing
+  non-blocking findings re-routed to owners 0025 and 0023. Merged-tree suite:
+  815 tests OK.

@@ -27,7 +27,7 @@
      bypass; see 0016's plan.md Task 5). -->
 
 - [1] 0016-cost-circuit-breaker-on-engine-authorita Cost circuit breaker on engine-authoritative rework counts (done)
-- [2] 0013-assure-attribution-gate-only-on-regressi Assure attribution: gate only on regressions this item caused (waiting-human — parked from implement, Task 9 struck)
+- [2] 0013-assure-attribution-gate-only-on-regressi Assure attribution: gate only on regressions this item caused (done)
 - [3] 0015-approach-rejected-a-redesign-loop-back-t approach.rejected: a redesign loop back to spec with forbidden approaches recorded (idea)
 - [4] 0014-approach-gate-at-plan-judge-convergence- Approach gate at plan: judge convergence before implementation spend (idea)
 - [5] 0018-wall-clock-trigger-arm-catch-the-spend-r Wall-clock trigger arm: catch the spend runaways the churn breaker misses (idea — measured on 0016's own run; sequence after 0016 ships)

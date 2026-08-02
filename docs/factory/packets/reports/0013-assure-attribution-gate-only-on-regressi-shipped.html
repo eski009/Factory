@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Factory packet — Assure attribution: gate only on regressions this item caused</title>
+  <style>
+    :root { color-scheme: light dark; --bg: #f5f5f2; --panel: #fff;
+      --text: #252522; --muted: #6f706b; --line: #d9d9d3;
+      --accent: #2459a9; --ask: #fff4cc; --ask-line: #d29b20; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text);
+      font: 17px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    main { width: min(100% - 32px, 760px); margin: 0 auto; padding: 48px 0 72px; }
+    h1 { margin: 0 0 28px; font-size: clamp(2rem, 8vw, 3.25rem); line-height: 1.08; }
+    h2 { margin: 0 0 16px; font-size: 1.3rem; }
+    section { margin-top: 20px; padding: 24px; border: 1px solid var(--line);
+      border-radius: 14px; background: var(--panel); }
+    .ask, #cost-decision { border-left: 5px solid var(--ask-line); background: var(--ask); }
+    .ask h2, #cost-decision h2 { text-transform: uppercase; letter-spacing: .08em; font-size: .84rem; }
+    ul { margin: 0; padding-left: 1.25rem; }
+    li + li { margin-top: 10px; }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 0; list-style: none; }
+    .meta li { margin: 0; }
+    a { color: var(--accent); font-weight: 650; text-underline-offset: 3px; overflow-wrap: anywhere; }
+    .links { list-style: none; padding: 0; }
+    .links a { display: block; padding: 14px 16px; border: 1px solid var(--line);
+      border-radius: 10px; text-decoration: none; }
+    .missing { color: var(--muted); }
+    code { padding: .15em .35em; border-radius: 5px; background: color-mix(in srgb, var(--text) 9%, transparent);
+      overflow-wrap: anywhere; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #181918; --panel: #222321; --text: #ededeb; --muted: #aaa9a4;
+        --line: #3d3e3a; --accent: #91baff; --ask: #332d1d; --ask-line: #e2ae3d; }
+    }
+    @media (max-width: 520px) {
+      main { width: min(100% - 20px, 760px); padding: 28px 0 48px; }
+      section { padding: 20px 18px; border-radius: 11px; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Assure attribution: gate only on regressions this item caused</h1>
+  <section aria-label="Item metadata">
+    <ul class="meta">
+      <li><strong>id:</strong> 0013-assure-attribution-gate-only-on-regressi</li>
+      <li><strong>stage:</strong> done</li>
+      <li><strong>kind:</strong> backend</li>
+      <li><strong>priority:</strong> 2</li>
+    </ul>
+  </section>
+  <section id="view-options">
+    <h2>View the options</h2>
+    <ul class="links">
+      <li><a href="#artifacts">Review the available packet details</a></li>
+      <li><a href="file:///Users/anthony/development/projects/factory/.factory/items/0013-assure-attribution-gate-only-on-regressi/triage.md">Open triage.md</a></li>
+      <li><a href="file:///Users/anthony/development/projects/factory/.factory/items/0013-assure-attribution-gate-only-on-regressi/spec.md">Open spec.md</a></li>
+      <li><a href="file:///Users/anthony/development/projects/factory/.factory/items/0013-assure-attribution-gate-only-on-regressi/plan.md">Open plan.md</a></li>
+      <li><a href="file:///Users/anthony/development/projects/factory/.factory/items/0013-assure-attribution-gate-only-on-regressi/reviews/synthesis.md">Open reviews/synthesis.md</a></li>
+      <li><a href="file:///Users/anthony/development/projects/factory/.factory/items/0013-assure-attribution-gate-only-on-regressi/assurance/impact.json">Open assurance/impact.json</a></li>
+      <li><a href="file:///Users/anthony/development/projects/factory/.factory/items/0013-assure-attribution-gate-only-on-regressi/assurance/verdicts.json">Open assurance/verdicts.json</a></li>
+    </ul>
+  </section>
+  <section id="artifacts">
+    <h2>Artifacts</h2>
+    <ul>
+      <li><a href="file:///Users/anthony/development/projects/factory/.factory/items/0013-assure-attribution-gate-only-on-regressi/triage.md">triage.md</a></li>
+      <li><a href="file:///Users/anthony/development/projects/factory/.factory/items/0013-assure-attribution-gate-only-on-regressi/spec.md">spec.md</a></li>
+      <li><a href="file:///Users/anthony/development/projects/factory/.factory/items/0013-assure-attribution-gate-only-on-regressi/plan.md">plan.md</a></li>
+      <li class="missing">design/choice.md (not yet)</li>
+      <li><a href="file:///Users/anthony/development/projects/factory/.factory/items/0013-assure-attribution-gate-only-on-regressi/reviews/synthesis.md">reviews/synthesis.md</a></li>
+      <li><a href="file:///Users/anthony/development/projects/factory/.factory/items/0013-assure-attribution-gate-only-on-regressi/assurance/impact.json">assurance/impact.json</a></li>
+      <li><a href="file:///Users/anthony/development/projects/factory/.factory/items/0013-assure-attribution-gate-only-on-regressi/assurance/verdicts.json">assurance/verdicts.json</a></li>
+    </ul>
+  </section>
+  <section>
+    <h2>Recent events</h2>
+    <ul>
+      <li>2026-08-02T19:23:28Z spend {&#x27;dispatches&#x27;: 1, &#x27;provenance&#x27;: &#x27;measured&#x27;, &#x27;source&#x27;: &#x27;factory-assure&#x27;, &#x27;stage&#x27;: &#x27;assure&#x27;, &#x27;tokens&#x27;: {&#x27;total&#x27;: 128970}}</li>
+      <li>2026-08-02T19:23:28Z assure.passed {&#x27;non_blocking_fails&#x27;: 2, &#x27;note&#x27;: &#x27;both pre-existing with fairness controls in transcripts; 9/9 required scenarios pass&#x27;, &#x27;owners&#x27;: [&#x27;0025-round-scope-all-rework-gates-implement-c&#x27;, &#x27;0023-packet-furniture-and-readout-polish-drop&#x27;], &#x27;round&#x27;: 2}</li>
+      <li>2026-08-02T19:23:28Z stage.advance {&#x27;from&#x27;: &#x27;assure&#x27;, &#x27;to&#x27;: &#x27;ship&#x27;}</li>
+      <li>2026-08-02T19:27:13Z ship.merged {&#x27;mode&#x27;: &#x27;auto&#x27;, &#x27;ref&#x27;: &#x27;3596906373abc71427f1506d2127d1ba7be41a5f&#x27;}</li>
+      <li>2026-08-02T19:27:13Z stage.advance {&#x27;from&#x27;: &#x27;ship&#x27;, &#x27;to&#x27;: &#x27;done&#x27;}</li>
+    </ul>
+  </section>
+  <section>
+    <h2>Spend</h2>
+    <ul>
+      <li>[proxy] active 04h 15m (waiting 07h 52m), 15 advances, 41 dispatches, 1 rework edges</li>
+      <li>[measured] tokens: total 1835156 (18 events)</li>
+      <li>[unmeasured] UNMEASURED: orchestrator main-loop tokens</li>
+      <li>[measured] stage triage: total 87877 (1 events)</li>
+      <li>[measured] stage spec: total 119266 (1 events)</li>
+      <li>[measured] stage implement: total 790990 (9 events)</li>
+      <li>[measured] stage review: total 486984 (4 events)</li>
+      <li>[measured] stage verify: total 86726 (1 events)</li>
+      <li>[measured] stage assure: total 263313 (2 events)</li>
+    </ul>
+  </section>
+  <section id="respond">
+    <h2>Respond</h2>
+    <p>Reply in session, or use the factory CLI.</p>
+    <ul>
+      <li><code>/factory:run</code> — resume the pipeline.</li>
+    </ul>
+  </section>
+</main>
+</body>
+</html>

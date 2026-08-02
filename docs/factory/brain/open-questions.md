@@ -324,3 +324,29 @@
   on bid-0050) rather than opening a new question (source:
   .factory/items/0016-cost-circuit-breaker-on-engine-authorita/reviews/round-2/customer.md;
   docs/factory/roadmap.md; authorized: judgement on bid-0069).
+
+## Raised by 0013's review council (2026-08-02)
+
+- **`assure.attribution` ships behind an undiscoverable switch.** The paying
+  persona has no in-product path to learning the key exists at the moment of
+  pain: rule 3's refusal message is byte-pinned, the doctor text render is
+  unchanged, and init never rewrites an existing config.json. Until an assure
+  rejection surfaces "this fail may be pre-existing — assure.attribution is
+  off" (0024 readout scope, or a docs item) and README config docs name the
+  key, the UNMEASURED "largest token saver" hypothesis cannot become
+  measurable because nobody turns the feature on. Same ships-dark class as the
+  cost instrument (bid-0088) (source:
+  .factory/items/0013-assure-attribution-gate-only-on-regressi/reviews/round-1/customer.md;
+  round-1/commercial.md; round-2/product.md; authorized: judgement on
+  bid-0091). Resolved by: 0024 carrying the discoverability line, plus an
+  operator-docs pass naming both dark switches.
+- **Guard-leak cluster from 0013's review** (each a guard that passes today
+  while the property it guards can drift): (a) `CLAIM_RE` in
+  tests/test_unmeasured_claims.py misses "cheaper"/"reduces spend" phrasings —
+  the recorded pattern-too-narrow class; (b) the AC18 boundary test asserts a
+  hand-maintained `ATTRIBUTION_CHECKS` constant rather than deriving the check
+  set (mitigated by the source-scan and behavioural tests); (c) base-walk
+  spend logging is discipline-not-guarantee (convention adherence 9-of-17)
+  (source: .factory/items/0013-assure-attribution-gate-only-on-regressi/reviews/round-1/engineering-quality.md;
+  authorized: judgement on bid-0092). Resolved by: folding (a)/(b) into the
+  next test-touching item; (c) is the bid-0063/engine-substrate question.
