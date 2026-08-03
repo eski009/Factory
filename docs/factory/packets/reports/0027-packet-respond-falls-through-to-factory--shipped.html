@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Factory packet — Packet Respond falls through to /factory:run when a decision pause is parked from an unexpected stage</title>
+  <style>
+    :root { color-scheme: light dark; --bg: #f5f5f2; --panel: #fff;
+      --text: #252522; --muted: #6f706b; --line: #d9d9d3;
+      --accent: #2459a9; --ask: #fff4cc; --ask-line: #d29b20; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text);
+      font: 17px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    main { width: min(100% - 32px, 760px); margin: 0 auto; padding: 48px 0 72px; }
+    h1 { margin: 0 0 28px; font-size: clamp(2rem, 8vw, 3.25rem); line-height: 1.08; }
+    h2 { margin: 0 0 16px; font-size: 1.3rem; }
+    section { margin-top: 20px; padding: 24px; border: 1px solid var(--line);
+      border-radius: 14px; background: var(--panel); }
+    .ask, #cost-decision { border-left: 5px solid var(--ask-line); background: var(--ask); }
+    .ask h2, #cost-decision h2 { text-transform: uppercase; letter-spacing: .08em; font-size: .84rem; }
+    ul { margin: 0; padding-left: 1.25rem; }
+    li + li { margin-top: 10px; }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 0; list-style: none; }
+    .meta li { margin: 0; }
+    a { color: var(--accent); font-weight: 650; text-underline-offset: 3px; overflow-wrap: anywhere; }
+    .links { list-style: none; padding: 0; }
+    .links a { display: block; padding: 14px 16px; border: 1px solid var(--line);
+      border-radius: 10px; text-decoration: none; }
+    .missing { color: var(--muted); }
+    code { padding: .15em .35em; border-radius: 5px; background: color-mix(in srgb, var(--text) 9%, transparent);
+      overflow-wrap: anywhere; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #181918; --panel: #222321; --text: #ededeb; --muted: #aaa9a4;
+        --line: #3d3e3a; --accent: #91baff; --ask: #332d1d; --ask-line: #e2ae3d; }
+    }
+    @media (max-width: 520px) {
+      main { width: min(100% - 20px, 760px); padding: 28px 0 48px; }
+      section { padding: 20px 18px; border-radius: 11px; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Packet Respond falls through to /factory:run when a decision pause is parked from an unexpected stage</h1>
+  <section aria-label="Item metadata">
+    <ul class="meta">
+      <li><strong>id:</strong> 0027-packet-respond-falls-through-to-factory-</li>
+      <li><strong>stage:</strong> done</li>
+      <li><strong>kind:</strong> backend</li>
+      <li><strong>priority:</strong> 2</li>
+    </ul>
+  </section>
+  <section id="view-options">
+    <h2>View the options</h2>
+    <ul class="links">
+      <li><a href="#artifacts">Review the available packet details</a></li>
+      <li><a href="file:///Users/anthony/development/projects/factory/.factory/items/0027-packet-respond-falls-through-to-factory-/triage.md">Open triage.md</a></li>
+      <li><a href="file:///Users/anthony/development/projects/factory/.factory/items/0027-packet-respond-falls-through-to-factory-/spec.md">Open spec.md</a></li>
+      <li><a href="file:///Users/anthony/development/projects/factory/.factory/items/0027-packet-respond-falls-through-to-factory-/plan.md">Open plan.md</a></li>
+      <li><a href="file:///Users/anthony/development/projects/factory/.factory/items/0027-packet-respond-falls-through-to-factory-/reviews/synthesis.md">Open reviews/synthesis.md</a></li>
+      <li><a href="file:///Users/anthony/development/projects/factory/.factory/items/0027-packet-respond-falls-through-to-factory-/assurance/impact.json">Open assurance/impact.json</a></li>
+      <li><a href="file:///Users/anthony/development/projects/factory/.factory/items/0027-packet-respond-falls-through-to-factory-/assurance/verdicts.json">Open assurance/verdicts.json</a></li>
+    </ul>
+  </section>
+  <section id="artifacts">
+    <h2>Artifacts</h2>
+    <ul>
+      <li><a href="file:///Users/anthony/development/projects/factory/.factory/items/0027-packet-respond-falls-through-to-factory-/triage.md">triage.md</a></li>
+      <li><a href="file:///Users/anthony/development/projects/factory/.factory/items/0027-packet-respond-falls-through-to-factory-/spec.md">spec.md</a></li>
+      <li><a href="file:///Users/anthony/development/projects/factory/.factory/items/0027-packet-respond-falls-through-to-factory-/plan.md">plan.md</a></li>
+      <li class="missing">design/choice.md (not yet)</li>
+      <li><a href="file:///Users/anthony/development/projects/factory/.factory/items/0027-packet-respond-falls-through-to-factory-/reviews/synthesis.md">reviews/synthesis.md</a></li>
+      <li><a href="file:///Users/anthony/development/projects/factory/.factory/items/0027-packet-respond-falls-through-to-factory-/assurance/impact.json">assurance/impact.json</a></li>
+      <li><a href="file:///Users/anthony/development/projects/factory/.factory/items/0027-packet-respond-falls-through-to-factory-/assurance/verdicts.json">assurance/verdicts.json</a></li>
+    </ul>
+  </section>
+  <section>
+    <h2>Recent events</h2>
+    <ul>
+      <li>2026-08-03T17:30:46Z assure.confirmed</li>
+      <li>2026-08-03T17:30:56Z stage.advance {&#x27;from&#x27;: &#x27;waiting-human&#x27;, &#x27;reason&#x27;: &#x27;human confirmed assurance (factory confirm)&#x27;, &#x27;to&#x27;: &#x27;assure&#x27;}</li>
+      <li>2026-08-03T17:30:56Z stage.advance {&#x27;from&#x27;: &#x27;assure&#x27;, &#x27;reason&#x27;: &#x27;assurance confirmed by human; 11/11 blind pass&#x27;, &#x27;to&#x27;: &#x27;ship&#x27;}</li>
+      <li>2026-08-03T17:32:41Z ship.merged {&#x27;mode&#x27;: &#x27;auto&#x27;, &#x27;ref&#x27;: &#x27;0bd2a3636c6ac46cb5ce6d0f2ea70be4d1ef4aec&#x27;}</li>
+      <li>2026-08-03T17:32:41Z stage.advance {&#x27;from&#x27;: &#x27;ship&#x27;, &#x27;to&#x27;: &#x27;done&#x27;}</li>
+    </ul>
+  </section>
+  <section>
+    <h2>Spend</h2>
+    <ul>
+      <li>[proxy] active 08h 29m (waiting 02h 18m), 17 advances, 11 dispatches, 1 rework edges</li>
+      <li>[measured] tokens: total 1124239 (11 events)</li>
+      <li>[unmeasured] UNMEASURED: orchestrator main-loop tokens</li>
+      <li>[measured] stage implement: total 441559 (6 events)</li>
+      <li>[measured] stage review: total 126811 (1 events)</li>
+      <li>[measured] stage verify: total 151974 (1 events)</li>
+      <li>[measured] stage assure: total 403895 (3 events)</li>
+    </ul>
+  </section>
+  <section id="respond">
+    <h2>Respond</h2>
+    <p>Reply in session, or use the factory CLI.</p>
+    <ul>
+      <li><code>/factory:run</code> — resume the pipeline.</li>
+    </ul>
+  </section>
+</main>
+</body>
+</html>

@@ -522,3 +522,20 @@
     playing three lenses and no round 2; the reversible default is proceed,
     disclose, and rest the verdict on reproduced experiments. Judgement on
     **bid-0147**.
+
+- **2026-08-03, shipped 0027-packet-respond-falls-through-to-factory-**
+  (mode `auto`, merge commit `0bd2a36`, branch head `c01eac8`, 3 commits,
+  branch deleted): the packet's Respond verb is keyed on the **pause's reason**
+  rather than the stage it was parked from, so a decision pause parked from an
+  unexpected stage no longer falls through to `/factory:run`; the narrow
+  consequence line names the park it must resume to; and the cost breaker's
+  missing `- answer:` line gets its own refusal instead of a `None` repr
+  (0028's scope item 4, shipped here by absorption — 0028's own line still
+  carries bid-0129's rework-edges regex residual). Merged-tree suite 903 tests
+  OK, exit 0. Assurance passed **11/11 blind (round 2)** after the human
+  rejected a degraded round 1 and required a fresh-context reviewer, then
+  confirmed via `factory confirm` over two unresolved judgement calls
+  (J-001 N3/N4 shipped-with-known-fails oracle non-render, and raw Python dict
+  reprs in packet copy). The hardcoded-`implement` continue-consequence finding
+  was routed onward to **0031** (p3). Shipped packet:
+  `docs/factory/packets/reports/0027-packet-respond-falls-through-to-factory--shipped.md`.
