@@ -57,9 +57,24 @@
      standalone
      reachability ground now ranks it. See .factory/items/0027-*/triage.md. -->
 
-- [2] 0027-packet-respond-falls-through-to-factory- Packet Respond falls through to /factory:run when a decision pause is parked from an unexpected stage (spec — live defect on shipped main, reachability raised by 0015: the packet renders a full spend-authorisation screen on which cost-answer appears zero times; absorbs 0028; also unblocks 0018 if 0030 revives it)
+- [2] 0027-packet-respond-falls-through-to-factory- Packet Respond falls through to /factory:run when a decision pause is parked from an unexpected stage (assure — live defect on shipped main, reachability raised by 0015: the packet renders a full spend-authorisation screen on which cost-answer appears zero times; absorbs 0028; also unblocks 0018 if 0030 revives it)
 - [-] 0028-the-cost-breaker-leaks-a-python-none-rep The cost breaker leaks a Python None repr in its malformed-answer refusal (blocked — absorbed into 0027 as its scope item 4; bid-0129's rework-edges regex residual still owed)
 - [5] 0029-scope-spend-events-a-leaf-vs-fork-discri Scope spend events: a leaf-vs-fork discriminator so measured token totals are trustworthy (idea — the precursor; finally owns bid-0063, the brain's top open question)
 - [6] 0030-measurement-spike-gap-capped-per-pass-at Measurement spike: gap-capped per-pass attributed_seconds, and whether any threshold separates a runaway from healthy work (idea — replaces 0018's build; gates it)
-- [7] 0031-the-cost-packet-s-decision-copy-is-churn The cost packet's decision copy is churn-shaped in four places and its recommendation never reads the verdict reason (idea — standing defect, independent of 0018)
+- [3] 0031-the-cost-packet-s-decision-copy-is-churn The cost packet's decision copy is churn-shaped in four places and its recommendation never reads the verdict reason (idea — standing defect, independent of 0018)
 - [8] 0018-wall-clock-trigger-arm-catch-the-spend-r Wall-clock trigger arm: catch the spend runaways the churn breaker misses (blocked — triage rejected the mechanism; unblocks only if 0030's spike finds a separating threshold)
+
+## Filed but not yet council-ranked (added 2026-08-03)
+
+Seven live items were absent from this file entirely — invisible here while
+open in the backlog, which already cost item 0031 a redundant open question
+about ownership 0023 had. Listed at their filed priority (`-` = unprioritised,
+sorts last in `factory status`); a council ranks them when each reaches triage.
+
+- [-] 0019-shared-scratchpad-message-clobber-concur Concurrent agents in one session reuse stale commit-message files (idea, bug — observed on 0016's rework: reflog ae205c4 → f609d24 shipped the wrong commit body)
+- [-] 0020-concurrent-implementers-violate-the-one- Concurrent implementers violate the one-at-a-time contract in a shared checkout (idea, bug — factory-implement's own sub-dispatches broke its contract on 0016)
+- [-] 0021-parent-agents-block-on-child-replies-tha Parent agents block on child replies that never arrive though the work is done on disk (idea, bug — **five occurrences across three skills on 2026-08-02/03**, one of which caused a duplicated council; the best-evidenced item in the backlog)
+- [-] 0022-gitignored-factory-state-is-invisible-to Gitignored .factory state is invisible to clones (idea, bug — a fresh clone gets the code and none of the decisions; also why suite skip counts differ between checkouts)
+- [-] 0023-packet-furniture-and-readout-polish-drop Packet furniture and readout polish (idea, bug — owns the J-002 one-job-per-screen ruling, the status-table overflow on engine-filed ids, and the shipped packet's dead self-link)
+- [-] 0024-assure-readout-periphery-known-fails-fir Assure readout periphery: known-fails first screen, owner-priority Respond branch, status --json surface (idea, feature — shed from 0013 at its plan re-judgement; owns J-001 nodes N3/N4)
+- [-] 0026-complexity-scored-bug-flow-bugs-run-a-su Complexity-scored bug flow: bugs run a subset of the pipeline chosen by a 1–5 score (idea, feature — **human-filed**; bid-0125 records the supporting evidence that review depth keys on tier, not change class)
