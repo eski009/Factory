@@ -52,6 +52,30 @@
           "tests/test_packet.py"
         ]
       }
+    },
+    {
+      "id": "J-003",
+      "slug": "redesign-cap-decision",
+      "title": "Redesign cap decision — the operator meets an item that exhausted its redesign cap and chooses the tradeoff",
+      "persona": "The Overnight Operator (docs/factory/brain/personas.md)",
+      "trigger": "An approach.rejected request arrives when the item's engine-counted approach.rejected edges already equal MAX_APPROACH_REJECTIONS",
+      "outcome": "The operator learns from the packet alone what redesigns and rework the item consumed, what the forbidden-approaches record says cannot converge, and records continue/narrow/defer with a single command that provably unblocks exactly once",
+      "criticality": "high",
+      "status": "draft",
+      "contract": "contracts/J-003-redesign-cap-decision.md",
+      "links": {
+        "apis": [
+          "scripts/factory/lib/machine.py::advance",
+          "scripts/factory/lib/approach.py::record_answer",
+          "scripts/factory/lib/cost.py::summarize",
+          "scripts/factory/lib/packet.py::render_packet",
+          "scripts/factory/lib/packet.py::render_packet_html"
+        ],
+        "tests": [
+          "tests/test_machine.py",
+          "tests/test_packet.py"
+        ]
+      }
     }
   ]
 }

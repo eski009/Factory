@@ -30,3 +30,13 @@ entries below were registered by the work that touched them._
   and the consequence of each of continue / narrow / defer, and records one with
   a single command that provably unblocks the item exactly once (source:
   .factory/items/0016-cost-circuit-breaker-on-engine-authorita/spec.md).
+- **J-003 — Redesign cap decision** (`redesign-cap-decision`, criticality
+  `high`, status `draft`, contract `contracts/J-003-redesign-cap-decision.md`).
+  Persona: The Overnight Operator (source: docs/factory/brain/personas.md).
+  Trigger: an `approach.rejected` request arrives when the item's
+  engine-counted approach.rejected edges already equal
+  `MAX_APPROACH_REJECTIONS`. Outcome: the operator learns from the packet alone
+  what redesigns and rework the item consumed, what the forbidden-approaches
+  record says cannot converge, and records continue/narrow/defer with a single
+  command that provably unblocks exactly once (source:
+  .factory/items/0015-approach-rejected-a-redesign-loop-back-t/spec.md).
