@@ -69,6 +69,15 @@ def admit_over_cap(repo, item_id, edges):
             f"approach cap: {edges} redesign(s) used "
             f"(cap {MAX_APPROACH_REJECTIONS}); record an answer with "
             f"factory approach-answer {item_id} <continue|narrow|defer>")
+    if answer["answer"] is None:
+        # A missing field is named like its sibling watermark line, not
+        # by interpolating the parsed value - an absent '- answer:' line
+        # otherwise leaks a Python None repr to the operator (assure
+        # round 1, J-003/S6 arm A). Distinct from the out-of-enum arm
+        # below, which still names what was actually recorded.
+        raise GateError(
+            "approach answer malformed: no "
+            "'- answer: <continue|narrow|defer>' line; " + retry)
     if answer["answer"] not in ANSWERS:
         raise GateError(
             f"approach answer malformed: recorded option "

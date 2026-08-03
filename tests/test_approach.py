@@ -341,6 +341,40 @@ class TestApproachAnswer(ApproachTest):
                             reason="approach.rejected: x")
         self.assertIn("no '- redesigns: N' line", str(ctx.exception))
 
+    def test_absent_answer_line_named_as_a_missing_field(self):
+        # AC18 (assure round 1, J-003/S6 arm A): an answer.md with no
+        # '- answer:' line at all is a MISSING FIELD, named the way the
+        # sibling watermark line is - never by interpolating the parsed
+        # value, which leaked a Python None repr to the operator. The
+        # out-of-enum arm still names the recorded value, and the two
+        # stay pairwise distinct.
+        self.make_item()
+        self.redesign()
+        self.walk_to("review")
+        self.forbid("review", entry=2)
+        p = approach.answer_path(self.repo, ITEM)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("I said yes go ahead\n", encoding="utf-8")
+        with self.assertRaises(machine.GateError) as ctx:
+            machine.advance(self.repo, ITEM, "spec",
+                            reason="approach.rejected: x")
+        missing = str(ctx.exception)
+        self.assertIn("no '- answer: <continue|narrow|defer>' line", missing)
+        self.assertNotIn("None", missing)
+        p.write_text("- answer: yolo\n- redesigns: 1\n", encoding="utf-8")
+        with self.assertRaises(machine.GateError) as ctx:
+            machine.advance(self.repo, ITEM, "spec",
+                            reason="approach.rejected: x")
+        enum = str(ctx.exception)
+        self.assertIn("recorded option 'yolo'", enum)
+        p.write_text("- answer: continue\n", encoding="utf-8")
+        with self.assertRaises(machine.GateError) as ctx:
+            machine.advance(self.repo, ITEM, "spec",
+                            reason="approach.rejected: x")
+        watermark = str(ctx.exception)
+        self.assertIn("no '- redesigns: N' line", watermark)
+        self.assertEqual(3, len({missing, enum, watermark}))
+
     def test_narrow_and_defer_delete_packet_at_record_time(self):
         # bid-0078/AC17: keyed on answer-record time, never on "no
         # longer waiting-human". continue keeps the packet.
@@ -515,6 +549,26 @@ class TestSpecExitGate(ApproachTest):
         msg = str(ctx.exception)
         self.assertIn("approaches/forbidden.md", msg)
         self.assertIn("spec.revised", msg)
+
+    def test_both_unmet_is_one_refusal_naming_both(self):
+        # AC8 (assure round 1, J-003/S5): the operator failing BOTH
+        # requirements is not drip-fed two refusals across two stage
+        # re-entries - the gate evaluates both conditions and names both
+        # in ONE message under a single `redesign spec-exit:` prefix.
+        # The single-requirement wordings (arms 2 and 3 of the walk) are
+        # exactly the two clauses joined here.
+        self.make_item()
+        self.redesign()
+        self.art("approaches/forbidden.md", "")  # truncated post-edge
+        self.art("spec.md", "# Spec v2\n\n## Journey impact\nJ-001.\n")
+        with self.assertRaises(machine.GateError) as ctx:
+            machine.advance(self.repo, ITEM, "plan")
+        self.assertEqual(
+            str(ctx.exception),
+            "redesign spec-exit: approaches/forbidden.md missing or "
+            "empty; no spec.revised event after the latest "
+            "approach.rejected edge (factory-spec logs it after "
+            "rewriting spec.md)")
 
     def test_zero_redesign_items_gate_inert(self):
         # AC8: no approach edge - no spec.revised required, byte-
