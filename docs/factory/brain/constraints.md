@@ -293,3 +293,115 @@
   verify AC-named artifacts are committed, or the AC ships unmet (source:
   .factory/items/0015-…/reviews/round-3/walk.md; authorized: judgement on
   bid-0122).
+- **A trigger must be calibratable on the corpus that motivates it.** If the
+  motivating case is external and unlogged, the threshold is fitted to an
+  anecdote — asserted, not calibrated. 0018 proposed a wall-clock breaker arm
+  whose AC2 required firing at 9,499s (0016's first implement pass) while
+  0015's first implement pass is 10,046s and 0015 shipped clean: every
+  threshold `T ≤ 9,499` is also `< 10,046`, so AC2 and a zero-false-positive
+  threshold are *jointly unsatisfiable*, arithmetically. Re-denominating to
+  tokens does not help — 0015's measured 4,011,314 exceeds 0016's 3,949,630,
+  so the corpus holds no separable outlier on any dimension, and the ParkSnap
+  run that motivated the batch is external and in no log here. Run the
+  calibration replay **at triage**, before the ACs are accepted: it is cheap,
+  and on this item it converted a unanimous `build-rescoped` into a unanimous
+  refusal (source:
+  .factory/items/0018-wall-clock-trigger-arm-catch-the-spend-r/triage.md,
+  reviews/synthesis.md; authorized: judgement on bid-0131).
+- **Engine-authoritative is not the same as meaningful.** bid-0064 governs who
+  *writes* the event; bid-0018 governs what the *figure means*. Passing the
+  first says nothing about the second, and bid-0064's success has made it read
+  as a sufficient test for a trigger substrate when it is only a necessary one.
+  `cost.summarize`'s `active_seconds` is impeccable on the first axis and fails
+  the second: `WAITING_STAGES` is `frozenset(machine.SPECIAL)` =
+  `{blocked, waiting-human}` only, so every other gap — sleep, session death,
+  closed laptop, rate limit — books to whichever stage the item was sitting in.
+  0015's `review` bucket reads 7.49h from a single 25,145s overnight gap; the
+  top eleven items by `active_seconds` are unstarted `idea` filings while 0016,
+  the genuinely expensive item, ranks 12th. For the Overnight Operator, "the
+  loop is burning money" and "I went to bed" are the same number on this
+  substrate (source: scripts/factory/lib/cost.py;
+  .factory/items/0018-…/reviews/synthesis.md; authorized: judgement on
+  bid-0132).
+- **A gate with no per-arm disable is a single gate.** Adding a noisy arm
+  degrades the working one and invites a wholesale disable — trading a working
+  control for no control. `_config_gates` reads a flat list of strings
+  (`machine.py:232-236`) with `"cost"` a single entry, and `REWORK_THRESHOLD`
+  is a module constant with no override path, so there is demonstrably no way
+  to silence a second arm without removing the first. Any proposal to add an
+  arm to an existing gate ships a per-arm off-switch and a per-arm threshold
+  override in the same change, or it is not additive (source:
+  scripts/factory/lib/machine.py;
+  .factory/items/0018-…/reviews/synthesis.md; authorized: judgement on
+  bid-0133).
+- **Factory has no in-stage work meter, and no engine-authoritative quantity
+  can become one.** The engine-authoritative set is exactly the `stage.advance`
+  derivations — `advances`, per-stage `entries`, `rework_edges`,
+  `approach_edges` — and every one counts *transitions*, so all read zero for a
+  stage occupancy that never ends. `dispatches` does measure work but
+  accumulates only from skill-logged `spend` events (`cost.py:145-159`, present
+  in 12 of 28 logs), failing the bid-0064 substrate test. The corollary bounds
+  every future cost control: `breaker.verdict` is computed only *after* an
+  accepted transition (`machine.py:668-684`) and no mid-stage hook exists, so a
+  single-pass runaway makes **zero transitions while it burns** and the earliest
+  any arm can fire is the advance *out of* the stage that already spent the
+  money. "Catches the runaway" is unachievable in principle on today's
+  substrate; the honest claim is "stops the next stage of an already-expensive
+  item" (source: scripts/factory/lib/machine.py, scripts/factory/lib/cost.py;
+  .factory/items/0018-…/reviews/synthesis.md; authorized: judgement on
+  bid-0134).
+- **A mechanically passable AC set is a liability when the mechanism is
+  unsound.** A green suite converts an unfounded threshold into recorded
+  evidence of correctness — which is exactly what a later item cites to skip
+  re-checking the property. This is bid-0083's false-stronger-contract failure
+  in its most expensive form, and 0018 carried both halves: AC3 pinned
+  `waiting-human`, the one case the code already excludes, so a test written to
+  it passes by construction; and AC2 was satisfiable only by a threshold that
+  parks healthy work, so *a passing AC2 test would itself be evidence of a
+  defect*. Ask at triage whether a wrong implementation could make the AC set
+  green, and treat yes as a finding about the mechanism, not about the tests
+  (source: .factory/items/0018-…/triage.md, reviews/synthesis.md; authorized:
+  judgement on bid-0135).
+- **The selector that names a pause's answer verb must be reason-keyed, and
+  every reason-prefix arm must precede every stage-keyed arm.** A stage-keyed
+  arm that shadows a reason-keyed one does not merely fail to name the verb —
+  it names a verb from a *different* pause contract. Live shape:
+  `packet.respond_action_lines` orders `paused_from == "assure"`
+  (`packet.py:327`) above the cost-breaker arm (`:331`), and `assure` is in
+  `cost.REWORK_FROM` (`cost.py:26`), so a cost pause parked from `assure` would
+  be answered with `factory waive` — which `assure.py:14-20` admits and
+  `machine.py:584-585` treats as authoritative, shipping the item on an
+  unanswered spend gate. Extends the five-part pause contract (bid-0065): the
+  contract requires the packet to name *the* verb, and ordering is what decides
+  *which* verb it names (source: scripts/factory/lib/packet.py,
+  scripts/factory/lib/cost.py, scripts/factory/lib/assure.py,
+  scripts/factory/lib/machine.py; .factory/items/0027-…/reviews/synthesis.md;
+  authorized: judgement on bid-0137).
+- **Cross-item token comparisons are not measured evidence.** bid-0063's nested
+  double-count means no aggregate is trustworthy in either direction until 0029
+  lands, and the one real comparison inverts (0015's 4.01M against 0016's
+  3.95M). An item body arguing "a line-sized fix pays a full pipeline
+  round-trip" from item totals is citing a number, not evidence; 0027, 0028 and
+  0031 carried zero spend events between them when that claim was written. The
+  defensible figure is **within-item**: the avoided council fan-out (265,776 of
+  0025's 794,702 tokens; 2,178,549 on 0015). Restate such a premise as a proxy
+  claim or mark it UNSOURCED. Extends the provenance rule (bid-0018) (source:
+  docs/factory/brain/decisions.md:470-475,
+  .factory/items/0027-…/reviews/round-1/commercial.md; authorized: judgement on
+  bid-0140).
+- **A declared assurance scenario is a contract, and inherits the
+  false-stronger-contract rule.** An `assurance/impact.json` scenario that
+  generalises beyond the population its own fixtures can construct is a false
+  assurance in the bid-0083 sense, and it is discovered at **assure** — the most
+  expensive place to discover anything. 0027's S5 asserted that "no
+  `factory cost-answer` … bullet renders on **any** packet whose corresponding
+  decision section is empty, **in either renderer**"; an item advanced
+  `plan → blocked` with a `cost breaker:` reason falsifies it in both renderers,
+  because `packet.py:96`/`:98` gate the screen on stage **and** prefix while
+  `:361` gates the verb on prefix alone, and `park_matrix_fixture` cannot build a
+  `blocked` park at all. Scenario wording must name the population the fixtures
+  actually establish, and name an uncovered state as uncovered rather than
+  asserting over it (source:
+  .factory/items/0027-…/reviews/round-1/product.md,
+  .factory/items/0027-…/assurance/impact.json, scripts/factory/lib/packet.py,
+  tests/test_packet.py; authorized: judgement on bid-0144).

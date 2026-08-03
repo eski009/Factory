@@ -50,3 +50,61 @@
   0015's fifth refusal arm left four surfaces stale, and the treatment was
   uneven: S5 got a dated correction, S6 did not (authorized: judgement on
   bid-0126).
+- **A pause's decision screen and its answer verb must come from one
+  predicate.** Two renderers reading two copies of the same condition is how
+  the screen and the verb come to disagree — and it fails in *both* directions:
+  a decision screen with no verb under it, or a verb rendered under a suppressed
+  screen. `packet.py:95-98` computes the cost-screen predicate from `meta`
+  alone while `:331` recomputes an overlapping condition for the verb, and both
+  are called from `:376` and `:559`. Enforce the coupling in code where the
+  predicate can be extracted; assert it in tests where it cannot (authorized:
+  judgement on bid-0138).
+- **A suite whose fixtures all seed one value of a branch key cannot see a
+  branch-key defect.** `tests/test_packet.py:113-137` hardcodes
+  `"stage": "implement"` for every cost-breaker fixture, so ~25 assertions plus
+  the HTML twin exercise a single value of the key the defect lives on: the fix
+  is green-to-green and "the suite passes" carries no signal. The falsifier must
+  be a **coupling invariant over rendered output**, not an enumeration of the
+  stages someone happened to list — and it must be checked in both directions
+  and on the rendered artifact the operator actually reads (authorized:
+  judgement on bid-0141).
+
+## Learned from item 0027 review (2026-08-03)
+
+- **A RECOMMENDED remedy in a spec can be unsound; an implementer declining it
+  is a finding, not an omission.** 0027's spec §3 recommended that the
+  cost-decision screen predicate and the answer-verb arm consume one shared
+  `is_cost_pause(meta)` helper, "so the section and its verb cannot disagree by
+  construction". Applied literally, that helper carries the `waiting-human`
+  conjunct into the verb arm and returns a `blocked` cost pause to the generic
+  `/factory:run` line — the re-dispatch loop triage identified. Review must test
+  a SHOULD for **soundness**, not for compliance; a compliance-only review would
+  have demanded the regression (source:
+  .factory/items/0027-…/reviews/round-1/architecture.md,
+  .factory/items/0027-…/spec.md, scripts/factory/lib/packet.py; authorized:
+  judgement on bid-0145).
+- **Red-first is verifiable after the fact, and review should verify it.**
+  Running the branch's tests against the **base commit's** production code
+  (branch tests, `main` `scripts/factory/lib/*`) turns "the new tests are a
+  falsifier" from an implementer's assertion into a reviewed number. On 0027 it
+  returned 21 of 27 red, and 7 of 11 against a reconstruction of the specific
+  forbidden variant (the `paused_from == "implement"` conjunct deleted in place,
+  leaving the cost arm below the `assure` arm). It also identifies precisely
+  which assertions are vacuous: 0027's AC11 distinctness **count** and its AC6
+  bullet⇒section direction pass unchanged on head, while the `assertNotIn("None",
+  …)` and the anti-shadowing test are what actually go red. Extends bid-0141
+  (source: .factory/items/0027-…/reviews/round-1/engineering-quality.md,
+  .factory/items/0027-…/reviews/synthesis.md; authorized: judgement on
+  bid-0146).
+- **A discharge sweeps the mechanism, not the cited instance.** When a finding
+  names one surface of a mechanism, the fix enumerates every surface that
+  mechanism reaches, and the discharge record states which were checked.
+  Demonstrated by its own violation on 0027: review round 1 named scenario S5
+  as asserting a false universal, the amendment closed S5, and the
+  structurally identical claim in S11 survived one scenario below it — the
+  divergence was never cost-specific (`blocked` + `approach cap:` shows the
+  same section/verb split as `blocked` + `cost breaker:`). Both are now
+  scoped. This is the documentation-side twin of the cloned-defect-class rule
+  (judgement on bid-0121, a walk that finds a defect must bid its known twin)
+  (source: .factory/items/0027-…/reviews/synthesis.md; authorized: judgement
+  on bid-0148).

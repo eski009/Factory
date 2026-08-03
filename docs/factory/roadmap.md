@@ -31,5 +31,35 @@
 - [2] 0025-round-scope-all-rework-gates-implement-c Round-scope all rework gates: implement.completed, review.approved and verify.green accept prior-round evidence (done)
 - [3] 0015-approach-rejected-a-redesign-loop-back-t approach.rejected: a redesign loop back to spec with forbidden approaches recorded (done)
 - [4] 0014-approach-gate-at-plan-judge-convergence- Approach gate at plan: judge convergence before implementation spend (idea)
-- [5] 0018-wall-clock-trigger-arm-catch-the-spend-r Wall-clock trigger arm: catch the spend runaways the churn breaker misses (idea — measured on 0016's own run; sequence after 0016 ships)
 - [-] 0017-factory-scope-engine-validated-scope-nar factory scope: engine-validated scope narrowing as a first-class artifact (idea — split out of 0013; sequence after it ships)
+
+## Cost-control line (0018 triage outcome, 2026-08-03)
+
+<!-- 0018's triage council was unanimous: DON'T BUILD AS SPECIFIED. The AC4
+     calibration replay was run at triage rather than deferred, over every real
+     log.jsonl, and refuted the item's own acceptance criteria arithmetically —
+     AC2 requires firing at 9,499s (0016's first implement pass) while 0015's
+     first implement pass is 10,046s and 0015 shipped clean, so every
+     AC2-satisfying threshold parks healthy work. 0015 also out-spends 0016 on
+     measured tokens (4.01M vs 3.95M), which kills the token re-denomination
+     too. active_seconds is calendar dwell, not work. The problem statement
+     survives; the mechanism does not. 0018 drops p5 -> p8 behind 0027, 0028 and
+     the two replacements below. See .factory/items/0018-*/triage.md. -->
+
+<!-- Amended by 0027's triage council, 2026-08-03: 6/6 BUILD at p2 (unchanged),
+     scope extended beyond the filed one-line change — the fix is branch ORDER,
+     not the branch key, and acceptance is a bidirectional section-to-bullet
+     coupling invariant on rendered HTML. 0028 is ABSORBED into 0027 (6/6);
+     0031 is NOT (6/6 — it amends approved J-002 oracles plus J-001's
+     permitted-diffs enumeration). 0027's ranking reason was also corrected:
+     "HARD dependency of 0018" was a contingent driver (0018's own line below
+     records it as unblocking only if 0030 finds a separating threshold), so the
+     standalone
+     reachability ground now ranks it. See .factory/items/0027-*/triage.md. -->
+
+- [2] 0027-packet-respond-falls-through-to-factory- Packet Respond falls through to /factory:run when a decision pause is parked from an unexpected stage (spec — live defect on shipped main, reachability raised by 0015: the packet renders a full spend-authorisation screen on which cost-answer appears zero times; absorbs 0028; also unblocks 0018 if 0030 revives it)
+- [-] 0028-the-cost-breaker-leaks-a-python-none-rep The cost breaker leaks a Python None repr in its malformed-answer refusal (blocked — absorbed into 0027 as its scope item 4; bid-0129's rework-edges regex residual still owed)
+- [5] 0029-scope-spend-events-a-leaf-vs-fork-discri Scope spend events: a leaf-vs-fork discriminator so measured token totals are trustworthy (idea — the precursor; finally owns bid-0063, the brain's top open question)
+- [6] 0030-measurement-spike-gap-capped-per-pass-at Measurement spike: gap-capped per-pass attributed_seconds, and whether any threshold separates a runaway from healthy work (idea — replaces 0018's build; gates it)
+- [7] 0031-the-cost-packet-s-decision-copy-is-churn The cost packet's decision copy is churn-shaped in four places and its recommendation never reads the verdict reason (idea — standing defect, independent of 0018)
+- [8] 0018-wall-clock-trigger-arm-catch-the-spend-r Wall-clock trigger arm: catch the spend runaways the churn breaker misses (blocked — triage rejected the mechanism; unblocks only if 0030's spike finds a separating threshold)

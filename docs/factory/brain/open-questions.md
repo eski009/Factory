@@ -262,16 +262,30 @@
   (source: .factory/items/0016-…/reviews/synthesis.md; authorized: judgement
   on bid-0079). Resolved by: an engine-side park obligation or a
   breaker-aware blocked packet.
-- **Spend-magnitude runaways remain uncovered after 0016.** The field
-  report's Defect 5 proposed a disjunction (spend-multiple OR rework count);
-  only the rework disjunct shipped. 0016 itself burned ~2.0M measured tokens
-  by its first implement pass (3.0M final) with zero rework edges — its own
-  breaker scores it 0, and nothing on any surface tells the next reader that
-  a non-rework-shaped runaway still burns unnoticed. Item 0018 is the filed
-  fix and is absent from the roadmap; gating on a token figure also waits on
-  the bid-0063 double-count (source: .factory/items/0016-…/reviews/synthesis.md;
-  authorized: judgements on bid-0080, bid-0089). Resolved by: 0018 shipping
-  the wall-clock/spend arm.
+- **Spend-magnitude runaways remain uncovered after 0016, and are now
+  unowned.** The field report's Defect 5 proposed a disjunction (spend-multiple
+  OR rework count); only the rework disjunct shipped. 0016 itself burned
+  1,989,500 measured tokens by its first implement pass (3,949,630 final) with
+  zero rework edges — its own breaker scores it 0, and nothing on any surface
+  tells the next reader that a non-rework-shaped runaway still burns unnoticed
+  (source: .factory/items/0016-…/reviews/synthesis.md; authorized: judgements
+  on bid-0080, bid-0089).
+
+  *Amended 2026-08-03 — this entry previously read "Item 0018 is the filed fix…
+  Resolved by: 0018 shipping the wall-clock/spend arm." That is false.* 0018's
+  triage council was unanimous that it must not be built as specified: no
+  threshold satisfies its own ACs without parking healthy work (0016's first
+  implement pass is 9,499s, 0015's is 10,046s and 0015 shipped clean, and 0015
+  also out-spends 0016 on measured tokens), `active_seconds` measures calendar
+  dwell rather than work, and no engine-authoritative in-stage work meter exists
+  to rescope onto. 0018 is `blocked` at priority 8. **Resolved by:** 0029
+  (`scope-spend-events-a-leaf-vs-fork-discri`) making measured totals
+  trustworthy — it finally owns the bid-0063 nested-dispatch double-count that
+  both 0016 and 0018 cited as a reason not to build the real thing — and 0030
+  (`measurement-spike-gap-capped-per-pass-at`), whose finding determines whether
+  0018 ever unblocks or is closed won't-build (source:
+  .factory/items/0018-…/triage.md, reviews/synthesis.md; authorized: judgement
+  on bid-0136).
 - **Verify rework is structurally uncountable until 0014/0015.**
   `REWORK_FROM` includes `verify` but `machine.advance` admits no
   `verify → implement` transition, so a verify failure ping-pongs through
@@ -485,3 +499,52 @@
   value, so `admit_over_cap` can describe an artifact state that is not the one
   on disk. Not fixed — widening the regex changes which arm fires (authorized:
   judgement on bid-0129).
+- **A `GateError`'s text is not a pause prefix — and that is the mechanism
+  under bid-0079.** `breaker.PAUSE_PREFIX` is `"cost breaker:"`
+  (`breaker.py:24`) while the unanswered refusal reads
+  `"cost breaker unanswered: …"` (`breaker.py:164-168`), which does not match
+  it. On the 0079 route the session dies before the park, dispatch writes
+  `factory advance ITEM blocked` (`skills/factory-dispatch/SKILL.md:48`), and
+  the item is `blocked` with a reason no prefix-keyed packet logic can see —
+  so it falls through to `/factory:run`, which re-dispatches into the same
+  refusal: a loop, not merely a wrong verb. This is why 0027 scoped the 0079
+  route **out**: a reason-keyed selector provably cannot reach it, and widening
+  the stage gate at `packet.py:95` buys nothing because `:97` independently
+  requires the prefix. Merged into the bid-0079 entry as its missing mechanism
+  (source: scripts/factory/lib/breaker.py, skills/factory-dispatch/SKILL.md,
+  .factory/items/0027-…/reviews/synthesis.md; authorized: judgement on
+  bid-0139). Resolved by: the two remedies already recorded for bid-0079 — a
+  refusal that names the packet, or an engine-side park obligation — not by a
+  blocked-packet arm.
+
+- **Unrecognised `<topic>:` pause prefixes still fall through to
+  `/factory:run`.** 0027 fixes the two known answerable prefixes by hoisting
+  reason-prefix arms above stage arms, but a future pause whose prefix no arm
+  recognises lands on the generic action again. Reversible default chosen:
+  status quo — never raise, never guess a verb, since guessing an answer verb
+  for an unknown pause is the false-assurance shape bid-0083 forbids (source:
+  .factory/items/0027-…/spec.md; authorized: judgement on bid-0142). Resolved
+  by: a registry (explicitly ruled out 5/5 at 0027's triage) or a loud
+  unknown-prefix branch, whenever a third answerable pause ships.
+- **`packet.py`'s `breaker.verdict(..., "implement")` is hardcoded.** 0027
+  leaves the argument inert and commented rather than threading the real
+  destination, to stay clear of J-002's `invariance` oracle. Correct for a bug
+  item; recorded so the dead argument is not mistaken for a live one (source:
+  .factory/items/0027-…/spec.md; authorized: judgement on bid-0143).
+
+## Raised by 0027 review council (2026-08-03)
+
+- **What degradation still yields a usable council verdict?** 0027's review
+  council ran with the subagent pool exhausted (200/200), so fan-out was
+  impossible and one reasoner executed all three light-review lenses; round 2
+  was not run. Independence, the delta round and fresh context are all lost that
+  way, and correlated blind spots are not ruled out. Reversible default chosen:
+  **proceed, disclose, and substitute execution for seat count** — record a
+  § Degradation section in the synthesis naming exactly what was lost, and rest
+  the verdict on reproduced experiments rather than on the seat count. This is
+  the zero-diff option; the alternative (refuse to review until the pool frees)
+  stalls the pipeline for a reason unrelated to the work. Resolved by: a
+  measured comparison of orchestrator-played seats against real fan-out on the
+  same diff, or a hard rule that a degraded council may only approve, never
+  reject (source: .factory/items/0027-…/reviews/synthesis.md; authorized:
+  judgement on bid-0147).

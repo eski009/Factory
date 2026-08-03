@@ -412,3 +412,113 @@
   `docs/factory/packets/0015-approach-rejected-a-redesign-loop-back-t-assure.md`;
   shipped packet:
   `docs/factory/packets/reports/0015-approach-rejected-a-redesign-loop-back-t-shipped.md`.
+- **2026-08-03, triage of 0018-wall-clock-trigger-arm (DON'T BUILD AS
+  SPECIFIED, 6/6 unanimous, priority 5 → 8, tier `feature`, kind `backend`
+  confirmed)**: the council's first round returned `build-rescoped` from all six
+  seats; the orchestrator then ran the item's own AC4 calibration replay over
+  every real `log.jsonl` *at triage* rather than deferring it to
+  implementation, and all five recalled seats flipped to don't-build. The replay
+  is arithmetic, not judgement: AC2 required firing at 9,499s (0016's first
+  implement pass) while 0015's first implement pass is 10,046s and 0015 shipped
+  clean, so every AC2-satisfying threshold parks healthy work — and 0015's
+  measured 4,011,314 tokens exceed 0016's 3,949,630, killing the token
+  re-denomination too. `active_seconds` proved to be calendar dwell (0015 booked
+  a single 25,145s overnight gap to active `review`; the top eleven items by
+  `active_seconds` are unstarted `idea` filings, 0016 twelfth). The council added
+  three findings the replay did not have: the arm has **no firing site**
+  (`breaker.verdict` runs only after an accepted transition, and a single-pass
+  runaway makes zero transitions while it burns), **no engine-authoritative work
+  dimension exists**, and there is **no per-arm gate disable**. Ruled
+  unanimously that **0027 is a hard dependency** — the runaway shape never
+  re-enters implement, so the arm must park from a non-implement stage, exactly
+  the branch `packet.py:331` leaves falling through — and 0028
+  adjacent-but-should-precede. The problem statement stays filed; the mechanism,
+  dimension and all six ACs do not. Three items filed out of the triage: **0029**
+  (spend-event leaf/fork scope discriminator — the precursor, and the first owner
+  bid-0063 has had), **0030** (measurement spike that gates 0018), **0031** (the
+  cost packet's churn-shaped decision copy, a standing defect independent of
+  0018). Triage record:
+  `.factory/items/0018-wall-clock-trigger-arm-catch-the-spend-r/triage.md`;
+  council: `…/reviews/synthesis.md`.
+- **2026-08-03, judged 0018's triage bids** (bid-0131…bid-0136, all six
+  accepted): five constraints appended to `brain/constraints.md` — a trigger must
+  be calibratable on the corpus that motivates it (jdg bid-0131);
+  engine-authoritative ≠ meaningful, bid-0064 governs who writes the event and
+  bid-0018 governs what the figure means (bid-0132); a gate with no per-arm
+  disable is a single gate (bid-0133); Factory has no in-stage work meter and no
+  engine-authoritative quantity can become one, so no control can fire before the
+  stage that spent the money ends (bid-0134); a mechanically passable AC set is a
+  liability when the mechanism is unsound, since a green suite converts an
+  unfounded threshold into recorded evidence of correctness (bid-0135). And one
+  correction to `brain/open-questions.md` (bid-0136): the spend-magnitude
+  open question no longer claims 0018 resolves it — that entry was false — and is
+  re-pointed at 0029 and 0030, with its stale token figures refreshed.
+- **2026-08-03, the ParkSnap acceptance test will not be run — human decision.**
+  The day-two field report named it "the only step that proves the batch met
+  its objective" (re-run the ParkSnap p1 bug through the improved pipeline;
+  pass = fix merged AND `factory cost` a small fraction of 4.9M). The human
+  declined to test against that repo. Consequences, recorded rather than
+  quietly dropped:
+  - **The batch's savings claim stays UNMEASURED**, and per the provenance
+    constraint (judgement on bid-0018) it must be carried that way on every
+    surface. Nothing shipped in this batch is evidenced to reduce spend; what
+    is evidenced is that it changes *what the pipeline gates on* (0013), *what
+    it counts* (0025), and *what it can do when a design will not converge*
+    (0015).
+  - **There is no in-repo substitute, and this is now demonstrated rather than
+    assumed.** 0018's triage replay over every real log found the corpus has no
+    separable runaway: 0015 cost 4,011,314 measured tokens against 0016's
+    3,949,630, so the item built *after* the batch outspent the item that
+    motivated it, on both the token and the wall-clock axis. Comparing today's
+    items against 0016 would therefore produce a number, not evidence — and
+    bid-0063's nested double-count means no aggregate is trustworthy in either
+    direction until 0029 lands.
+  - **The batch closes on shipped mechanism, not on measured saving.** Anyone
+    citing these items as a cost win is citing an assumption; the honest claim
+    is that the pipeline now stops on causes it previously ignored.
+
+- **2026-08-03 — 0027's triage council: BUILD at p2, scope extended, 0028
+  absorbed, 0031 not.** Five material findings became brain edits through the
+  ledger firewall:
+  - `constraints.md` gained **the answerable-pause selector rule** — reason-key
+    the verb, and hoist every reason-prefix arm above every stage-keyed arm,
+    because a shadowing stage arm hands over a verb from a *different* pause
+    contract (`factory waive` on an unanswered spend gate, which the engine
+    accepts and ships). Judgement on **bid-0137**.
+  - `constraints.md` gained **"cross-item token comparisons are not measured
+    evidence"**, promoting the 0018-batch observation above from a fact about
+    that batch to a standing provenance rule, and naming the permitted
+    within-item figure (avoided council fan-out). Judgement on **bid-0140**.
+  - `design-principles.md` gained **"one predicate for the decision screen and
+    its answer verb"** (judgement on **bid-0138**) and **"single-valued
+    fixtures cannot see a branch-key defect"**, whose corollary is that
+    acceptance here is a bidirectional coupling invariant over *rendered*
+    output (judgement on **bid-0141**).
+  - `open-questions.md` merged **the mechanism under bid-0079** — a
+    `GateError`'s text is not a pause prefix, so the blocked-after-session-death
+    route is structurally invisible to prefix-keyed packet logic and stays open
+    rather than riding along with 0027. Judgement on **bid-0139**.
+  - Also recorded on the items themselves: 0027's bid-0079 "same defect, fix
+    them together" claim is **struck as false** (the refusal text does not match
+    the prefix), and its "today's measured evidence" bundling premise is
+    restated as a proxy claim. See `.factory/items/0027-…/triage.md`.
+
+- **0027's review council (2026-08-03)** — the branch was **rejected for rework
+  (round 1)** on one high finding, and four material findings were merged into
+  the brain:
+  - `constraints.md` gained **"a declared assurance scenario is a contract, and
+    inherits the false-stronger-contract rule"** — 0027's `impact.json` S5
+    generalised past the population its fixtures can construct, verified false by
+    render against the branch. Judgement on **bid-0144**.
+  - `design-principles.md` gained **"a RECOMMENDED remedy in a spec can be
+    unsound"** — the spec's own §3 `is_cost_pause(meta)` extraction would have
+    regressed a `blocked` cost pause to the `/factory:run` loop, so declining it
+    was correct (judgement on **bid-0145**) — and **"red-first is verifiable
+    after the fact"**, the branch-tests-against-base-production-code check that
+    returned 21/27 red here and named the two vacuous assertions (judgement on
+    **bid-0146**).
+  - `open-questions.md` gained **"what degradation still yields a usable council
+    verdict?"** — this council ran with the subagent pool exhausted, one reasoner
+    playing three lenses and no round 2; the reversible default is proceed,
+    disclose, and rest the verdict on reproduced experiments. Judgement on
+    **bid-0147**.
