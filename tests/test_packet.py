@@ -1,3 +1,4 @@
+import inspect
 import os
 import re
 import tempfile
@@ -15,6 +16,55 @@ from scripts.factory.lib import (cost, initrepo, items, logs, machine, packet,
 # test_rework_figure_pattern_matches_both_surface_forms before this is used to
 # filter anything.
 REWORK_FIGURE_RE = re.compile(r"rework edges: (\d+)|(\d+) rework edges")
+
+# Item 0027. Every pre-existing cost-breaker fixture in this repo parks
+# from a hardcoded `implement` stage, so ~25 assertions about the
+# `## Respond` block hold for a renderer that answers a plan-origin cost
+# pause with `/factory:run` — or, worse, an assure-origin one with
+# `factory waive`. These four names are the parameterisation that makes
+# the origin visible; one definition, imported by test_packet_html.py,
+# on the REWORK_FIGURE_RE precedent above.
+PARKED_FROM = ("implement", "plan", "review", "verify", "assure", "design")
+PARK_REASONS = {
+    "cost": "cost breaker: 2 rework edges (threshold 2)",
+    "approach": "approach cap: 1 redesign(s) used (cap 1)",
+    "none": "the implement skill is unavailable",
+}
+DECISION_VERB = {"cost": "factory cost-answer",
+                 "approach": "factory approach-answer"}
+
+
+def park_matrix_fixture(repo, item_id, paused_from, reason, priority=2):
+    """Park `item_id` at `paused_from` the way production parks — through
+    `machine.advance(..., "waiting-human", reason=...)`, which writes
+    `paused-from`/`paused-reason` itself and appends the `stage.advance`
+    event `## Recent events` dumps (`machine.py:307-308`). Two backward
+    edges into implement are logged first so the cost figures are the
+    engine's, not the fixture's."""
+    os.environ["FACTORY_NOW"] = "2026-08-02T00:00:00Z"
+    items.save_item(repo, {
+        "id": item_id, "title": "Runaway", "stage": paused_from,
+        "kind": "backend", "priority": priority,
+        "created": "2026-08-02T00:00:00Z",
+        "updated": "2026-08-02T00:00:00Z"}, "# Runaway\n")
+    for ts in ("2026-08-02T01:00:00Z", "2026-08-02T02:00:00Z"):
+        os.environ["FACTORY_NOW"] = ts
+        logs.append_event(repo, item_id, "stage.advance",
+                          {"from": "review", "to": "implement"})
+    os.environ["FACTORY_NOW"] = "2026-08-02T06:00:00Z"
+    machine.advance(repo, item_id, "waiting-human", reason=reason)
+
+
+def respond_bullets(markdown):
+    """The bullet lines under `## Respond` that lead with a command."""
+    respond = markdown.split("## Respond\n", 1)[1]
+    return [line for line in respond.splitlines() if line.startswith("- `")]
+
+
+def leading_command(bullet):
+    """The first backtick code span in a `## Respond` bullet — the one
+    command the operator is meant to copy."""
+    return bullet.split("`")[1]
 
 
 class TestPacket(unittest.TestCase):
@@ -946,6 +996,181 @@ class TestJ001Regression(unittest.TestCase):
         for render in (packet.render_packet, packet.render_packet_html):
             text = render(self.repo, "0001-thing")
             self.assertNotIn("Cost decision", text)
+
+
+class TestDecisionSectionAndVerbAreCoupled(unittest.TestCase):
+    """AC1-AC7, AC12, AC15 (item 0027): the bidirectional
+    section-to-bullet invariant, over every (paused-from x reason class)
+    pair the engine can park.
+
+    A decision section and the verb that answers it are two surfaces of
+    one fact. Asserting them separately, each from a fixture that pins
+    one stage, is exactly how the shipped renderer came to show the whole
+    `## Cost decision` screen and then tell the operator to run
+    `/factory:run`.
+    """
+
+    ITEM = "0001-runaway"
+
+    def tearDown(self):
+        os.environ.pop("FACTORY_NOW", None)
+
+    def fresh(self, paused_from, reason_key):
+        """A fresh repo per case: an item can only be parked once, so the
+        matrix cannot share one temp dir."""
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        repo = Path(tmp.name)
+        initrepo.init(repo)
+        park_matrix_fixture(repo, self.ITEM, paused_from,
+                            PARK_REASONS[reason_key])
+        return repo
+
+    def test_matrix_a_rendered_decision_section_implies_its_own_verb(self):
+        """AC5. For every case in which a decision section renders,
+        exactly one `## Respond` bullet renders and its leading command is
+        that section's answering verb."""
+        for paused_from in PARKED_FROM:
+            for reason_key in PARK_REASONS:
+                with self.subTest(paused_from=paused_from,
+                                  reason=reason_key):
+                    repo = self.fresh(paused_from, reason_key)
+                    md = packet.render_packet(repo, self.ITEM)
+                    bullets = respond_bullets(md)
+                    self.assertEqual(len(bullets), 1, bullets)
+                    command = leading_command(bullets[0])
+                    if "## Cost decision" in md:
+                        self.assertTrue(
+                            command.startswith(DECISION_VERB["cost"]),
+                            command)
+                    if "## Redesign decision" in md:
+                        self.assertTrue(
+                            command.startswith(DECISION_VERB["approach"]),
+                            command)
+
+    def test_matrix_a_decision_verb_implies_its_own_section(self):
+        """AC6. No bullet naming `factory cost-answer` renders unless
+        `cost_decision_lines` returned non-empty, and likewise for
+        `factory approach-answer` and `redesign_decision_lines`."""
+        for paused_from in PARKED_FROM:
+            for reason_key in PARK_REASONS:
+                with self.subTest(paused_from=paused_from,
+                                  reason=reason_key):
+                    repo = self.fresh(paused_from, reason_key)
+                    meta, _body = items.load_item(repo, self.ITEM)
+                    md = packet.render_packet(repo, self.ITEM)
+                    bullets = respond_bullets(md)
+                    self.assertEqual(len(bullets), 1, bullets)
+                    command = leading_command(bullets[0])
+                    if command.startswith(DECISION_VERB["cost"]):
+                        self.assertNotEqual(
+                            packet.cost_decision_lines(
+                                repo, self.ITEM, meta), [])
+                    if command.startswith(DECISION_VERB["approach"]):
+                        self.assertNotEqual(
+                            packet.redesign_decision_lines(
+                                repo, self.ITEM, meta), [])
+
+    def test_a_plan_origin_cost_park_names_cost_answer_not_factory_run(self):
+        """AC2. The filed defect: the decision screen renders and the
+        answering verb does not."""
+        repo = self.fresh("plan", "cost")
+        md = packet.render_packet(repo, self.ITEM)
+        self.assertIn("## Cost decision", md)
+        respond = md.split("## Respond\n", 1)[1]
+        bullets = respond_bullets(md)
+        self.assertEqual(len(bullets), 1, bullets)
+        self.assertEqual(
+            leading_command(bullets[0]),
+            "factory cost-answer 0001-runaway <continue|narrow|defer>")
+        self.assertEqual(respond.count("/factory:run"), 0, respond)
+
+    def test_an_assure_origin_cost_park_names_neither_confirm_nor_waive(self):
+        """AC3 — the anti-shadowing guard, and the reason the conjunct is
+        deleted only as part of the hoist.
+
+        `assure` is in `cost.REWORK_FROM` (`cost.py:26`), so this park is
+        reachable. `factory waive` is admitted by `assure.py` and treated
+        as authoritative by `machine.py:584-586`: a fix that merely
+        deleted `paused_from == "implement"` in place, leaving the cost
+        arm below the `assure` arm at `packet.py:327`, would ship the item
+        on an unanswered spend gate — strictly worse than today's
+        fallthrough.
+        """
+        repo = self.fresh("assure", "cost")
+        md = packet.render_packet(repo, self.ITEM)
+        self.assertIn("## Cost decision", md)
+        respond = md.split("## Respond\n", 1)[1]
+        self.assertEqual(len(respond_bullets(md)), 1, respond)
+        self.assertIn("factory cost-answer 0001-runaway", respond)
+        self.assertNotIn("factory confirm", respond)
+        self.assertNotIn("factory waive", respond)
+
+    def test_an_implement_origin_respond_block_is_byte_identical(self):
+        """AC4. The canonical path does not regress."""
+        repo = self.fresh("implement", "cost")
+        md = packet.render_packet(repo, self.ITEM)
+        self.assertEqual(
+            md.split("## Respond\n", 1)[1],
+            "Reply in session, or use the factory CLI to record your "
+            "decision.\n\n- `factory cost-answer 0001-runaway "
+            "<continue|narrow|defer>` — record the cost decision.\n")
+
+    def test_an_approach_cap_park_resolves_to_approach_answer_everywhere(self):
+        """AC12 (J-003 regression). The `approach cap:` arm is already
+        reason-keyed and already first, so the hoist must leave it
+        behaviourally unchanged from every origin."""
+        for paused_from in PARKED_FROM:
+            with self.subTest(paused_from=paused_from):
+                repo = self.fresh(paused_from, "approach")
+                md = packet.render_packet(repo, self.ITEM)
+                respond = md.split("## Respond\n", 1)[1]
+                bullets = respond_bullets(md)
+                self.assertEqual(len(bullets), 1, bullets)
+                self.assertEqual(
+                    leading_command(bullets[0]),
+                    "factory approach-answer 0001-runaway "
+                    "<continue|narrow|defer>")
+                for other in ("factory confirm", "factory waive",
+                              "factory choice", "factory cost-answer",
+                              "/factory:run"):
+                    self.assertNotIn(other, respond)
+
+    def test_every_reason_prefix_arm_precedes_every_stage_keyed_arm(self):
+        """AC1/AC15 — the structural half, read off the source.
+
+        The brain rule (`constraints.md`, judgement on bid-0137): the
+        selector that names a pause's answer verb must be reason-keyed,
+        and every reason-prefix arm must precede every stage-keyed arm.
+        `tests/test_approach.py:752-761` pins the same discipline
+        behaviourally for the sibling prefix; this pins the order itself,
+        so a later edit cannot re-introduce the shadowing without a
+        failing test. The `if` count pins the no-registry constraint:
+        exactly two prefix arms plus two stage arms.
+        """
+        source = inspect.getsource(packet.respond_action_lines)
+        body = source.split('"""', 2)[2]
+        lines = body.splitlines()
+        prefix_arms = [i for i, line in enumerate(lines)
+                       if "reason.startswith(" in line]
+        stage_arms = [i for i, line in enumerate(lines)
+                      if "paused_from ==" in line]
+        self.assertEqual(len(prefix_arms), 2, body)
+        self.assertEqual(len(stage_arms), 2, body)
+        self.assertLess(max(prefix_arms), min(stage_arms), body)
+        cost_arm = [line for line in lines if "breaker.PAUSE_PREFIX" in line]
+        self.assertEqual(len(cost_arm), 1, cost_arm)
+        self.assertNotIn("paused_from", cost_arm[0])
+        self.assertEqual(
+            sum(1 for line in lines if line.strip().startswith("if ")), 4,
+            body)
+
+    def test_the_cost_section_gate_is_not_widened_to_blocked(self):
+        """AC15. `packet.py:95`'s `waiting-human` condition is untouched;
+        the bid-0079 claim was struck at triage as false as written."""
+        source = inspect.getsource(packet.cost_decision_lines)
+        self.assertIn('if meta.get("stage") != "waiting-human":', source)
+        self.assertNotIn("blocked", source)
 
 
 if __name__ == "__main__":

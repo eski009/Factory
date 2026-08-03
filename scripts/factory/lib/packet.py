@@ -314,7 +314,27 @@ def redesign_decision_lines(repo, item_id, meta, summary=None):
 def respond_action_lines(repo, item_id, meta):
     """Exactly one copy-pasteable action, naming the verb that actually
     answers THIS pause. One branch, shared by both renderers, so the HTML
-    can never tell a cost-breaker pause to run /factory:run."""
+    can never tell a cost-breaker pause to run /factory:run.
+
+    The ladder is ordered, and the order is the contract: every
+    reason-prefix arm precedes every stage-keyed arm (brain
+    constraints.md, judgement on bid-0137). A pause whose reason names a
+    topic owns its answering verb no matter which stage it parked from.
+    The cost arm used to carry an additional `paused-from == implement`
+    conjunct; that conjunct is deleted only as part of this hoist, never
+    on its own — deleted in place it would leave the cost arm below the
+    assure arm, and an assure-origin cost park would be answered with
+    `factory confirm` / `factory waive`, which assure.py admits and
+    machine.py:584-586 treats as authoritative, shipping the item on an
+    unanswered spend gate (item 0027 B1). `assure` is in
+    cost.REWORK_FROM, so that shadowing is reachable, not theoretical.
+
+    The `design` and `assure` pauses carry no topic prefix at all, so
+    they legitimately stay stage-keyed; the generic line stays last and
+    is correct only for pauses that need no answer. A pause carrying some
+    future unrecognised topic prefix still falls through to it, on
+    purpose (item 0027 G1): guessing a verb from an arbitrary prefix
+    would re-create exactly the harm above."""
     from . import approach, breaker
     paused_from = meta.get("paused-from")
     reason = meta.get("paused-reason", "")
@@ -322,15 +342,15 @@ def respond_action_lines(repo, item_id, meta):
         return [f"- `factory approach-answer {item_id} "
                 "<continue|narrow|defer>` — record the redesign "
                 "decision."]
+    if reason.startswith(breaker.PAUSE_PREFIX):
+        return [f"- `factory cost-answer {item_id} <continue|narrow|defer>` "
+                "— record the cost decision."]
     if paused_from == "design":
         return [f"- `factory choice {item_id} <option>` — record your pick."]
     if paused_from == "assure":
         return [f"- `factory confirm {item_id}` — or "
                 f'`factory waive {item_id} --reason "..."` to ship with a '
                 "recorded waiver."]
-    if paused_from == "implement" and reason.startswith(breaker.PAUSE_PREFIX):
-        return [f"- `factory cost-answer {item_id} <continue|narrow|defer>` "
-                "— record the cost decision."]
     return ["- `/factory:run` — resume the pipeline."]
 
 
