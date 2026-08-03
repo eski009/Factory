@@ -199,3 +199,97 @@
   followed, so anything gating on it inherits the gaps (source:
   .factory/items/0016-cost-circuit-breaker-on-engine-authorita/reviews/round-1/commercial.md;
   recount over .factory/items/*/log.jsonl; authorized: judgement on bid-0068).
+- **Build order: 0025 lands before 0015, with a binding scoping key.** 0025's
+  round-scoping key must be "evidence postdates the most recent `stage.advance`
+  into implement — any entry, forward or backward", so 0015's redesign path
+  (spec→plan→implement is a fresh entry into implement) inherits full gate
+  re-scoping with zero 0015-side mechanism — one shared postdating primitive,
+  never two. Bundling round-scoping into 0015 is the fallback only if 0025
+  cannot be scheduled ahead; 0015's AC4/AC5 must not be claimed before the
+  scoping holds. 0025 pays for itself independently: it already owns two live
+  shipped defects from 0013's assure walk. **Refined at 0025 triage
+  (jdg-0107): "any entry" means any entry whose `from`-stage is not in
+  `SPECIAL`.** A `waiting-human`/`blocked` resume returns only to
+  `paused-from` (machine.py:454-455), so a SPECIAL→implement edge exists
+  only for items parked at implement and provably resets nothing; counting
+  it would falsely invalidate `implement.completed` for unchanged code
+  after an advisory pause (the bid-0079/0098 miss-path class) and would
+  contradict the breaker's round key — cost.py's `REWORK_FROM` already
+  ratifies "resumes must not inflate the count". The exclusion is expressed
+  via the existing `SPECIAL` set inside the one shared primitive, never
+  per-gate from-stage enumeration (source:
+  .factory/items/0015-approach-rejected-a-redesign-loop-back-t/reviews/round-2/architecture.md;
+  .factory/items/0015-approach-rejected-a-redesign-loop-back-t/reviews/round-2/engineering-quality.md;
+  docs/factory/packets/reports/0013-assure-attribution-gate-only-on-regressi-shipped.md;
+  .factory/items/0025-round-scope-all-rework-gates-implement-c/reviews/round-2/engineering-quality.md;
+  scripts/factory/lib/machine.py; scripts/factory/lib/cost.py;
+  authorized: judgements on bid-0096, bid-0107).
+- **New gate caps join the engine-edge substrate** (rule instance of bid-0064,
+  bound at 0015 triage): `MAX_APPROACH_REJECTIONS` and the `verify -> implement`
+  rework cap count engine-written backward `stage.advance` edges — the substrate
+  `cost.summarize` already reads, whose `REWORK_FROM` pre-lists verify — never
+  skill-logged events. The existing event-counted caps (machine.py:459,462,
+  counting skill-logged `review.rejected`/`assure.rejected`, which never fired
+  on the ParkSnap run) remain a named live defect no new spec may copy;
+  "mirroring review -> implement" in 0015 AC4 means edge shape, not count
+  substrate. Guard tests red-first in the failing form against the production
+  advance path (source:
+  .factory/items/0015-approach-rejected-a-redesign-loop-back-t/reviews/synthesis.md;
+  scripts/factory/lib/machine.py; scripts/factory/lib/cost.py;
+  authorized: judgement on bid-0097).
+- **An engine-auto-written cost-answer is a pause-consuming miss-path** (refines
+  the bid-0065/0079 contracts): breaker coverage is `answered_at >= edges`
+  (breaker.py:100-106) and the breaker fires on the next advance into
+  implement, so a post-redesign spec→plan→implement entry is exactly where an
+  owed uncovered-spend pause surfaces — an auto-answer written by any
+  transition (e.g. an `approach.rejected` edge recording its own coverage)
+  would silently consume that pause. Redesign cost-answer coverage comes from
+  an operator-recorded answer or a bid-0065-contracted pause, never an
+  engine-auto-written answer; and breaker `rework_edges` is cumulative spend,
+  never reset by a redesign (source:
+  .factory/items/0015-approach-rejected-a-redesign-loop-back-t/reviews/round-2/engineering-quality.md;
+  .factory/items/0015-approach-rejected-a-redesign-loop-back-t/reviews/round-2/architecture.md;
+  scripts/factory/lib/breaker.py;
+  authorized: judgement on bid-0098).
+- **A postdating migration covers every postdating site, or "one shared
+  primitive, never two" ships false** (instance extending bid-0064/0096,
+  bound at 0025 triage): the sites are not only the three entry gates —
+  `_gate_ship`'s main key is skill-logged `implement.completed`
+  (machine.py:407); `_gate_ship`'s `journeys == "none"` early-return
+  (machine.py:403-405) checks a lifetime `verify.green`, so left untouched
+  a journeys-none item still ships on a prior round's verification of
+  different code (silent exclusion is a bid-0054 waiver); and
+  `assure.py:42` (`record_confirmation`) independently compares
+  `assure.passed` against skill-logged `implement.completed`. 0025's spec
+  must enumerate every postdating comparison and route all through the one
+  shared helper (source: scripts/factory/lib/machine.py;
+  scripts/factory/lib/assure.py;
+  .factory/items/0025-round-scope-all-rework-gates-implement-c/reviews/synthesis.md;
+  authorized: judgement on bid-0108).
+- **A refusal that names an answer verb must also reach the packet.** The
+  five-part `waiting-human` pause contract (bid-0065) assumes the park
+  happens; it does not require the *refusal* to mention the decision screen.
+  Both answerable pauses shipped so far fail that way: the engine refuses and
+  names its verb (`factory approach-answer`, `factory cost-answer`) while
+  parking and packet rendering are a separate `factory-dispatch`-issued
+  advance. An operator who follows the refusal's own instruction literally
+  reaches the commitment point — authorising a further item's worth of
+  unwatched spend — with the tradeoff screen never rendered. Everything the
+  J-003/J-002 contracts build at their decision node hangs on dispatch
+  interposing. Second instance of the bid-0079 miss-path shape (a session
+  death between firing and park reaches the same place by another route), so
+  it is a pattern: any refusal naming an answer verb must name the packet
+  too, or the engine must park itself (source:
+  .factory/items/0015-approach-rejected-a-redesign-loop-back-t/assurance/transcripts/J-003/S2.txt,
+  S7.txt; authorized: judgement on bid-0119).
+- **An acceptance criterion that names a repo artifact must be satisfied by
+  something the merge carries.** Nothing in the pipeline guarantees that
+  journey-registry artifacts required by an item's ACs are committed: 0015's
+  AC21 requires a J-003 entry in `graph.json`, its `inventory.md` line and its
+  contract file, and at review time the contract was *untracked* on main with
+  the other three modified-but-uncommitted — none of them on the branch. Assure
+  walked a contract the merge would not carry, and two review seats contradicted
+  each other purely because one read the worktree and one read main. Ship must
+  verify AC-named artifacts are committed, or the AC ships unmet (source:
+  .factory/items/0015-…/reviews/round-3/walk.md; authorized: judgement on
+  bid-0122).

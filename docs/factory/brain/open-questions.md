@@ -350,3 +350,138 @@
   (source: .factory/items/0013-assure-attribution-gate-only-on-regressi/reviews/round-1/engineering-quality.md;
   authorized: judgement on bid-0092). Resolved by: folding (a)/(b) into the
   next test-touching item; (c) is the bid-0063/engine-substrate question.
+
+## Raised by 0015's spec (2026-08-02) — recorded assumptions, all reversible
+
+- **Forbidden-approaches artifact path:** `.factory/items/<id>/approaches/forbidden.md`,
+  mirroring cost/, design/, assurance/ (authorized: judgement on bid-0099).
+- **Approach-cap answer verb/artifact:** `factory approach-answer <id>
+  <continue|narrow|defer>` writing `approaches/answer.md`, event
+  `approach.answered` — second instance of the `<topic>-answer` precedent
+  (bid-0072) (authorized: judgement on bid-0100).
+- **Edge request path:** skills request the `approach.rejected` edge via the
+  existing `factory advance <id> spec --reason` verb; identification by edge
+  shape, reason recorded never parsed (bid-0086 discipline) (authorized:
+  judgement on bid-0101).
+- **Forbidden artifact lifecycle:** append-only, one dated entry per redesign,
+  exempt from all fresh-round cleanups (authorized: judgement on bid-0102).
+- **Forbidden entry minimum content:** ts + rejecting stage + approach
+  paragraph + repo-relative evidence paths; engine asserts non-emptiness only
+  (bid-0053 boundary) (authorized: judgement on bid-0103).
+- **Continue-at-cap semantics:** 0016's monotone watermark generalised — a
+  recorded answer covering the current edge count admits exactly one more
+  edge; engine treats all answers identically; dispatch routes on the option
+  — third instance of the bid-0071/0073 seams (authorized: judgement on
+  bid-0104).
+- **Spec-freshness token:** skill-logged `spec.revised` event used
+  fail-closed (absence blocks loudly); ui/mixed old-design-choice residual
+  named as a non-goal (authorized: judgement on bid-0105).
+
+- **Stale file evidence survives event round-scoping (0025 residual).**
+  Round-scoped gates scope EVENT evidence to the latest non-SPECIAL entry into
+  implement, but file evidence (e.g. `_gate_verify`'s reviews/synthesis.md)
+  stays a presence/non-emptiness check — a rework round can advance past
+  review on a fresh `review.approved` while synthesis.md is round-1's bytes
+  (source: .factory/items/0025-…/spec.md Assumptions; authorized: judgement on
+  bid-0109). Resolved by: file-evidence freshness (mtime/sha keyed to round)
+  if the residual ever ships a stale artifact.
+- **B2 refusal-shape scope (0025).** The stale-evidence sentence shape binds
+  the four rework gates' refusals; `_gate_ship`'s `assure.confirmed` refusal
+  and `record_confirmation`'s nothing-to-confirm refusal are out of scope —
+  neither asserts "not logged", so neither is provably false under bid-0083
+  (source: .factory/items/0025-…/spec.md; authorized: judgement on bid-0110).
+
+- **Stale-waiver refusal has no specific message or test (0025 review F1).**
+  A waiver-only round followed by rework refuses at ship with the incumbent
+  generic message — the waiving human gets no signal their specific waiver
+  went stale. Named extension of the bid-0110 refusal-shape boundary;
+  recommended before 0015 ships its pause surfaces (authorized: judgement on
+  bid-0111).
+- **Red-run evidence should be stored, not just reproducible.** 0025's
+  red/green split is structurally reproducible (tests-only first commit) but
+  whether the red run was executed is UNSOURCED; store the executed red tail
+  as an artifact the way green evidence is stored (authorized: judgement on
+  bid-0112).
+- **Engine-written markers are honor-system.** The round-marker predicate
+  matches `stage.advance` purely by payload and cannot distinguish an
+  engine-written marker from a `factory log`-appended one — bid-0064's
+  engine-written-never-skill-logged language overpromises what the substrate
+  enforces (authorized: judgement on bid-0113). Resolved by: a writer-source
+  discriminator if fabricated markers ever bite.
+
+## Raised by 0015's review council (2026-08-03)
+
+- **Second cap exhaustion escapes the pause contract (HIGH; follow-up must be
+  filed before 0015 ships).** Only the absent-answer refusal carries the
+  `approach cap:` prefix dispatch parks on; the stale/malformed refusals do
+  not, so the first rejection after every recorded `continue` lands in bare
+  `blocked` with no `## Redesign decision` packet — contradicting 0015 B5.
+  Fix is a spec §7 amendment deciding second-exhaustion routing once for BOTH
+  watermark artifacts (approach cap and cost breaker): prefix all three
+  refusals AND consume `approaches/answer.md` at resume/admit so no stale
+  `continue` can thrash dispatch step-0 — never watermark arithmetic in
+  dispatch prose. Bundle with the review/assure route prose (the loop is
+  prose-reachable only from verify), factory-review's now-false "lifetime"
+  sentence, and the step-0 clause restructure (authorized: judgement on
+  bid-0114).
+- **`redesign_decision_lines` forks the bid-0066/0077 rendering rules.** A
+  second hand-maintained copy of `cost_decision_lines`' backlog/recommendation
+  logic (already bid-amended once), plus disagreeing zero-edge defaults for
+  the `[proxy]` population strings (packet.py:73 `0` vs :221-222 cumulative
+  fallback). Shared-helper extraction must land before any further amendment
+  to the 0016 rendering rules, folding the degenerate-fallback mislabel; the
+  zero-edge default disagreement alone is a pre-merge one-liner (authorized:
+  judgement on bid-0115).
+- **Watermarks accept any covering value, not exact match.** Both artifacts
+  admit a hand-edited high watermark (`- redesigns: 99` / breaker
+  `answered_at >= edges`), indefinitely defeating the lifetime cap; an
+  exact-match check closes the runaway-spend hole in both — fold into the
+  bid-0114 spec amendment's scope (authorized: judgement on bid-0116).
+- **Private-helper promotion trigger has fired (0025 F4, second accretion).**
+  `approach.py:16` imports underscore-private `machine._approach_edges`
+  alongside assure.py's `_postdates_latest_implement` import; answer the
+  promote-to-public question (public names or a small machine query surface)
+  in a follow-up before a third instance — the bid-0114 fix touches the same
+  modules and is the natural carrier (authorized: judgement on bid-0117).
+
+- **The redesign loop is undiscoverable from review and assure (0015 review,
+  product seat).** 0015 ships the `approach.rejected` edge, but only
+  factory-verify and factory-dispatch prose route to it: factory-review and
+  factory-assure SKILL.md mention neither `approach`, `forbidden` nor
+  `redesign`, and their over-cap refusals still terminate in "move item to
+  blocked". The motivating incident (ParkSnap) burned its tokens in the
+  **review** loop, so the loop's primary entry points may never fire —
+  spec-compliant, since AC11 bound only the verify refusal (source:
+  .factory/items/0015-…/reviews/attempt-1/round-1/product.md; authorized:
+  judgement on bid-0118). Resolved by: extending the redesign-route and
+  graveyard-authoring prose to factory-review/factory-assure (or the
+  dispatcher's generic failure rule) and rewording the two pinned cap
+  refusals at their next re-pin — before the ParkSnap acceptance test leans
+  on this loop.
+
+## Raised by 0015's rework review (2026-08-03)
+
+- **A corrected assure verdict un-counts nothing.** `factory log` accepts
+  `assure.verdict_corrected` unvalidated, no engine code reads it, and
+  `MAX_ASSURE_REJECTIONS` never discounts a superseded `assure.rejected` — so a
+  false-positive assure fail permanently consumes an irrecoverable rework slot.
+  Live instance: 0015's S5 fail was corrected to pass after three-way
+  verification, and the rework edge it caused still counts against the cost
+  breaker (source: this item's log; authorized: judgement on bid-0124).
+  Resolved by: making the correction event consequential, or accepting that
+  corrections are documentation-only and saying so.
+- **Review depth should key on the round's change class, not only item tier.**
+  `council-review` is binary on tier, so 0015's two-file message-only rework
+  delta paid the same six-seat council as its nine-commit base. Directly on
+  point for item **0026** (complexity-scored bug flow, filed by the human
+  2026-08-02) — its triage should read this as evidence (authorized: judgement
+  on bid-0125).
+- **The spec-exit gate's both-unmet → both-satisfied repair cycle is
+  untested.** AC8's claim is an operator outcome (fix both, exit in one
+  advance); the delta's new test refutes only the message half (authorized:
+  judgement on bid-0128).
+- **`approach.read_answer` collapses distinctions its docstring says it never
+  judges:** `_ANSWER_RE`'s `(\S+)` silently rejects any whitespace-bearing
+  value, so `admit_over_cap` can describe an artifact state that is not the one
+  on disk. Not fixed — widening the regex changes which arm fires (authorized:
+  judgement on bid-0129).

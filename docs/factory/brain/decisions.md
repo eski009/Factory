@@ -380,3 +380,35 @@
   non-SPECIAL-`from` `stage.advance` into implement, fail-closed with a
   distinct stale-evidence refusal. Assure passed round 1, 0 non-blocking
   fails; merged-tree suite 838 tests OK. Branch deleted.
+- **2026-08-03, judged 0015's review-council bids** (bid-0114 accepted HIGH,
+  bid-0115, bid-0116, bid-0117 all accepted): four entries added under
+  open-questions.md "Raised by 0015's review council (2026-08-03)" — the
+  second-exhaustion escape from the B5 pause contract (spec §7 amendment,
+  both watermark artifacts, follow-up filed before 0015 ships), the
+  cost-decision rendering fork with its extraction trigger, the
+  covering-vs-exact watermark hardening, and the fired private-helper
+  promotion trigger (0025 F4, second accretion). Review verdict: APPROVE
+  WITH FINDINGS, unanimous, 0 blocking. Full synthesis:
+  `.factory/items/0015-approach-rejected-a-redesign-loop-back-t/reviews/synthesis.md`.
+- **2026-08-03, shipped 0015-approach-rejected-a-redesign-loop-back-t**
+  (mode `auto`, merge commit `9cd4190`, branch head `5fea92c`, 11 commits,
+  branch deleted): the `approach.rejected` redesign edge back to spec —
+  artifact-gated and lifetime-capped on engine-written edges, the
+  round-scoped spec-exit gate, `factory approach-answer` with its watermark
+  artifact and single-writer log guard, and the packet's Redesign decision
+  tradeoff block with dual populations. J-003 registered and J-002's
+  one-rework-figure and gate-off oracles amended in the same close-out
+  (AC21, commit `e617660`). Merged-tree suite 884 tests OK, exit 0, twice
+  consecutively. **Three disclosures.** (1) The shipped head `5fea92c` lands
+  one commit after the review council approved `18a02b0`: it implements the
+  council's own verbatim converged remedy (judgement on bid-0127, specified
+  by three seats) and was not re-adjudicated by them; verify round 2
+  exercised all five refusal arms at this head. (2) Assure round 2 passed
+  13/13 with **two reviewer fail verdicts re-scored by the orchestrator**
+  (J-003/S2 and J-001/S13) — both disclosed in the assure packet, the
+  run-manifest and the verdict notes, with the reviewers' originals
+  preserved. (3) Findings routed onward to **0027** (p2, newly reachable via
+  this item) and **0028**. Assure packet:
+  `docs/factory/packets/0015-approach-rejected-a-redesign-loop-back-t-assure.md`;
+  shipped packet:
+  `docs/factory/packets/reports/0015-approach-rejected-a-redesign-loop-back-t-shipped.md`.

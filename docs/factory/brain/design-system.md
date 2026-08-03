@@ -29,3 +29,14 @@
   artifact-existence booleans). New human-facing artifacts must follow it
   (source: .factory/items/0001-focus-group-research-structured-intervie/reviews/round-1/ui-taste.md;
   authorized: judgement on bid-0003).
+
+- **Missing-field refusals name the field with a single-token metavar**, never
+  by respelling the whole value grammar: `no '- answer: <option>' line`, not
+  `no '- answer: <continue|narrow|defer>' line` — the enum already repeats in
+  the shared retry clause, so respelling it renders the same 24 characters
+  twice on one line. House pattern: `no '- redesigns: N' line`,
+  `no '- rework-edges: N' line`. Note the field name alone (`no '- answer:'
+  line`) is *not* the fix: a literal paste of `- answer:` fails the value
+  regex and re-fires the same arm with a byte-identical message, an unbreaking
+  loop (source: .factory/items/0015-…/reviews/round-3/; authorized: judgement
+  on bid-0127).
