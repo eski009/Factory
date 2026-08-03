@@ -348,6 +348,14 @@ class TestApproachAnswer(ApproachTest):
         # value, which leaked a Python None repr to the operator. The
         # out-of-enum arm still names the recorded value, and the two
         # stay pairwise distinct.
+        #
+        # bid-0127: the field is named with the house `<option>` metavar
+        # (packet.py's `factory choice <id> <option>`), not a second copy
+        # of the enum the retry clause already spells out ~20 chars
+        # later. `<option>` and not a bare `- answer:` - a literal paste
+        # of `- answer:` fails the value regex and re-fires THIS arm with
+        # a byte-identical message, an unbreaking loop; `<option>` moves
+        # the operator on to a distinct arm.
         self.make_item()
         self.redesign()
         self.walk_to("review")
@@ -359,8 +367,11 @@ class TestApproachAnswer(ApproachTest):
             machine.advance(self.repo, ITEM, "spec",
                             reason="approach.rejected: x")
         missing = str(ctx.exception)
-        self.assertIn("no '- answer: <continue|narrow|defer>' line", missing)
+        self.assertIn("no '- answer: <option>' line", missing)
         self.assertNotIn("None", missing)
+        # The enum is spelled out exactly once on the line - in the retry
+        # clause - never twice.
+        self.assertEqual(1, missing.count("continue|narrow|defer"))
         p.write_text("- answer: yolo\n- redesigns: 1\n", encoding="utf-8")
         with self.assertRaises(machine.GateError) as ctx:
             machine.advance(self.repo, ITEM, "spec",

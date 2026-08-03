@@ -75,9 +75,16 @@ def admit_over_cap(repo, item_id, edges):
         # otherwise leaks a Python None repr to the operator (assure
         # round 1, J-003/S6 arm A). Distinct from the out-of-enum arm
         # below, which still names what was actually recorded.
+        #
+        # The metavar is the house `<option>` (bid-0127), not a second
+        # copy of the enum `retry` already spells out ~20 chars later.
+        # It is not the bare `- answer:` either: a literal paste of that
+        # fails the value regex and re-fires this same arm with a
+        # byte-identical message, an unbreaking loop - `<option>` reads
+        # as a placeholder and moves the operator to a distinct arm.
         raise GateError(
-            "approach answer malformed: no "
-            "'- answer: <continue|narrow|defer>' line; " + retry)
+            "approach answer malformed: no '- answer: <option>' line; "
+            + retry)
     if answer["answer"] not in ANSWERS:
         raise GateError(
             f"approach answer malformed: recorded option "
