@@ -9,9 +9,9 @@ import sys
 if __package__ in (None, ""):
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod, breaker
+    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod, breaker, approach
 else:
-    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod, breaker
+    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod, breaker, approach
 
 
 def _require_factory_repo(repo):
@@ -209,9 +209,11 @@ def cmd_log(args):
         except json.JSONDecodeError as exc:
             print(f"--data is not valid JSON: {exc}", file=sys.stderr)
             return 1
-    if args.event in ("assure.waived", "assure.confirmed", "cost.answered"):
+    if args.event in ("assure.waived", "assure.confirmed", "cost.answered",
+                      "approach.answered"):
         print(f"{args.event} is written only by its human verb "
-              "(factory waive / factory confirm / factory cost-answer)",
+              "(factory waive / factory confirm / factory cost-answer / "
+              "factory approach-answer)",
               file=sys.stderr)
         return 1
     try:
@@ -336,6 +338,17 @@ def cmd_cost_answer(args):
     try:
         path = breaker.record_answer(args.repo, args.item, args.answer,
                                      notes=args.notes)
+    except (machine.GateError, items.ItemError) as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    print(path)
+    return 0
+
+
+def cmd_approach_answer(args):
+    try:
+        path = approach.record_answer(args.repo, args.item, args.answer,
+                                      notes=args.notes)
     except (machine.GateError, items.ItemError) as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 2
@@ -567,6 +580,13 @@ def main(argv=None):
     p.add_argument("answer", choices=list(breaker.ANSWERS))
     p.add_argument("--notes")
     p.set_defaults(func=cmd_cost_answer)
+
+    p = sub.add_parser("approach-answer",
+                       help="record the human's redesign-cap decision")
+    p.add_argument("item")
+    p.add_argument("answer", choices=list(approach.ANSWERS))
+    p.add_argument("--notes")
+    p.set_defaults(func=cmd_approach_answer)
 
     p = sub.add_parser("waive",
                        help="record a human assurance waiver (requires a reason)")

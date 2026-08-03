@@ -25,6 +25,11 @@ TOKEN_KEYS = ("input", "output", "total")
 # deliberately absent: resumes must not inflate the count.
 REWORK_FROM = frozenset({"review", "assure", "verify"})
 REWORK_TO = "implement"
+# Item 0015: the redesign firing set - aliased from the one declaration
+# in machine.py, the way breaker.py aliases cost.REWORK_FROM (the alias
+# direction is dictated by the import graph: cost imports machine).
+APPROACH_FROM = machine.APPROACH_FROM
+APPROACH_TO = machine.APPROACH_TO
 REWORK_SUBSTRATE_NOTE = (
     "backward stage.advance edges (review|assure|verify → implement); "
     "rework routed through waiting-human is not counted")
@@ -79,6 +84,8 @@ def summarize(repo, item_id):
     waiting = 0
     advances = 0
     rework_edges = 0
+    approach_edges = 0
+    rework_since_redesign = 0
     start = None
     prev = None
     current_stage = "idea"
@@ -107,6 +114,15 @@ def summarize(repo, item_id):
         if (data.get("from", current_stage) in REWORK_FROM
                 and data["to"] == REWORK_TO):
             rework_edges += 1
+            rework_since_redesign += 1
+        if (data.get("from") in APPROACH_FROM
+                and data["to"] == APPROACH_TO):
+            # Item 0015 SS6: the redesign boundary. approach_edges is
+            # lifetime; rework_since_redesign restarts here. The
+            # cumulative rework_edges above is deliberately untouched -
+            # the breaker measures spend across redesigns (B4).
+            approach_edges += 1
+            rework_since_redesign = 0
         current_stage = data["to"]
         prev = ts
         if current_stage not in WAITING_STAGES and not resumed:
@@ -155,7 +171,7 @@ def summarize(repo, item_id):
             _bucket(stages, stage)["proxy_events"] += 1
 
     active = sum(b["active_seconds"] for b in stages.values())
-    return {
+    summary = {
         "item": item_id,
         "window": {
             "start": _fmt(start) if start is not None else now,
@@ -174,6 +190,14 @@ def summarize(repo, item_id):
         "invalid_spend_events": invalid,
         "corrupt_log_lines": corrupt,
     }
+    if approach_edges:
+        # Present only on redesigned items: a zero-approach item's
+        # summary - and every byte derived from it (status --json,
+        # packets, cost --json) - stays identical to the pre-change
+        # engine (item 0015 AC20; J-001 byte-identity regression).
+        summary["approach_edges"] = approach_edges
+        summary["rework_edges_since_last_redesign"] = rework_since_redesign
+    return summary
 
 
 def format_duration(seconds):

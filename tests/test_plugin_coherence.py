@@ -240,6 +240,42 @@ class TestPluginCoherence(unittest.TestCase):
         self.assertIn("Factory never ignores a failure; it files it.", text)
         self.assertIn("packets/reports", text)
 
+    def test_dispatcher_parks_and_resumes_on_the_approach_cap(self):
+        """Item 0015 AC16.4: the park rule, the loop/item-step split,
+        and the recorded-option routing live in dispatcher prose - the
+        engine never routes on which answer was recorded."""
+        text = read(ROOT / "skills/factory-dispatch/SKILL.md")
+        self.assertIn("approach cap:", text)
+        self.assertIn("factory approach-answer", text)
+        self.assertIn("approaches/answer.md", text)
+        self.assertIn("- answer: continue", text)
+        self.assertIn(
+            'factory advance ITEM waiting-human --reason "approach cap:',
+            text)
+        park = text.split("approach cap: <n> redesign", 1)[1]
+        self.assertIn("loop", park)
+        self.assertIn("item", park)
+        self.assertIn("step", park)
+
+    def test_verify_failures_route_to_a_remedy_not_a_park(self):
+        """Item 0015 AC13: a verify failure with a named remedy routes
+        factory advance ITEM implement; a non-convergent design writes
+        the graveyard and routes the redesign edge."""
+        dispatch_text = read(ROOT / "skills/factory-dispatch/SKILL.md")
+        verify_text = read(ROOT / "skills/factory-verify/SKILL.md")
+        self.assertIn("factory advance ITEM implement", dispatch_text)
+        self.assertIn("approaches/forbidden.md", verify_text)
+        self.assertIn("approach.rejected", verify_text)
+        self.assertIn("factory advance ITEM implement", verify_text)
+
+    def test_spec_skill_reads_graveyard_and_logs_spec_revised(self):
+        """Item 0015 SS4 residual: the required read is skill prose plus
+        the fail-closed spec.revised token - nothing engine-side can
+        verify comprehension, so the prose must exist."""
+        text = read(ROOT / "skills/factory-spec/SKILL.md")
+        self.assertIn("approaches/forbidden.md", text)
+        self.assertIn("spec.revised", text)
+
 
 if __name__ == "__main__":
     unittest.main()

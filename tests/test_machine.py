@@ -748,14 +748,27 @@ class TestCostBreakerSeam(MachineTest):
                / "scripts/factory/lib/machine.py").read_text(encoding="utf-8")
         self.assertIn("MAX_REVIEW_REJECTIONS = 2", src)
         self.assertIn("MAX_ASSURE_REJECTIONS = 2", src)
+        # Pin updated by item 0015 Task 3 (round-scoping); intent
+        # preserved: event substrate (review.rejected/assure.rejected,
+        # never edges) + `> MAX` semantics stay byte-frozen.
         self.assertIn(
             '    elif frm == "review" and to == "implement":\n'
-            '        if logs.count_events(repo, item_id, "review.rejected") '
+            '        # Round-scoped to the latest approach.rejected edge '
+            '(item 0015\n'
+            '        # SS6): substrate unchanged - skill-logged '
+            'review.rejected\n'
+            '        # events, the named 0016-L2 defect, deliberately not '
+            'migrated.\n'
+            '        events = logs.read_events(repo, item_id)\n'
+            '        _n, last = _approach_edges(events)\n'
+            '        if _count_after(events, "review.rejected", last) '
             '> MAX_REVIEW_REJECTIONS:\n'
             '            raise GateError("review rejected too many times; '
             'move item to blocked")\n'
             '    elif frm == "assure" and to == "implement":\n'
-            '        if logs.count_events(repo, item_id, "assure.rejected") '
+            '        events = logs.read_events(repo, item_id)\n'
+            '        _n, last = _approach_edges(events)\n'
+            '        if _count_after(events, "assure.rejected", last) '
             '> MAX_ASSURE_REJECTIONS:\n'
             '            raise GateError("assurance rejected too many times; '
             'move item to blocked")\n', src)
