@@ -539,3 +539,34 @@
   reprs in packet copy). The hardcoded-`implement` continue-consequence finding
   was routed onward to **0031** (p3). Shipped packet:
   `docs/factory/packets/reports/0027-packet-respond-falls-through-to-factory--shipped.md`.
+- **2026-08-03, triage of 0026 (BUILD-RESCOPED 6/6, priority 3, tier `feature`,
+  kind `backend`):** the human-filed "complexity-scored bug flow" was affirmed on
+  its problem statement and **refused on its mechanism, unanimously**. Both halves
+  cut 6/6: the **1–5 numeric complexity score** (every depth axis is a named enum;
+  a bare integer beside three provenance-tagged packet figures reads as the most
+  authoritative and is the least grounded — bids 0018/0066/0077) and **"bugs run a
+  subset of the pipeline"** (`machine.stage_sequence` grows no arms; gates chain on
+  the previous stage's event, so every drop strands the next gate, and the sole
+  precedent `journeys: none` needed a hand-written `_gate_ship` bypass). The
+  score's fatal flaw is that it is a **prediction at intake**: 0027 was filed as a
+  one-line change and its own triage found the naive one-liner *strictly worse
+  than the defect*; it shipped as 66 lines across two files. The item's headline
+  cost premise was **refuted at triage** — 0027's cited 403,895 assure tokens are
+  100% pool-exhaustion rework at the `node` floor, and a malfunctioned council
+  cost 1,499,591 against 135,475 for a complete 9-seat fan-out (judgement on
+  bid-0153). What survives, in order: **routing** (make `/factory:bug` reachable
+  from `commands/add.md`, shipped as one unit with the roadmap write and a triage
+  receipt), then an **engine-written depth recorder**, then **bid-0125** review
+  depth keyed on the round's change class — *computed from the round's diff at the
+  review gate, never predicted*. **Assure and verify depth are OUT, binding 5/5**
+  (bid-0124: an assure error is irrecoverable where a review error costs a round).
+  `factory add --tier bug` must **not** imply `bug: true` (4/5, judgement on
+  bid-0149). 0029 is **not** 0026's precursor — the reverse holds on the recorder
+  half. constraints.md gained five rules (judgements on bids 0149, 0150, 0152,
+  0153, 0154); open-questions.md gained four entries and a re-pointed bid-0042
+  (judgements on bids 0151, 0155, 0156, 0157). One item filed:
+  **0032-dispatch-resilience-pool-exhaustion-and-**. This triage also logged the
+  corpus's **first `"stage": "triage"` spend event** (197,539 measured tokens),
+  acting on bid-0152 rather than only recording it
+  (source: .factory/items/0026-complexity-scored-bug-flow-bugs-run-a-su/triage.md;
+  .factory/items/0026-complexity-scored-bug-flow-bugs-run-a-su/reviews/synthesis.md).

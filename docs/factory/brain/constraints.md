@@ -405,3 +405,67 @@
   .factory/items/0027-…/reviews/round-1/product.md,
   .factory/items/0027-…/assurance/impact.json, scripts/factory/lib/packet.py,
   tests/test_packet.py; authorized: judgement on bid-0144).
+- **`tier` and `bug` are deliberately orthogonal and must never be coupled.**
+  `tier` is a **materiality** claim; `bug` is an **evidence** claim. The split is
+  documented inline in shipped engine code — `scripts/factory/lib/assure.py:63-65`
+  (from 0013 §7): *"Filed items are stage idea, kind backend, tier bug, with NO
+  priority … and NO 'bug' flag (setting it would engage `_gate_plan`'s repro gate
+  on an item nobody replicated)"* — and restated at `skills/factory-bug/SKILL.md:23`.
+  Coupling them, at write time or as a read-time derivation, would give
+  `bug: true` two contradictory semantics in one codebase, because engine-filed
+  defects (`assure.file_base_defect`) bypass `cmd_add` entirely — so the flag
+  would come to mean "arrived via a particular door," the bid-0083
+  false-stronger-contract shape pointed the other way. Live counterexample:
+  **0023** is `tier: bug` and is an omnibus of ~15 furniture advisories with no
+  single failing command; fail-closed arming strands it permanently behind
+  `_gate_plan` (`machine.py:529-533`), which has no waiver path. Bound rule:
+  `/factory:bug` sets **both** fields (it confirms a repro, which is what makes
+  the flag evidence); `factory add --tier bug` sets **tier only** and *routes*
+  (source: scripts/factory/lib/assure.py; skills/factory-bug/SKILL.md;
+  .factory/items/0026-…/reviews/round-2/architecture.md; authorized: judgement on
+  bid-0149).
+- **The tier depth table is published, not consumed.** `tiers.profile()`
+  (`tiers.py:25-42`) has exactly one non-test caller — `doctor.py:63` — which only
+  **prints** it. All three knobs (`research`, `review`, `assure`) are honoured by
+  agents on trust, with no receipt: `grep -n depth .factory/items/*/log.jsonl`
+  returns **zero matches across all 32 items**. Any depth mechanism this product
+  ships is therefore an unenforced promise until an engine-written recorder
+  exists, and bid-0131's calibration-replay test is **unsatisfiable**, not merely
+  thin-corpus (source: scripts/factory/lib/tiers.py; scripts/factory/lib/doctor.py;
+  .factory/items/0026-…/reviews/synthesis.md; authorized: judgement on bid-0150).
+- **Triage spend is unlogged, so `factory cost` under-reports by a whole council
+  fan-out, unmarked.** 0027's `log.jsonl` carries no `spend` event with
+  `"stage": "triage"`, yet 11 reviewer files under `0027/reviews/triage/` prove a
+  two-round six-seat council ran; `factory cost 0027 = 1,181,397` silently
+  excludes it. A bid-0018 provenance violation on the one readout the bill-payer
+  opens, and a **known-direction** bias in the only cost series the product has —
+  inherited by 0029, 0030 and every bid-0140 within-item comparison. 0026's
+  triage logged the corpus's first `"stage": "triage"` spend event; the general
+  fix (log it, or render UNMEASURED) is owed (source:
+  .factory/items/0027-…/log.jsonl; .factory/items/0026-…/reviews/round-2/customer.md;
+  authorized: judgement on bid-0152).
+- **Seat count is not the cost driver; failure and retry are, by ~11x.**
+  Within-item only (bid-0140): a `council-review` instance that **malfunctioned
+  and produced no synthesis** cost **1,499,591** tokens
+  (`0015/log.jsonl` L20 — 68.8% of that item's review stage), while the
+  **complete 9-seat fan-out** cost **135,475** (L34, 6.2%). 0027's much-cited
+  403,895-token assure is **100% round-2 pool-exhaustion rework at the `node`
+  depth floor** (`0027/log.jsonl` L29-30: `provenance: proxy`, `dispatches: 0`,
+  `assure.degraded` with `"independence": "NOT MET - subagent pool exhausted
+  200/200"`), not a consequence of depth. **Any argument for narrowing depth or
+  cutting seats must first show the spend it targets is not retry spend.** 0026
+  was filed on the opposite intuition and rescoped when this was measured
+  (source: .factory/items/0015-…/log.jsonl; .factory/items/0027-…/log.jsonl;
+  .factory/items/0026-…/reviews/synthesis.md; authorized: judgement on bid-0153).
+- **Two shipped narrowing mechanisms sit at zero adoption — build no third before
+  one of them fires once.** `grep -h "^bug:" .factory/items/*/item.md` = **0** of
+  32, so `_gate_plan`'s repro branch (`machine.py:529-533`) has never fired and no
+  `repro.md` exists anywhere; `journeys: none` — the only engine-authoritative
+  stage-dropping lever (`machine.stage_sequence`, `machine.py:61-68`) — is likewise
+  **0**. The gap is documentation-and-door, not engine: `factory add --tier`
+  already exists (`factory.py:481`, applied `:47-48`) while `commands/add.md` is
+  7 lines mentioning neither `tier` nor `bug`, and `factory-triage/SKILL.md:25`
+  asserts bugs are "usually filed via `/factory:bug` already carrying `tier: bug`"
+  — an assumption that is **0-for-9** (source: scripts/factory/lib/machine.py;
+  commands/add.md; .factory/items/0026-…/reviews/round-1/engineering-quality.md;
+  authorized: judgement on bid-0154).

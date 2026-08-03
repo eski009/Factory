@@ -70,6 +70,8 @@ Seven live items were absent from this file entirely — invisible here while
 open in the backlog, which already cost item 0031 a redundant open question
 about ownership 0023 had. Listed at their filed priority (`-` = unprioritised,
 sorts last in `factory status`); a council ranks them when each reaches triage.
+(0026 was the seventh; its council ran on 2026-08-03 and it now has its own
+section below.)
 
 - [-] 0019-shared-scratchpad-message-clobber-concur Concurrent agents in one session reuse stale commit-message files (idea, bug — observed on 0016's rework: reflog ae205c4 → f609d24 shipped the wrong commit body)
 - [-] 0020-concurrent-implementers-violate-the-one- Concurrent implementers violate the one-at-a-time contract in a shared checkout (idea, bug — factory-implement's own sub-dispatches broke its contract on 0016)
@@ -77,4 +79,25 @@ sorts last in `factory status`); a council ranks them when each reaches triage.
 - [-] 0022-gitignored-factory-state-is-invisible-to Gitignored .factory state is invisible to clones (idea, bug — a fresh clone gets the code and none of the decisions; also why suite skip counts differ between checkouts)
 - [-] 0023-packet-furniture-and-readout-polish-drop Packet furniture and readout polish (idea, bug — owns the J-002 one-job-per-screen ruling, the status-table overflow on engine-filed ids, and the shipped packet's dead self-link)
 - [-] 0024-assure-readout-periphery-known-fails-fir Assure readout periphery: known-fails first screen, owner-priority Respond branch, status --json surface (idea, feature — shed from 0013 at its plan re-judgement; owns J-001 nodes N3/N4)
-- [-] 0026-complexity-scored-bug-flow-bugs-run-a-su Complexity-scored bug flow: bugs run a subset of the pipeline chosen by a 1–5 score (idea, feature — **human-filed**; bid-0125 records the supporting evidence that review depth keys on tier, not change class)
+
+## Bug-flow line (0026 triage outcome, 2026-08-03)
+
+<!-- 0026's triage council was 6/6 BUILD-RESCOPED: the problem statement is
+     affirmed unanimously, the mechanism refused unanimously. The 1-5 complexity
+     score and "bugs run a subset of the pipeline" are both CUT — stage
+     membership is engine-owned (every drop strands the next gate) and a score
+     assigned at intake is a prediction 0027 already falsifies (filed as a
+     one-liner, shipped as 66 lines across two files). The item's own headline
+     cost datapoint was refuted at triage: 0027's 403,895 assure tokens are 100%
+     pool-exhaustion rework at the `node` floor, not tier depth, and a
+     malfunctioned council cost 1,499,591 against 135,475 for a complete 9-seat
+     fan-out — failure and retry are the cost driver, not seat count. What
+     survives is routing (`/factory:bug` is unreachable from `commands/add.md`;
+     `bug: true` and `journeys: none` both sit at zero adoption across 32 items)
+     shipped with its receipt, then an engine-written depth recorder, then
+     bid-0125 third. Assure and verify depth are OUT, binding 5/5. 0029 is NOT
+     0026's precursor — the reverse, on the recorder half. See
+     .factory/items/0026-*/triage.md. -->
+
+- [3] 0026-complexity-scored-bug-flow-bugs-run-a-su Complexity-scored bug flow: bugs run a subset of the pipeline chosen by a 1–5 score (triage → spec — BUILD-RESCOPED 6/6; score and stage-subset cut, becomes bug-door routing + depth recorder; owns bid-0125 and discharges bid-0042)
+- [-] 0032-dispatch-resilience-pool-exhaustion-and- Dispatch resilience: pool-exhaustion and no-synthesis council runs must fail fast and resume, not silently re-walk (idea, feature — filed by 0026's triage council; a malfunctioned council-review cost 1,499,591 tokens vs 135,475 for a complete fan-out, 11x; ranked second, after 0026's routing branch)

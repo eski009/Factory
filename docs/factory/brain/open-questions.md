@@ -548,3 +548,55 @@
   same diff, or a hard rule that a degraded council may only approve, never
   reject (source: .factory/items/0027-…/reviews/synthesis.md; authorized:
   judgement on bid-0147).
+
+## Raised by 0026's triage council (2026-08-03)
+
+- **The tier system has no triage knob, and a fourth `triage` key could not
+  supply one.** `tiers.DEFAULTS` (`tiers.py:18-22`) carries exactly `research`,
+  `review`, `assure`, and `profile()` filters config overrides to those same three
+  keys (`tiers.py:41-42`) — so a `triage` key would be **silently dropped** even if
+  a repo wrote one. More fundamentally, **tier is an *output* of triage, not an
+  input**: `factory-triage/SKILL.md` runs the council at step 2 and sets the tier
+  at step 6, so the tier does not exist when the council is dispatched and triage
+  depth is *structurally un-governable by tier*. The only escape today is
+  `/factory:bug`'s skill-side "No council runs at intake"
+  (`skills/factory-bug/SKILL.md:61`), which is 0-for-9. Architecture's upheld
+  dissent on the remedy: **fix the meter, do not add a dial the meter cannot
+  see** — 0027 shows triage was the highest-yield spend in the corpus (its
+  council prevented an auto-shipping regression). Amends bid-0042. Resolved by:
+  0026's routing scope shipping, plus a decision on whether triage depth is
+  governed at all (source: scripts/factory/lib/tiers.py;
+  .factory/items/0026-…/reviews/round-2/product.md; authorized: judgement on
+  bid-0151).
+- **README:96 is a false shipped claim.** It promises "Effort scales to how much
+  the work matters … a bug gets a fast, correctness-only review … **No
+  epic-weight ceremony for a one-line fix**." Item **0027** is `tier: bug` and
+  paid a two-round six-seat triage council — 11 reviewer files under
+  `0027/reviews/triage/` — because the tier system has no triage knob and the
+  generic door does not route to `/factory:bug`. Owner: 0026's routing scope,
+  which must correct the door and the sentence together. Resolved by: 0026
+  shipping, or the sentence being rewritten to what the product actually does
+  (source: README.md; .factory/items/0026-…/reviews/round-1/product.md;
+  authorized: judgement on bid-0155).
+- **`/factory:bug` never writes a roadmap line.** `grep roadmap
+  skills/factory-bug/SKILL.md` = **zero matches**; the roadmap line is written at
+  `factory-triage/SKILL.md` step 7, which the bug door deliberately skips along
+  with the council. `roadmap.md:67-80` records seven items that were absent from
+  the roadmap in exactly this way — five of them `tier: bug` — a defect fixed one
+  commit ago at `eb99b90`. **Any change that makes the bug door the default path
+  must ship the roadmap write inside `factory-bug` step 7 in the same change**, or
+  it converts a fixed accident into structural behaviour. Resolved by: 0026's
+  routing scope shipping both halves as one unit (source:
+  skills/factory-bug/SKILL.md; docs/factory/roadmap.md; authorized: judgement on
+  bid-0156).
+- **bid-0042 is discharged in an unexpected direction; its resolution condition
+  was unreachable.** "Should bug items ever get council triage?" was to be
+  resolved by "real bug-intake usage showing a misrouted bug" — but there is **no
+  real bug-intake usage at all** (`bug: true` = 0 of 32, no `repro.md` anywhere),
+  so the question could never resolve on its own terms. The misrouting is **100%
+  and upstream** of the question: every bug this factory has fixed entered via
+  `factory add` or the roadmap and paid full six-seat triage. Re-pointed at
+  **0026**, which owns the door. Restated resolution condition: **one item
+  completes intake through `/factory:bug`** (source:
+  docs/factory/brain/open-questions.md; .factory/items/0026-…/triage.md;
+  authorized: judgement on bid-0157).
