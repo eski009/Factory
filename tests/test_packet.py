@@ -1,11 +1,14 @@
 import inspect
+import io
 import os
 import re
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
+from scripts.factory import factory
 from scripts.factory.lib import (cost, initrepo, items, logs, machine, packet,
                                  paths)
 
@@ -1171,6 +1174,100 @@ class TestDecisionSectionAndVerbAreCoupled(unittest.TestCase):
         source = inspect.getsource(packet.cost_decision_lines)
         self.assertIn('if meta.get("stage") != "waiting-human":', source)
         self.assertNotIn("blocked", source)
+
+
+class TestNarrowConsequenceNamesThePark(unittest.TestCase):
+    """AC8/AC9 (item 0027): the `narrow` consequence hands the operator a
+    resume command, and `machine.py:620-622` lets a `waiting-human` item
+    resume only to its recorded `paused-from`. A literal `implement`
+    there is a copy-pasteable command that errors on every non-implement
+    park — the same defect class as the headline `/factory:run`.
+
+    An absent `paused-from` is *named*, never interpolated: a Python
+    `None` on the page is the very defect the absorbed 0028 arm removes
+    from the refusal path.
+    """
+
+    ITEM = "0001-runaway"
+
+    def tearDown(self):
+        os.environ.pop("FACTORY_NOW", None)
+
+    def fresh(self, paused_from):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        repo = Path(tmp.name)
+        initrepo.init(repo)
+        park_matrix_fixture(repo, self.ITEM, paused_from,
+                            PARK_REASONS["cost"])
+        return repo
+
+    def narrow_line(self, repo):
+        lines = [line for line in packet.render_packet(
+            repo, self.ITEM).splitlines()
+            if line.startswith("- narrow — ")]
+        self.assertEqual(len(lines), 1, lines)
+        return lines[0]
+
+    def run_cli(self, repo, *args):
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = factory.main(["--repo", str(repo), *args])
+        return code, out.getvalue(), err.getvalue()
+
+    def test_a_plan_origin_narrow_line_names_the_park_not_implement(self):
+        """AC8, first half."""
+        repo = self.fresh("plan")
+        self.assertIn(f"factory advance {self.ITEM} plan",
+                      self.narrow_line(repo))
+        self.assertNotIn(f"factory advance {self.ITEM} implement",
+                         packet.render_packet(repo, self.ITEM))
+
+    def test_an_implement_origin_narrow_line_is_byte_identical(self):
+        """AC4's spirit for this line: the canonical park is unchanged."""
+        repo = self.fresh("implement")
+        self.assertEqual(
+            self.narrow_line(repo),
+            "- narrow — records the decision; edit plan.md, then factory "
+            "advance 0001-runaway implement. v1 does not narrow scope for "
+            "you.")
+
+    def test_the_rendered_narrow_command_is_admitted_by_the_engine(self):
+        """AC8, second half: the command is not merely different, it is
+        the one the engine accepts."""
+        repo = self.fresh("plan")
+        line = self.narrow_line(repo)
+        match = re.search(r"factory advance (\S+) (\S+?)\.", line)
+        self.assertIsNotNone(match, line)
+        code, _out, err = self.run_cli(repo, "advance", match.group(1),
+                                       match.group(2))
+        self.assertEqual(code, 0, err)
+        self.assertEqual(
+            items.load_item(repo, self.ITEM)[0]["stage"], "plan")
+
+    def test_the_literal_implement_command_is_refused_from_that_park(self):
+        """AC8, third half: the shipped line's command really does error
+        from a plan-origin park, so this is a live defect, not a
+        cosmetic one."""
+        repo = self.fresh("plan")
+        code, _out, err = self.run_cli(repo, "advance", self.ITEM,
+                                       "implement")
+        self.assertEqual(code, 2, err)
+        self.assertIn("may only resume to 'plan'", err)
+
+    def test_a_park_with_no_paused_from_renders_no_python_none(self):
+        """AC9. The field is named, not interpolated — in both
+        renderers."""
+        repo = self.fresh("plan")
+        meta, body = items.load_item(repo, self.ITEM)
+        meta.pop("paused-from")
+        items.save_item(repo, meta, body)
+        markdown = packet.render_packet(repo, self.ITEM)
+        page = packet.render_packet_html(repo, self.ITEM)
+        self.assertIn("## Cost decision", markdown)
+        self.assertNotIn("None", markdown)
+        self.assertNotIn("None", page)
+        self.assertIn("`- paused-from: <stage>`", self.narrow_line(repo))
 
 
 if __name__ == "__main__":
