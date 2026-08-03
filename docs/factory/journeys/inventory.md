@@ -40,3 +40,13 @@ entries below were registered by the work that touched them._
   record says cannot converge, and records continue/narrow/defer with a single
   command that provably unblocks exactly once (source:
   .factory/items/0015-approach-rejected-a-redesign-loop-back-t/spec.md).
+- **J-004 — Bug door intake** (`bug-door-intake`, criticality `high`, status
+  `draft`, contract `contracts/J-004-bug-door-intake.md`). Persona: The Overnight
+  Operator (source: docs/factory/brain/personas.md). Trigger: a human reports a
+  defect at any intake door (`/factory:bug`, `/factory:add`, `/factory:do`, or a
+  roadmap batch). Outcome: the defect is filed with its materiality tier
+  (`tier`) and its evidence claim (`bug: true`) recorded separately, a confirmed
+  repro exists before any fix work, the item is visible in
+  `docs/factory/roadmap.md` and `factory status`, and its packet names the depth
+  it ran at and the intake path it took (source:
+  .factory/items/0026-complexity-scored-bug-flow-bugs-run-a-su/spec.md).

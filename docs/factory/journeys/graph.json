@@ -76,6 +76,32 @@
           "tests/test_packet.py"
         ]
       }
+    },
+    {
+      "id": "J-004",
+      "slug": "bug-door-intake",
+      "title": "Bug door intake — a reported defect is routed to /factory:bug, replicated before any fix, and lands visibly on the roadmap",
+      "persona": "The Overnight Operator (docs/factory/brain/personas.md)",
+      "trigger": "A human reports a defect at any intake door (/factory:bug, /factory:add, /factory:do, or a roadmap batch)",
+      "outcome": "The defect is filed with its materiality tier and its evidence claim recorded separately, a confirmed repro exists before any fix work, the item appears in docs/factory/roadmap.md and in factory status, and its packet names the depth the item ran at and the intake path it took",
+      "criticality": "high",
+      "status": "draft",
+      "contract": "contracts/J-004-bug-door-intake.md",
+      "links": {
+        "apis": [
+          "scripts/factory/factory.py::cmd_add",
+          "scripts/factory/lib/items.py::item_tier",
+          "scripts/factory/lib/machine.py::_gate_plan",
+          "scripts/factory/lib/tiers.py::record",
+          "scripts/factory/lib/packet.py::receipt_lines"
+        ],
+        "tests": [
+          "tests/test_cli.py",
+          "tests/test_machine.py",
+          "tests/test_packet.py",
+          "tests/test_plugin_coherence.py"
+        ]
+      }
     }
   ]
 }
