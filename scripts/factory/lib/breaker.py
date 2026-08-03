@@ -166,6 +166,24 @@ def precondition(repo, item_id, meta, to):
             f"cost breaker unanswered: {edges} rework edges "
             f"(threshold {REWORK_THRESHOLD}); record an answer with "
             f"factory cost-answer {item_id} <continue|narrow|defer>")
+    if answer["answer"] is None:
+        # A missing field is named like the sibling watermark arm six
+        # lines below, not by interpolating the parsed value: an absent
+        # '- answer:' line otherwise reaches the operator as `recorded
+        # option None is not one of continue, narrow, defer` on the live
+        # cost-breaker decision path (item 0028, absorbed by 0027).
+        # Distinct from the out-of-enum arm below, which still names what
+        # was actually recorded.
+        #
+        # The metavar is the house `<option>` (bid-0127), not a second
+        # copy of the enum the `retry` clause already spells out ~20
+        # chars later, and not the bare `- answer:` either: a literal
+        # paste of that fails the value regex and re-fires this same arm
+        # with a byte-identical message, an unbreaking loop. Mirrors
+        # approach.py:86 exactly.
+        raise GateError(
+            "cost breaker answer malformed: no '- answer: <option>' line; "
+            + retry)
     if answer["answer"] not in ANSWERS:
         raise GateError(
             f"cost breaker answer malformed: recorded option "

@@ -7,7 +7,8 @@ from pathlib import Path
 from scripts.factory.lib import initrepo, items, logs, machine, packet, paths
 # One pattern, one definition: a second copy here could drift back to the
 # unfalsifiable single-form filter without the self-check noticing.
-from tests.test_packet import REWORK_FIGURE_RE
+from tests.test_packet import (DECISION_VERB, PARK_REASONS, PARKED_FROM,
+                               REWORK_FIGURE_RE, park_matrix_fixture)
 
 
 class TestPacketHtml(unittest.TestCase):
@@ -376,6 +377,89 @@ class TestCostDecisionHtml(unittest.TestCase):
         respond = page.split('<section id="respond">', 1)[1].split(
             "</section>", 1)[0]
         self.assertIn("/factory:run", respond)
+
+
+class TestDecisionCouplingHtml(unittest.TestCase):
+    """AC7 (item 0027): criteria 5 and 6 asserted against the *rendered
+    HTML* packet — `#cost-decision` / `#redesign-decision` against
+    `#respond` — for the whole matrix, and named explicitly for the
+    plan-origin and assure-origin cost parks.
+
+    `render_packet_html` emits its sections through its own code path
+    (`packet.py:517-522`), so a markdown-only assertion leaves the
+    surface the operator actually opens on a phone unguarded.
+    """
+
+    ITEM = "0001-runaway"
+
+    def tearDown(self):
+        os.environ.pop("FACTORY_NOW", None)
+
+    def fresh(self, paused_from, reason_key):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        repo = Path(tmp.name)
+        initrepo.init(repo)
+        park_matrix_fixture(repo, self.ITEM, paused_from,
+                            PARK_REASONS[reason_key])
+        return repo
+
+    def respond_items(self, page):
+        block = page.split('<section id="respond">', 1)[1].split(
+            "</section>", 1)[0]
+        return re.findall(r"<li>(.*?)</li>", block)
+
+    def command(self, list_item):
+        match = re.search(r"<code>(.*?)</code>", list_item)
+        self.assertIsNotNone(match, list_item)
+        return match.group(1)
+
+    def test_html_matrix_couples_each_section_to_its_own_verb(self):
+        """AC5 + AC6 in one equivalence, in the HTML renderer: the
+        `#cost-decision` section renders if and only if the single
+        `#respond` bullet leads with `factory cost-answer`, and likewise
+        for `#redesign-decision` and `factory approach-answer`."""
+        for paused_from in PARKED_FROM:
+            for reason_key in PARK_REASONS:
+                with self.subTest(paused_from=paused_from,
+                                  reason=reason_key):
+                    repo = self.fresh(paused_from, reason_key)
+                    page = packet.render_packet_html(repo, self.ITEM)
+                    list_items = self.respond_items(page)
+                    self.assertEqual(len(list_items), 1, list_items)
+                    command = self.command(list_items[0])
+                    self.assertEqual(
+                        '<section id="cost-decision">' in page,
+                        command.startswith(DECISION_VERB["cost"]),
+                        f"{paused_from}/{reason_key}: {command}")
+                    self.assertEqual(
+                        '<section id="redesign-decision">' in page,
+                        command.startswith(DECISION_VERB["approach"]),
+                        f"{paused_from}/{reason_key}: {command}")
+
+    def test_html_plan_origin_cost_park_names_cost_answer(self):
+        """AC7's named plan-origin case, against the rendered HTML."""
+        page = packet.render_packet_html(
+            self.fresh("plan", "cost"), self.ITEM)
+        self.assertIn('<section id="cost-decision">', page)
+        list_items = self.respond_items(page)
+        self.assertEqual(len(list_items), 1, list_items)
+        self.assertEqual(
+            self.command(list_items[0]),
+            "factory cost-answer 0001-runaway "
+            "&lt;continue|narrow|defer&gt;")
+        self.assertNotIn("/factory:run", "".join(list_items))
+
+    def test_html_assure_origin_cost_park_omits_confirm_and_waive(self):
+        """AC3/AC7 in the HTML renderer — the shadowing this fix must not
+        introduce, on the surface the operator opens."""
+        page = packet.render_packet_html(
+            self.fresh("assure", "cost"), self.ITEM)
+        self.assertIn('<section id="cost-decision">', page)
+        block = "".join(self.respond_items(page))
+        self.assertIn("factory cost-answer 0001-runaway", block)
+        self.assertNotIn("factory confirm", block)
+        self.assertNotIn("factory waive", block)
 
 
 if __name__ == "__main__":

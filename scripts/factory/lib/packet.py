@@ -102,6 +102,22 @@ def cost_decision_lines(repo, item_id, meta, summary=None):
     edges = summary["rework_edges"]
     entries = summary["stages"].get("implement", {}).get("entries", 0)
     priority = meta.get("priority", "-")
+    # AC8: `machine.py:620-622` lets a waiting-human item resume only to
+    # the stage it parked from, so a literal `implement` here is a
+    # copy-pasteable command that errors on every non-implement park —
+    # the same defect class as the `/factory:run` headline this item
+    # exists to remove. An absent field is named rather than
+    # interpolated: a Python `None` on the page is the defect the
+    # sibling arm in breaker.precondition removes (AC9). The metavar is
+    # code-spanned for the same F8 reason as the two commands below —
+    # `<stage>` matches CommonMark's inline raw-HTML open-tag production
+    # and is otherwise swallowed by markdown renderers.
+    paused_from = meta.get("paused-from")
+    if paused_from:
+        narrow_resume = f"then factory advance {item_id} {paused_from}."
+    else:
+        narrow_resume = ("then resume it to the stage it parked from — this "
+                         "item records no `- paused-from: <stage>` field.")
     at_or_above = v["backlog"]["at_or_above"]
     total = v["backlog"]["actionable_total"]
     unreadable = v["backlog"]["unreadable"]
@@ -193,8 +209,8 @@ def cost_decision_lines(repo, item_id, meta, summary=None):
         f"parks it again at {edges + 1}; {waiting}in loop mode the next "
         "actionable item runs while this one waits; in item/step mode the "
         "run stops here.",
-        f"- narrow — records the decision; edit plan.md, then factory advance "
-        f"{item_id} implement. v1 does not narrow scope for you.",
+        f"- narrow — records the decision; edit plan.md, {narrow_resume} "
+        "v1 does not narrow scope for you.",
         f"- defer — records the decision and leaves the item parked; drop its "
         f"priority with `factory priority {item_id} <n>`. v1 does not "
         "re-prioritise for you.",
@@ -314,7 +330,27 @@ def redesign_decision_lines(repo, item_id, meta, summary=None):
 def respond_action_lines(repo, item_id, meta):
     """Exactly one copy-pasteable action, naming the verb that actually
     answers THIS pause. One branch, shared by both renderers, so the HTML
-    can never tell a cost-breaker pause to run /factory:run."""
+    can never tell a cost-breaker pause to run /factory:run.
+
+    The ladder is ordered, and the order is the contract: every
+    reason-prefix arm precedes every stage-keyed arm (brain
+    constraints.md, judgement on bid-0137). A pause whose reason names a
+    topic owns its answering verb no matter which stage it parked from.
+    The cost arm used to carry an additional `paused-from == implement`
+    conjunct; that conjunct is deleted only as part of this hoist, never
+    on its own — deleted in place it would leave the cost arm below the
+    assure arm, and an assure-origin cost park would be answered with
+    `factory confirm` / `factory waive`, which assure.py admits and
+    machine.py:584-586 treats as authoritative, shipping the item on an
+    unanswered spend gate (item 0027 B1). `assure` is in
+    cost.REWORK_FROM, so that shadowing is reachable, not theoretical.
+
+    The `design` and `assure` pauses carry no topic prefix at all, so
+    they legitimately stay stage-keyed; the generic line stays last and
+    is correct only for pauses that need no answer. A pause carrying some
+    future unrecognised topic prefix still falls through to it, on
+    purpose (item 0027 G1): guessing a verb from an arbitrary prefix
+    would re-create exactly the harm above."""
     from . import approach, breaker
     paused_from = meta.get("paused-from")
     reason = meta.get("paused-reason", "")
@@ -322,15 +358,15 @@ def respond_action_lines(repo, item_id, meta):
         return [f"- `factory approach-answer {item_id} "
                 "<continue|narrow|defer>` — record the redesign "
                 "decision."]
+    if reason.startswith(breaker.PAUSE_PREFIX):
+        return [f"- `factory cost-answer {item_id} <continue|narrow|defer>` "
+                "— record the cost decision."]
     if paused_from == "design":
         return [f"- `factory choice {item_id} <option>` — record your pick."]
     if paused_from == "assure":
         return [f"- `factory confirm {item_id}` — or "
                 f'`factory waive {item_id} --reason "..."` to ship with a '
                 "recorded waiver."]
-    if paused_from == "implement" and reason.startswith(breaker.PAUSE_PREFIX):
-        return [f"- `factory cost-answer {item_id} <continue|narrow|defer>` "
-                "— record the cost decision."]
     return ["- `/factory:run` — resume the pipeline."]
 
 
