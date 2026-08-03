@@ -1,10 +1,13 @@
+import io
 import json
 import os
 import shutil
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
+from scripts.factory import factory
 from scripts.factory.lib import breaker, cost, initrepo, items, logs, paths
 from scripts.factory.lib.machine import GateError as GateErrorAlias
 
@@ -460,6 +463,30 @@ class PreconditionTest(BreakerTestCase):
         self.assertIn("cost breaker answer malformed: recorded option "
                       "'abandon'", str(ctx.exception))
 
+    def test_artifact_without_answer_line_is_refused_distinctly(self):
+        """AC10 (item 0028, absorbed by 0027). `read_answer` returns
+        `{"answer": None, ...}` for an artifact with no `- answer:` line,
+        and before this arm the out-of-enum arm below rendered that to
+        the operator as `recorded option None is not one of continue,
+        narrow, defer` on the live cost-breaker decision path. The
+        wording mirrors the conformant sibling watermark arm and
+        `approach.py:86`."""
+        self.parked()
+        breaker.answer_path(self.repo, ITEM).parent.mkdir(
+            parents=True, exist_ok=True)
+        breaker.answer_path(self.repo, ITEM).write_text(
+            "# Cost breaker answer\n\n- rework-edges: 9\n"
+            "- ts: 2026-08-02T05:00:00Z\n\nx\n", encoding="utf-8")
+        with self.assertRaises(GateErrorAlias) as ctx:
+            breaker.precondition(self.repo, ITEM, None, "implement")
+        message = str(ctx.exception)
+        self.assertEqual(
+            message,
+            "cost breaker answer malformed: no '- answer: <option>' line; "
+            f"re-record with factory cost-answer {ITEM} "
+            "<continue|narrow|defer>")
+        self.assertNotIn("None", message)
+
     def test_artifact_without_edge_count_is_refused_distinctly(self):
         self.parked()
         breaker.answer_path(self.repo, ITEM).parent.mkdir(
@@ -471,10 +498,22 @@ class PreconditionTest(BreakerTestCase):
             breaker.precondition(self.repo, ITEM, None, "implement")
         self.assertIn("no '- rework-edges: N' line", str(ctx.exception))
 
-    def test_three_refusals_have_three_distinct_messages(self):
+    def test_four_refusals_have_four_distinct_messages(self):
+        """AC11: the four malformed/stale arms are pairwise-distinct over
+        one fixture set. An operator who hits one must be moved to a
+        different arm by fixing what it names — two arms sharing a
+        message is an unbreaking loop.
+
+        The distinctness count alone passes on the pre-fix engine, and
+        vacuously: the missing-`- answer:` body and the out-of-enum body
+        fall into the *same* arm and are told apart only by the leaked
+        `None` repr. The `assertNotIn` below is what makes this test
+        binding — four distinct messages, none of them a Python repr.
+        """
         messages = set()
         for body, in (
             ("# Cost breaker answer\n\n- answer: continue\n\nx\n",),
+            ("# Cost breaker answer\n\n- rework-edges: 9\n\nx\n",),
             ("# Cost breaker answer\n\n- answer: abandon\n"
              "- rework-edges: 9\n\nx\n",),
             ("# Cost breaker answer\n\n- answer: continue\n"
@@ -489,7 +528,53 @@ class PreconditionTest(BreakerTestCase):
             with self.assertRaises(GateErrorAlias) as ctx:
                 breaker.precondition(self.repo, ITEM, None, "implement")
             messages.add(str(ctx.exception))
-        self.assertEqual(len(messages), 3)
+        self.assertEqual(len(messages), 4, messages)
+        self.assertNotIn("None", " ".join(sorted(messages)))
+
+    def test_the_out_of_enum_arm_still_names_the_recorded_value(self):
+        """AC11: the new missing-field arm must not swallow the arm that
+        reports what was actually written."""
+        self.parked()
+        path = breaker.answer_path(self.repo, ITEM)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# Cost breaker answer\n\n- answer: bogus\n"
+                        "- rework-edges: 9\n\nx\n", encoding="utf-8")
+        with self.assertRaises(GateErrorAlias) as ctx:
+            breaker.precondition(self.repo, ITEM, None, "implement")
+        self.assertIn(
+            "recorded option 'bogus' is not one of continue, narrow, defer",
+            str(ctx.exception))
+
+
+class MissingAnswerFieldCliTest(BreakerTestCase):
+    """AC10, end to end through the CLI the packet tells the operator to
+    run. The unit test above pins the message; this pins what the
+    operator actually sees on their terminal — exit code, stream, and the
+    absence of a Python repr."""
+
+    def test_cli_refusal_is_the_exact_message_and_carries_no_none(self):
+        self.set_gates("design", "cost")
+        meta = self.put(stage="waiting-human")
+        meta["paused-from"] = "implement"
+        meta["paused-reason"] = "cost breaker: 4 rework edges (threshold 2)"
+        items.save_item(self.repo, meta, "")
+        self.install_fixture()
+        path = breaker.answer_path(self.repo, ITEM)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# Cost breaker answer\n\n- rework-edges: 9\n"
+                        "- ts: 2026-08-02T05:00:00Z\n\nx\n",
+                        encoding="utf-8")
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = factory.main(["--repo", str(self.repo), "advance", ITEM,
+                                 "implement"])
+        self.assertEqual(code, 2, err.getvalue())
+        self.assertEqual(
+            err.getvalue().strip(),
+            "refused: cost breaker answer malformed: no '- answer: "
+            f"<option>' line; re-record with factory cost-answer {ITEM} "
+            "<continue|narrow|defer>")
+        self.assertNotIn("None", out.getvalue() + err.getvalue())
 
 
 class MonotoneAnswerTest(BreakerTestCase):
