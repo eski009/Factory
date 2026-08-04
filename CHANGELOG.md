@@ -4,6 +4,68 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.14.0] - 2026-08-04
+
+This release makes long-running Factory work safer to stop, redirect, and
+resume. It also closes several cases where an old result or the wrong packet
+action could let the pipeline behave as though a fresh decision had been made.
+
+### Added
+
+- **A cost circuit breaker for repeated rework.** Rework is counted from
+  engine-written stage transitions rather than agent-authored notes. When an
+  item crosses the configured threshold, Factory asks the operator to
+  `continue`, `narrow`, or `defer` before another implementation round. The
+  decision packet shows the rework count, available measured spend, and the
+  competing backlog without presenting unmeasured work as zero. New CLI
+  support includes `factory cost`, `factory cost --all`, and
+  `factory cost-answer`.
+- **A controlled redesign loop for rejected approaches.** Review, verify, or
+  assurance can send an item back to specification when the current approach
+  cannot converge. Factory requires a record of the rejected approach and a
+  freshly revised spec before work proceeds. Repeated redesigns are capped;
+  `factory approach-answer` lets the operator choose whether to continue,
+  narrow, or defer once that cap is reached.
+
+### Changed
+
+- **Rework gates now belong to the current implementation round.** A previous
+  round's `implement.completed`, `review.approved`, `verify.green`, assurance
+  result, or human confirmation can no longer satisfy the next round. Factory
+  consistently asks for evidence produced after the latest entry into
+  implementation.
+- **Decision packets respond to why an item paused, not where it paused.** A
+  cost or redesign decision now shows its real answering command even when the
+  item was parked from assurance or another unexpected stage. Recording
+  `narrow` or `defer` also removes the answered packet immediately so Claude
+  does not keep presenting a stale question.
+- **Advancing an item no longer scans the whole backlog.** Backlog comparison
+  is calculated only when a decision packet needs it, keeping the normal
+  advance path focused on the item being changed.
+
+### Fixed
+
+- Base-defect deduplication now uses the stable journey/scenario identity,
+  and all human- or agent-supplied fields are collapsed to one line before
+  being written. Rewording a failure therefore does not file duplicates, and
+  embedded newlines cannot forge metadata in a filed item.
+- Empty assurance evidence still fails through Factory's detailed attribution
+  rule, which explains the required `assurance/base/<sha>/` remediation,
+  instead of being intercepted by a less useful generic schema error.
+- Malformed answer watermarks, hostile log entries, unreadable config, and
+  other tolerated inputs no longer make the post-advance cost verdict crash.
+  Tests pin that verdict as a total operation after the stage mutation.
+- The schemas are checked against the validator's supported JSON Schema
+  keywords, preventing a future schema from silently depending on a keyword
+  the engine does not implement.
+
+### Not included
+
+- The proposed complexity score and variable stage subsets for `/factory:bug`
+  are **not** part of this release. That implementation was parked after
+  review; the follow-up work to give bugs a deliberately shorter flow remains
+  on the roadmap.
+
 ## [0.13.0] - 2026-08-02
 
 ### Added
