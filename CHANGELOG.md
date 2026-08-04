@@ -4,6 +4,43 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.15.0] - 2026-08-04
+
+This release gives confirmed bugs a shorter pipeline without weakening the
+evidence required to ship them.
+
+### Changed
+
+- **Confirmed bugs no longer run a separate assurance walk.** `/factory:bug`
+  records an immutable, source-tagged `assurance.verify` declaration during
+  intake. The item still runs specification, planning, implementation, review,
+  and verification; fresh verification now supplies the ship evidence that a
+  separate assurance stage previously provided.
+- **The shorter route is fail-closed.** The declaration can be written only by
+  the bug-intake command, only at `idea`, and only after independent bug repro
+  evidence exists. Missing, malformed, forged, or stale evidence does not
+  shorten the route or authorize shipping.
+- **Packets distinguish omitted stages from unfinished work.** Missing
+  artifacts owned by stages outside an item's effective sequence now render as
+  `n/a (not in this item's sequence)` in Markdown and HTML. Existing historical
+  artifacts remain linked, and spec-owned journey-impact evidence remains
+  applicable even when assurance is omitted.
+- **Status and stage routing use one derived rule.** The CLI exposes valid bug
+  intake as `assurance: verify`, and the machine, verification skill, ship gate,
+  packet renderer, and headless-worker guidance all use the same effective
+  sequence decision.
+
+### Evidence and scope
+
+- Two fresh-context journey walks covered nine CLI scenarios; every declared
+  behavior passed. The merged tree passed 940 tests.
+- This does **not** implement the parked 0026 initiative's generic bug-door
+  routing, triage skip, complexity score, depth receipt, or tier/depth/intake
+  packet receipt. Review and verification remain mandatory.
+- The observed assurance cost that motivated the change remains a small sample
+  (about 96k–404k tokens across two measured bug items), not a guaranteed saving
+  or a token budget.
+
 ## [0.14.0] - 2026-08-04
 
 This release makes long-running Factory work safer to stop, redirect, and
