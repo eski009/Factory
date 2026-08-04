@@ -12,7 +12,7 @@
 - triage.md: no
 - spec.md: yes — [open](<REPOURI>/.factory/items/0001-thing/spec.md)
 - plan.md: no
-- design/choice.md: no
+- design/choice.md: n/a (not in this item's sequence)
 - reviews/synthesis.md: no
 - assurance/impact.json: no
 - assurance/verdicts.json: yes — [open](<REPOURI>/.factory/items/0001-thing/assurance/verdicts.json)

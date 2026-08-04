@@ -8,7 +8,32 @@ from . import cost, items, logs, paths
 ARTIFACTS = ("triage.md", "spec.md", "plan.md", "design/choice.md",
              "reviews/synthesis.md", "assurance/impact.json",
              "assurance/verdicts.json")
+ARTIFACT_STAGES = {
+    "triage.md": "triage",
+    "spec.md": "spec",
+    "plan.md": "plan",
+    "design/choice.md": "design",
+    "reviews/synthesis.md": "review",
+    # The spec declares journey impact; assure consumes it and produces the
+    # verdicts. Omitting assure therefore makes only the verdict inapplicable.
+    "assurance/impact.json": "spec",
+    "assurance/verdicts.json": "assure",
+}
 URL_RE = re.compile(r"https?://[^\s<>\"']+")
+
+
+def artifact_applies(meta, rel):
+    """Whether a missing artifact's producing stage is in this item.
+
+    Existing files are always rendered by the caller: a mid-flight sequence
+    change must not hide historical evidence. Applicability is derived from
+    the same engine function that routes advances, rather than reimplementing
+    its kind/journey/assurance rules in the packet layer.
+    """
+    from . import machine
+    stage = ARTIFACT_STAGES[rel]
+    return stage in machine.stage_sequence(
+        meta["kind"], meta.get("journeys"), meta.get("assurance"))
 
 
 def packet_html_path(repo, item_id):
@@ -410,7 +435,13 @@ def render_packet(repo, item_id, summary=None):
     for rel in ARTIFACTS:
         artifact = item_dir / rel
         exists = artifact.exists()
-        line = f"- {rel}: {'yes' if exists else 'no'}"
+        if exists:
+            state = "yes"
+        elif artifact_applies(meta, rel):
+            state = "no"
+        else:
+            state = "n/a (not in this item's sequence)"
+        line = f"- {rel}: {state}"
         if exists:
             line += f" — [open]({artifact.resolve().as_uri()})"
         lines.append(line)
@@ -590,6 +621,10 @@ def render_packet_html(repo, item_id, summary=None):
         artifact = item_dir / rel
         if artifact.exists():
             out.append(f"      <li>{_link(rel, artifact.resolve().as_uri())}</li>")
+        elif not artifact_applies(meta, rel):
+            out.append(
+                f'      <li class="missing">{_e(rel)} — '
+                "n/a (not in this item's sequence)</li>")
         else:
             out.append(f'      <li class="missing">{_e(rel)} (not yet)</li>')
     out += ["    </ul>", "  </section>", "  <section>",

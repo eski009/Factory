@@ -10,8 +10,9 @@ import re
 from . import logs, paths
 
 FIELD_ORDER = (
-    "id", "title", "stage", "kind", "tier", "bug", "journeys", "priority",
-    "created", "updated", "paused-from", "paused-reason",
+    "id", "title", "stage", "kind", "tier", "bug", "journeys",
+    "assurance", "priority", "created", "updated", "paused-from",
+    "paused-reason",
 )
 REQUIRED_FIELDS = ("id", "title", "stage", "kind", "created", "updated")
 INT_FIELDS = ("priority",)

@@ -32,6 +32,7 @@ flowchart LR
     assure --> ship[ship]
     ship --> done([done])
     spec -. backend skips design .-> plan
+    verify -. /factory:bug skips assure .-> ship
 
     classDef council fill:#e8f0fe,stroke:#4285f4,color:#111;
     classDef human fill:#fef7e0,stroke:#f9ab00,color:#111;
@@ -42,7 +43,7 @@ flowchart LR
 - 🔵 **Blue = the council.** At **triage** ("build it? at what priority?") and **review** ("does the code actually match the spec?"), six specialist seats — product, architecture, engineering, UI, customer, commercial — weigh in before the item moves on.
 - 🟡 **Amber = you.** **Design** is the single station that pauses for a human. Factory writes 2–4 genuinely different mockup options and waits for your pick. *(Backend-only items skip design — there's nothing to render.)*
 
-In one line: `idea → triage → spec → design → plan → implement → review → verify → assure → ship → done`.
+In one line: `idea → triage → spec → design → plan → implement → review → verify → assure → ship → done`. Backend work omits design; bugs filed through `/factory:bug` omit assure and ship on fresh verification evidence.
 
 ## See it run (60 seconds)
 
@@ -92,7 +93,7 @@ flowchart LR
 
 - **Autonomous where it can be, human where it should be.** One default stop (design) — and you can dial that up or down.
 - **Evidence, not vibes.** Every stage transition is gate-checked by a deterministic engine; "done" requires proof — a spec on disk, a plan with tasks, green tests.
-- **"Done" means a customer got through it.** Between verify and ship, a fresh-context journey reviewer — no memory of the implementation — walks the affected journeys against the running product and files evidence the engine validates. What it can't run parks for you; what you still find becomes an escape that stays open until it's promoted into a permanent check.
+- **"Done" means a customer got through it.** For features and epics, a fresh-context journey reviewer — no memory of the implementation — walks the affected journeys between verify and ship and files evidence the engine validates. Bugs filed through `/factory:bug` use fresh, round-scoped verification as the ship evidence instead. What a required walk can't run parks for you; what you still find becomes an escape that stays open until it's promoted into a permanent check.
 - **Effort scales to how much the work matters.** Every item is a *bug*, a *feature*, or an *epic*, and Factory sizes the process to match — a bug gets a fast, correctness-only review; a material epic gets the full council and a market focus group. No epic-weight ceremony for a one-line fix.
 - **Portable.** Works on any Claude model; faster-model features are bonuses, never requirements.
 

@@ -84,6 +84,9 @@ skill, which drives one item stage by stage:
 idea → triage → spec → design → plan → implement → review → verify → assure → ship → done
 ```
 
+Backend items omit design. Bugs filed through `/factory:bug` also omit assure:
+their fresh, round-scoped `verify.green` evidence gates ship directly.
+
 Each stage maps to its own skill (`factory-triage` covers idea→triage→spec,
 then `factory-spec`, `factory-design`, `factory-plan`, `factory-implement`,
 `factory-review`, `factory-verify`, `factory-assure`, `factory-ship`). The
@@ -105,8 +108,8 @@ The next `/factory:run` notices the recorded choice and auto-resumes the
 item back through `design`, which advances it straight to `plan`. `backend`
 items skip the design stage entirely — there's nothing to render.
 
-**The assurance stage.** Between verify and ship, journey-affecting items
-get a fresh-context walk of the affected customer journeys against the
+**The assurance stage.** Between verify and ship, journey-affecting features
+and epics get a fresh-context walk of the affected customer journeys against the
 running product (browser journeys need a browser-automation tool — absent,
 the item parks for you rather than silently passing). Failures route back
 to implement; judgement calls park with a packet. Your two verbs:
@@ -115,6 +118,8 @@ to implement; judgement calls park with a packet. Your two verbs:
 `gates` list, items pause for your confirmation after passing). Anything
 you still find after shipping: `/factory:escape` files it, and it stays
 open until promoted into a contract, test, oracle, or review rule.
+The confirmed-bug path keeps review and verify but substitutes that fresh
+verification evidence for the separate journey-assurance walk.
 
 ## 4. The autonomy dial
 
