@@ -58,7 +58,7 @@
      reachability ground now ranks it. See .factory/items/0027-*/triage.md. -->
 
 - [2] 0027-packet-respond-falls-through-to-factory- Packet Respond falls through to /factory:run when a decision pause is parked from an unexpected stage (done — shipped 2026-08-03 as merge 0bd2a36; the Respond verb is now keyed on the pause's reason rather than its stage, absorbing 0028's None-repr refusal; also unblocks 0018 if 0030 revives it)
-- [-] 0028-the-cost-breaker-leaks-a-python-none-rep The cost breaker leaks a Python None repr in its malformed-answer refusal (blocked — absorbed into 0027 as its scope item 4; bid-0129's rework-edges regex residual still owed)
+- [-] 0028-the-cost-breaker-leaks-a-python-none-rep The cost breaker leaks a Python None repr in its malformed-answer refusal (blocked — its scope item 4 SHIPPED 2026-08-03 in 0027's merge 0bd2a36: the missing `- answer:` line now gets its own refusal and no None repr reaches the operator. Stays blocked only for bid-0129's rework-edges regex residual, which 0027 did not touch; corrected 2026-08-04, the line previously read "absorbed into 0027" as though nothing had landed)
 - [5] 0029-scope-spend-events-a-leaf-vs-fork-discri Scope spend events: a leaf-vs-fork discriminator so measured token totals are trustworthy (idea — the precursor; finally owns bid-0063, the brain's top open question)
 - [6] 0030-measurement-spike-gap-capped-per-pass-at Measurement spike: gap-capped per-pass attributed_seconds, and whether any threshold separates a runaway from healthy work (idea — replaces 0018's build; gates it)
 - [3] 0031-the-cost-packet-s-decision-copy-is-churn The cost packet's decision copy is churn-shaped in four places and its recommendation never reads the verdict reason (idea — standing defect, independent of 0018)
@@ -152,3 +152,24 @@ section below.)
 
 - [1] 0033-bugs-run-less-pipeline-make-stage-member Bugs run less pipeline: make stage membership tier-conditional, the way it is already kind-conditional (triage → spec, feature — **human-filed 2026-08-04**, "I want bugs to use less pipeline as a general rule"; 6/6 BUILD-RESCOPED: goal affirmed, `tier`-parameter mechanism refused 6/6, **assure is the one stage a bug skips**, triage skip excluded to 0026's parked branch; title now overstates — the change is a gate-substitution key, not a tier axis)
 - [-] 0032-dispatch-resilience-pool-exhaustion-and- Dispatch resilience: pool-exhaustion and no-synthesis council runs must fail fast and resume, not silently re-walk (idea, feature — filed by 0026's triage council; a malfunctioned council-review cost 1,499,591 tokens vs 135,475 for a complete fan-out, 11x; ranked second, after 0026's routing branch)
+
+<!-- TWO CROSS-ITEM CONSTRAINTS, recorded here 2026-08-04 because both were
+     found inside .factory/ (gitignored, item 0022) and would otherwise be lost
+     to a clone or a cleared session.
+
+     1. COPY COLLISION between 0026 and 0033. 0026's branch (687c1a1)
+        test-asserts the README sentence "Stage membership never changes: a
+        defect still passes review, verify and assure." 0033's outcome — assure
+        is the one stage a bug skips — falsifies it. Whichever ships SECOND must
+        carry the other's edit, and the asserting test moves with it. Raised by
+        0033's triage council.
+
+     2. FOLLOW-ON F1 MUST NAME ITS TEST. F1 (widen the proxy/unmeasured stage
+        marker so a stage carrying only proxy spend stops rendering "(no spend
+        events logged)") cannot be planned as copy-only: the false sentence is
+        pinned green by `tests/test_cost.py:341-347`, which asserts it VERBATIM
+        against a seed logging a proxy spend on `review`. Fixing F1 means
+        retiring that assertion as well as writing new copy. Found by 0026's
+        round-2 review after the orchestrator's own generalisation attempt
+        failed against `test_no_stage_line_is_silently_omitted`. -->
+
