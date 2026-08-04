@@ -496,3 +496,36 @@
   in the path under test (source:
   .factory/items/0026-…/reviews/round-1/engineering-quality.md;
   .factory/items/0026-…/reviews/synthesis.md; authorized: judgement on bid-0166).
+- **A stage-membership key must be immutable for the item's life, or
+  door-keyed — never a mutable frontmatter field.** `tier` fails both tests and
+  cannot govern stage membership. Ordering: `factory-triage/SKILL.md` dispatches
+  the council at **step 2** and sets `tier` at **step 6**, while `machine.py`
+  computes `next_stage(meta)` from current frontmatter — so a tier-conditional
+  sequence can only drop stages at or after `spec`, and can never reach the
+  triage cost it would be built to cut. Mutability: `next_stage`
+  (`machine.py:70-81`) falls back to `stage_sequence(meta["kind"])` alone when
+  the current stage is absent from the item's own sequence, discarding the
+  `journeys` filter and any new filter identically, and `cmd_tier`
+  (`factory.py:433-441`) lets `tier` change at any stage — so an item re-tiered
+  at `assure` re-acquires the full sequence, advances to `ship`, and strands
+  `_gate_ship`, whose substitution is keyed on `journeys`, not `tier`
+  (`machine.py:568`). **Two keys on one gate is the defect shape.** The shipped
+  conditional drops (`design` on `kind`, `assure` on `journeys`) are sound
+  because both keys are declarations, not depth dials. Amends bid-0042 and
+  bid-0151 (source: scripts/factory/lib/machine.py; scripts/factory/factory.py;
+  skills/factory-triage/SKILL.md; authorized: judgement on bid-0176).
+- **A verified-but-unshipped branch that publishes a claim about system
+  behaviour is a live copy dependency of any later item that changes that
+  behaviour.** 0026's spec rewrites `README.md:96` to read verbatim "Stage
+  membership never changes: a defect still passes review, verify and assure",
+  built and green at `687c1a1`, and `0026/spec.md:509-511` makes that sentence a
+  **test-asserted** acceptance criterion. 0033 drops `assure` for bugs, which
+  falsifies it — so if 0033 ships first, 0026's own green test pins a false
+  claim, and neither branch's gates can see the other. **Whichever ships second
+  must carry the other's copy edit**, and the check belongs at ship, not in
+  either item's review. Separately owed: `0026/spec.md:22-27` states the
+  now-disproven "100% pool-exhaustion rework" as fact and builds a prohibition on
+  it; a verified-but-unshipped spec should not merge carrying a disproven claim
+  (source: .factory/items/0026-…/spec.md; README.md;
+  .factory/items/0033-…/reviews/triage/synthesis.md; authorized: judgement on
+  bid-0177).

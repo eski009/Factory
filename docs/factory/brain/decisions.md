@@ -590,3 +590,67 @@
   as rework guidance already covered by bid-0148 rather than durable memory.
   Item returned to `implement`; rework round 1 of a cap of 2
   (source: .factory/items/0026-complexity-scored-bug-flow-bugs-run-a-su/reviews/synthesis.md).
+- **0027's assure spend is one node-floor walk, not retry — bid-0153 corrected,
+  and the correction inverts its conclusion.** The claim that 0027's 403,895
+  assure tokens are "100% pool-exhaustion rework" is false and was withdrawn 4/4
+  by the seats that relied on it. `0027/log.jsonl` L29 and L35 (the two degraded
+  rounds) carry `provenance: proxy`, `dispatches: 0` and **no `tokens` key at
+  all** — they are unpriced *extra* cost, not a component of the figure. The
+  403,895 lives at L38-40: three `measured` seat dispatches of 1 each
+  (136,649 + 118,606 + 148,640) inside **one** walk, between the 15:33 advance
+  and the 16:25 `assure.passed` `round: 2`, and it is the walk that produced the
+  shipped verdict. `assurance/run-manifest.json` records
+  `depth: {tier: bug, assure_depth: node}` — **node-floor first-pass spend, not
+  scope overreach**. bid-0153 also miscites: it points at L29-30 for the figure,
+  and those lines carry no `tokens` key. Consequence: **bid-0153's test reads
+  PASSED for dropping assure on a bug**, at a measured saving of ~96k-404k per
+  bug (n=2, both at `node` depth) — a 4x-wide range that must never be quoted as
+  a point estimate, and must ship with n=2 disclosed (source:
+  .factory/items/0027-…/log.jsonl;
+  .factory/items/0027-…/assurance/run-manifest.json;
+  .factory/items/0033-…/reviews/triage/synthesis.md; authorized: judgement on
+  bid-0174).
+- **Triage spend IS measured corpus-wide; bid-0152's gap is item-scoped.**
+  "Triage spend is unlogged" holds for 0025 and 0027 specifically and is false
+  across the corpus: seven `stage: triage` spend events exist, all
+  `provenance: measured`, all first-pass with no retry component — 0004 160,965,
+  0009 128,272, 0010 130,917 + 42,223, 0012 110,868, 0013 87,877, 0026 197,539.
+  **Published with its dispatch split, not as one range** (judgement on bid-0175
+  corrected the filed figure): the four six-dispatch council fan-outs cost
+  **111k-161k** (0004, 0009, 0010, 0012); 0013's 87,877 and 0026's 197,539 are
+  single-dispatch events and 0010's 42,223 a three-dispatch top-up, so they do
+  not belong in a per-council range. Direction of the bias matters: 0025's and
+  0027's published totals **understate** by roughly one fan-out each (source:
+  .factory/items/0033-…/reviews/triage/synthesis.md; authorized: judgement on
+  bid-0175).
+- **On defects, council review's demonstrated catch class is false claims in
+  prose, not code — and that is the argument for keeping it.** Across every
+  bug-tier review round on record it has caught **zero code defects and three
+  false claims in evidence artifacts**: 0027's `impact.json` S5 asserted a
+  universal the failing case falsifies (discharged by narrowing the claim, not by
+  writing code — which is why the one bug-tier rework on record produced no code
+  change), and 0026's round 1 caught a README promising auditability the code
+  could not support plus a packet calling a logged event unlogged. 0025's review
+  returned zero blocking findings outright. This is the honesty firewall, and it
+  is why review is **kept** at `light` depth for bugs rather than dropped.
+  Recorded because the raw corpus reads as "review never catches code bugs on
+  defects", and the next ceremony-reduction item will find the same numbers
+  (source: .factory/items/0027-…/reviews/synthesis-1.md;
+  .factory/items/0025-…/reviews/synthesis.md; authorized: judgement on bid-0180).
+- **Ship record — 0033 triage (2026-08-04).** Council 6/6 BUILD-RESCOPED at p1,
+  tier `feature`, kind `backend`. The goal (bugs run less pipeline) is affirmed
+  6/6; the item's own mechanism — a `tier` parameter on
+  `machine.stage_sequence` — is **refused 6/6**, on grounds unrelated to 0026's
+  refuted "every drop strands the next gate" premise. **`assure` is the one stage
+  a `tier: bug` item skips** (6/6); `spec`, `plan`, `review`, `verify` and `ship`
+  are kept 6/6. The triage skip is **excluded** from 0033: it is already built
+  and green in 0026's parked branch, making it a ship decision rather than a
+  build. bid-0042 is **amended, not discharged** (bid-0157's condition — one item
+  completing intake through `/factory:bug` — is unmet). constraints.md gained two
+  entries (judgements on bids 0176, 0177); design-principles.md one
+  (bid-0178); open-questions.md two (bids 0179, 0181); decisions.md three
+  corrections above (bids 0174, 0175, 0180). Round 3 was warranted and not run
+  (hard stop): F1 (the `journeys: none` drop key is unsound) and F5 (the 0026
+  exclusion) carry into `spec` as blocking findings
+  (source: .factory/items/0033-…/triage.md;
+  .factory/items/0033-…/reviews/triage/synthesis.md).

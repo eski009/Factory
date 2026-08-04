@@ -155,3 +155,24 @@
   .factory/items/0026-…/reviews/round-2/customer.md,
   .factory/items/0026-…/reviews/round-1/product.md; authorized: judgement on
   bid-0167).
+
+## Learned from item 0033 triage (2026-08-04)
+
+- **A renderer that shows artifacts must distinguish "not produced yet" from
+  "not in this item's sequence" from "produced but lost" — a single else-branch
+  manufactures false pending claims.** `packet.py`'s artifact loop iterates a
+  hardcoded flat `ARTIFACTS` tuple with one binary branch — `artifact.exists()`
+  → link, else `class="missing"` … `(not yet)` — and never consults
+  `stage_sequence`, so it is structurally incapable of expressing a dropped
+  stage. The factory already ships this lie:
+  `docs/factory/packets/0026-….html:74` renders `design/choice.md (not yet)` on
+  an item whose `kind: backend` sequence can never contain `design`. The third
+  real case is 0027's, where `verify` completed green and attested but its
+  artifacts were lost to a full disk — rendered as the same grey glyph as "never
+  ran". **Any change that narrows stage membership must ship an engine-derived
+  third artifact state with it**, or its only user-visible effect is a new
+  permanent false pending claim on every affected packet — manufacturing by
+  design the defect class review catches 3-for-3 (source:
+  scripts/factory/lib/packet.py;
+  docs/factory/packets/0026-complexity-scored-bug-flow-bugs-run-a-su.html;
+  authorized: judgement on bid-0178).

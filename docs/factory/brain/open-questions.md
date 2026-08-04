@@ -600,3 +600,31 @@
   completes intake through `/factory:bug`** (source:
   docs/factory/brain/open-questions.md; .factory/items/0026-…/triage.md;
   authorized: judgement on bid-0157).
+
+## Raised by 0033's triage council (2026-08-04)
+
+- **`verify.green` is under-asserted, and the assure drop makes it
+  load-bearing.** `_require_event_this_round` (`machine.py:209-221`) asserts only
+  the event's **name** and its **round position**; the rich payload verify
+  writes — `criteria`, `tests`, `goldens`, an 18-cell `matrix`, `non_vacuity` —
+  is entirely skill-attested with zero engine shape assertion, unlike
+  `_validate_assurance_artifacts`, which `_gate_ship` does invoke. That
+  asymmetry is tolerable only while `assure` sits downstream. The moment `assure`
+  drops for bugs, `verify.green` becomes the substituted evidence `_gate_ship`
+  rests on. Proposed remedy (not yet a decided constraint): assert a non-empty
+  `criteria` of form `n/n` and a `tests` key, per the existing file+event
+  dual-check pattern. Resolved by: 0033's spec choosing the drop key and testing
+  the substituted gate, or a decision that skill attestation is sufficient at
+  this boundary (source: scripts/factory/lib/machine.py;
+  .factory/items/0033-…/reviews/triage/synthesis.md; authorized: judgement on
+  bid-0179).
+- **`_require_file` cannot tell a six-seat council record from one byte.**
+  `machine.py:98-101` asserts only `exists()` and non-empty stripped text, so a
+  one-byte `triage.md` from any source clears exactly the gate a full council
+  record clears. Latent today, because every `triage.md` on disk is
+  council-written. It becomes real the moment `/factory:bug` — which writes its
+  own `triage.md` and enters at `spec` — becomes the default intake path, a
+  decision 0026 owns. Resolved by: a shape assertion on the intake `triage.md`
+  shipped with the door's promotion, or an explicit ruling that intake
+  provenance is not gate-checkable (source: scripts/factory/lib/machine.py;
+  skills/factory-bug/SKILL.md; authorized: judgement on bid-0181).

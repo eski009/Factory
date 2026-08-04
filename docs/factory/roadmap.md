@@ -116,5 +116,39 @@ section below.)
      instances, not new architecture. -->
 
 - [3] 0026-complexity-scored-bug-flow-bugs-run-a-su Complexity-scored bug flow: bugs run a subset of the pipeline chosen by a 1–5 score (PARKED waiting-human — built through verify on branch @ 687c1a1, deliberately unshipped; score and stage-subset cut 6/6, what remains is bug-door signposting + a depth recorder nothing reads; owns bid-0125 and discharges bid-0042)
-- [1] 0033-bugs-run-less-pipeline-make-stage-member Bugs run less pipeline: make stage membership tier-conditional, the way it is already kind-conditional (idea, feature — **human-filed 2026-08-04**, "I want bugs to use less pipeline as a general rule"; carries the intent 0026's council cut, on the evidence that its stage-membership premise is refuted by three lines of machine.stage_sequence; triage decides WHICH stages a bug skips, not whether skipping is possible)
+<!-- 0033 triage outcome, 2026-08-04: 6/6 BUILD-RESCOPED at p1, tier feature,
+     kind backend. The GOAL is affirmed 6/6; the item's own MECHANISM is refused
+     6/6 — do NOT add a `tier` parameter to machine.stage_sequence. New grounds,
+     not 0026's refuted stranding premise: (a) tier is set at triage step 6 but
+     the council runs at step 2, so a tier-keyed sequence structurally cannot
+     reach the human's headline example; (b) next_stage's fallback
+     (machine.py:70-81) discards the filter, and tier is mutable mid-flight, so
+     a re-tiered item strands _gate_ship — two keys on one gate; (c) bid-0154:
+     two shipped narrowing levers already sit at 0-of-33 adoption.
+     Stages a bug skips: **assure only** (6/6). spec, plan, review, verify, ship
+     all KEPT 6/6 — review's only bug-tier catch class is false claims in prose
+     evidence (3-for-3, zero code defects), which every seat read as the argument
+     FOR keeping it. Measured saving from the assure drop: ~96k-404k per bug,
+     n=2, and n=2 ships disclosed.
+     Two seed claims were falsified by the council and corrected: 0027's verify
+     was fully evidenced (a full disk, not a lax gate — verify is the corpus's
+     BEST-evidenced stage), and its 403,895 assure tokens are ONE walk of three
+     seat dispatches at node floor, not retry spend. Also corrected: this
+     section's note that triage spend is unmeasured is item-scoped — seven
+     measured triage events put a six-seat council at 110k-198k.
+     The triage skip is EXCLUDED from 0033: it is already built and green in
+     0026's parked branch, so it is a ship decision on 0026, not new scope. That
+     is where the human's largest saving actually sits.
+     Blocking into spec: F1 journeys:none is unsound as the drop key (it means
+     declared journey impact, and factory-bug seeds the affected journey, so
+     0027 declared J-001,J-002,J-003) — spec owes a replacement, explicitly
+     declared, not an overload; F2 0033 falsifies the README:96 rewrite 0026 is
+     built to publish, so whichever ships second carries the other's copy edit;
+     F4 packet.py must gain an engine-derived `n/a (not in this item's sequence)`
+     third artifact state, or the drop's only visible effect is a new permanent
+     false pending claim on every bug packet. bid-0042 is AMENDED, not
+     discharged. Round 3 was warranted and not run (hard stop); F1 and F5 carry
+     into spec. See .factory/items/0033-*/triage.md. -->
+
+- [1] 0033-bugs-run-less-pipeline-make-stage-member Bugs run less pipeline: make stage membership tier-conditional, the way it is already kind-conditional (triage → spec, feature — **human-filed 2026-08-04**, "I want bugs to use less pipeline as a general rule"; 6/6 BUILD-RESCOPED: goal affirmed, `tier`-parameter mechanism refused 6/6, **assure is the one stage a bug skips**, triage skip excluded to 0026's parked branch; title now overstates — the change is a gate-substitution key, not a tier axis)
 - [-] 0032-dispatch-resilience-pool-exhaustion-and- Dispatch resilience: pool-exhaustion and no-synthesis council runs must fail fast and resume, not silently re-walk (idea, feature — filed by 0026's triage council; a malfunctioned council-review cost 1,499,591 tokens vs 135,475 for a complete fan-out, 11x; ranked second, after 0026's routing branch)
