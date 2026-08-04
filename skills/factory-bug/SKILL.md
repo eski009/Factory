@@ -8,7 +8,7 @@ Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.p
 ## Contract
 
 - **Input:** the human's bug report, verbatim (from /factory:bug or direct invocation). The human is present — intake runs synchronously in this session.
-- **Artifacts produced:** a new work item with `bug: true` and `assurance: verify` frontmatter, `items/<id>/repro.md`, a `repro.confirmed` event (replication success path only), `items/<id>/triage.md`, and the two seeded acceptance criteria in the item body.
+- **Artifacts produced:** a new work item with `bug: true` frontmatter and an immutable `assurance.verify` intake event (reported by status as `assurance: verify`), `items/<id>/repro.md`, a `repro.confirmed` event (replication success path only), `items/<id>/triage.md`, and the two seeded acceptance criteria in the item body.
 - **Exit — replicated:** item advanced to `spec`; /factory:run carries it from there. The engine's plan gate independently requires `repro.md` + `repro.confirmed` for bug items — this skill cannot bypass it.
 - **Exit — cannot replicate or still ambiguous:** item paused `waiting-human` with a packet; never proceed to fix an unreplicated bug.
 
@@ -20,7 +20,7 @@ The core promise: **we never claim a bug is fixed when it isn't.** The recorded 
 
 2. **Decide kind.** `ui` or `mixed` **only when the fix changes the intended design**; restore-to-spec visual bugs stay `backend` — a padding nit must not become a human design-gate stop. `kind` stays the design-routing axis; bug-ness is the separate `bug` flag.
 
-3. **File the item.** `factory add "<short bug title>" --kind <kind>`. Then edit `items/<id>/item.md` directly: set the body to the verbatim bug report (plus any clarification answers, marked as such), and add both `bug: true` and `assurance: verify` to the frontmatter — plain frontmatter fields, not CLI-settable, following the same convention as triage's `kind` correction. Also set the item's tier to bug: `factory tier ITEM bug` (a defect gets the light correctness-only review and skips market research — see the tier profiles in the capabilities/`factory doctor` readout). `assurance: verify` means fresh verification substitutes for the separate assure stage even when the bug has customer journey impact; it is independent of `tier: bug` (the materiality axis), `bug: true` (the repro gate), and the `journeys` declaration (journey impact). Never derive one field from another.
+3. **File the item.** `factory add "<short bug title>" --kind <kind>`. Then edit `items/<id>/item.md` directly: set the body to the verbatim bug report (plus any clarification answers, marked as such), and add `bug: true` to the frontmatter — a plain frontmatter field, not CLI-settable, following the same convention as triage's `kind` correction. While the item is still at `idea`, run `factory bug-assurance ITEM`; this single writer appends the immutable `assurance.verify` intake event, and status reports the derived mode as `assurance: verify`. Also set the item's tier to bug: `factory tier ITEM bug` (a defect gets the light correctness-only review and skips market research — see the tier profiles in the capabilities/`factory doctor` readout). The derived mode means fresh verification substitutes for the separate assure stage even when the bug has customer journey impact; it is independent of `tier: bug` (the materiality axis), `bug: true` (the repro gate), and the `journeys` declaration (journey impact). Never derive one claim from another, and never write `assurance` into frontmatter.
 
 4. **Replicate — before any fix work.** Actually run the failing path. **A prose description is not a repro.**
    - On success, write `items/<id>/repro.md`:
@@ -53,7 +53,7 @@ The core promise: **we never claim a bug is fixed when it isn't.** The recorded 
    `## Journey impact (seeded at bug intake — carry into spec.md verbatim)`
    naming the affected journey id from `docs/factory/journeys/graph.json`,
    the changed node, and the immediate transition. Record the impact honestly
-   even though `assurance: verify` omits the separate assure walk; verify still
+   even though the derived `assurance: verify` mode omits the separate assure walk; verify still
    exercises the recorded repro and acceptance criteria. If the graph has no matching journey,
    name the flow in prose and flag it for the spec stage to register. Only
    a bug with genuinely no customer-visible surface seeds

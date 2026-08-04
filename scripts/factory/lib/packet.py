@@ -22,7 +22,7 @@ ARTIFACT_STAGES = {
 URL_RE = re.compile(r"https?://[^\s<>\"']+")
 
 
-def artifact_applies(meta, rel):
+def artifact_applies(repo, item_id, meta, rel):
     """Whether a missing artifact's producing stage is in this item.
 
     Existing files are always rendered by the caller: a mid-flight sequence
@@ -32,8 +32,9 @@ def artifact_applies(meta, rel):
     """
     from . import machine
     stage = ARTIFACT_STAGES[rel]
+    assurance = items.assurance_mode(repo, item_id)
     return stage in machine.stage_sequence(
-        meta["kind"], meta.get("journeys"), meta.get("assurance"))
+        meta["kind"], meta.get("journeys"), assurance)
 
 
 def packet_html_path(repo, item_id):
@@ -437,7 +438,7 @@ def render_packet(repo, item_id, summary=None):
         exists = artifact.exists()
         if exists:
             state = "yes"
-        elif artifact_applies(meta, rel):
+        elif artifact_applies(repo, item_id, meta, rel):
             state = "no"
         else:
             state = "n/a (not in this item's sequence)"
@@ -621,7 +622,7 @@ def render_packet_html(repo, item_id, summary=None):
         artifact = item_dir / rel
         if artifact.exists():
             out.append(f"      <li>{_link(rel, artifact.resolve().as_uri())}</li>")
-        elif not artifact_applies(meta, rel):
+        elif not artifact_applies(repo, item_id, meta, rel):
             out.append(
                 f'      <li class="missing">{_e(rel)} — '
                 "n/a (not in this item's sequence)</li>")

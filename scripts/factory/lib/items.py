@@ -11,8 +11,7 @@ from . import logs, paths
 
 FIELD_ORDER = (
     "id", "title", "stage", "kind", "tier", "bug", "journeys",
-    "assurance", "priority", "created", "updated", "paused-from",
-    "paused-reason",
+    "priority", "created", "updated", "paused-from", "paused-reason",
 )
 REQUIRED_FIELDS = ("id", "title", "stage", "kind", "created", "updated")
 INT_FIELDS = ("priority",)
@@ -20,6 +19,8 @@ BOOL_FIELDS = ("bug",)
 KINDS = ("ui", "backend", "mixed")
 TIERS = ("epic", "feature", "bug")
 DEFAULT_TIER = "feature"
+VERIFY_ASSURANCE = "verify"
+BUG_ASSURANCE_EVENT = "assurance.verify"
 
 
 class ItemError(ValueError):
@@ -206,6 +207,45 @@ def set_tier(repo, item_id, tier):
     save_item(repo, meta, body)
     logs.append_event(repo, item_id, "tier.set", {"tier": tier})
     return meta
+
+
+def assurance_mode(repo, item_id):
+    """Return the immutable, door-keyed assurance mode, or None.
+
+    The event is append-only and has one engine writer. Unlike mutable item
+    metadata, it cannot change the stage sequence halfway through a run via a
+    supported command.
+    """
+    for event in logs.read_events(repo, item_id):
+        if event.get("event") != BUG_ASSURANCE_EVENT:
+            continue
+        data = event.get("data")
+        if (isinstance(data, dict)
+                and data.get("mode") == VERIFY_ASSURANCE
+                and data.get("source") == "factory-bug"):
+            return VERIFY_ASSURANCE
+    return None
+
+
+def record_bug_assurance(repo, item_id):
+    """Select verification as ship evidence for a bug-door item.
+
+    This is intentionally accepted only while the item is still at `idea` and
+    already carries the independent repro-evidence flag. Repeating the bug
+    door's step is idempotent; no second event is written.
+    """
+    meta, _body = load_item(repo, item_id)
+    if meta["stage"] != "idea":
+        raise ItemError(
+            "bug assurance mode can only be recorded at bug intake (stage idea)")
+    if meta.get("bug") is not True:
+        raise ItemError(
+            "bug assurance mode requires the independent bug: true repro flag")
+    if assurance_mode(repo, item_id) == VERIFY_ASSURANCE:
+        return VERIFY_ASSURANCE
+    logs.append_event(repo, item_id, BUG_ASSURANCE_EVENT,
+                      {"mode": VERIFY_ASSURANCE, "source": "factory-bug"})
+    return VERIFY_ASSURANCE
 
 
 JOURNEYS_RE = re.compile(r"^(none|J-[0-9]{3}(,J-[0-9]{3})*)$")

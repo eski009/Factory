@@ -64,6 +64,9 @@ def cmd_status(args):
     if args.json:
         for m in rows:
             m["tier"] = items.item_tier(m)
+            assurance = items.assurance_mode(args.repo, m["id"])
+            if assurance:
+                m["assurance"] = assurance
             spend = cost.summarize(args.repo, m["id"])
             spend.pop("stages", None)
             m["spend"] = spend
@@ -209,6 +212,10 @@ def cmd_log(args):
         except json.JSONDecodeError as exc:
             print(f"--data is not valid JSON: {exc}", file=sys.stderr)
             return 1
+    if args.event == items.BUG_ASSURANCE_EVENT:
+        print(f"{args.event} is written only by factory bug-assurance",
+              file=sys.stderr)
+        return 1
     if args.event in ("assure.waived", "assure.confirmed", "cost.answered",
                       "approach.answered"):
         print(f"{args.event} is written only by its human verb "
@@ -222,6 +229,16 @@ def cmd_log(args):
         print(str(exc), file=sys.stderr)
         return 1
     logs.append_event(args.repo, args.item, args.event, data)
+    return 0
+
+
+def cmd_bug_assurance(args):
+    try:
+        mode = items.record_bug_assurance(args.repo, args.item)
+    except items.ItemError as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    print(f"{args.item} assurance {mode}")
     return 0
 
 
@@ -503,6 +520,12 @@ def main(argv=None):
     p.add_argument("event")
     p.add_argument("--data")
     p.set_defaults(func=cmd_log)
+
+    p = sub.add_parser(
+        "bug-assurance",
+        help="record the immutable verify-substitution selected by bug intake")
+    p.add_argument("item")
+    p.set_defaults(func=cmd_bug_assurance)
 
     p = sub.add_parser("bid", help="file an escalation bid")
     p.add_argument("agent")

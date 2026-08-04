@@ -6,34 +6,43 @@ production state machine and both packet renderers; a list-shape assertion on
 its own would not prove that the substituted ship gate actually runs.
 """
 
-import os
 import inspect
+import io
+import json
+import os
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
+from scripts.factory import factory
 from scripts.factory.lib import initrepo, items, logs, machine, packet, paths
 
 
 ITEM = "0001-bug"
 
 
-def make_item(repo, *, stage="verify", assurance="verify", journeys="J-004"):
+def make_item(repo, *, stage="verify", assurance="verify", journeys="J-004",
+              bug=True):
     meta = {
         "id": ITEM,
         "title": "Small bug",
         "stage": stage,
         "kind": "backend",
         "tier": "bug",
-        "bug": True,
         "journeys": journeys,
         "priority": 1,
         "created": "2026-08-04T00:00:00Z",
         "updated": "2026-08-04T00:00:00Z",
     }
-    if assurance is not None:
-        meta["assurance"] = assurance
+    if bug:
+        meta["bug"] = True
     items.save_item(repo, meta, "# Small bug\n")
+    if assurance == "verify":
+        # Most fixtures begin after intake. Seed the same immutable event that
+        # `factory bug-assurance` writes; writer restrictions are tested below.
+        logs.append_event(repo, ITEM, items.BUG_ASSURANCE_EVENT,
+                          {"mode": "verify", "source": "factory-bug"})
     return meta
 
 
@@ -52,12 +61,68 @@ class BugAssuranceModeTest(unittest.TestCase):
         logs.append_event(self.repo, ITEM, "stage.advance",
                           {"from": "plan", "to": "implement"})
 
-    def test_assurance_field_round_trips(self):
-        make_item(self.repo)
+    def run_cli(self, *args):
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = factory.main(["--repo", str(self.repo), *args])
+        return code, out.getvalue(), err.getvalue()
+
+    def test_bug_door_writer_is_idea_only_idempotent_and_derived(self):
+        make_item(self.repo, stage="idea", assurance=None)
+        self.assertEqual(items.record_bug_assurance(self.repo, ITEM), "verify")
+        self.assertEqual(items.record_bug_assurance(self.repo, ITEM), "verify")
+        self.assertEqual(
+            logs.count_events(self.repo, ITEM, items.BUG_ASSURANCE_EVENT), 1)
+        self.assertEqual(items.assurance_mode(self.repo, ITEM), "verify")
         meta, _ = items.load_item(self.repo, ITEM)
-        self.assertEqual(meta["assurance"], "verify")
-        self.assertIn("\nassurance: verify\n",
-                      (paths.item_dir(self.repo, ITEM) / "item.md").read_text())
+        self.assertNotIn("assurance", meta)
+
+    def test_bug_door_writer_requires_bug_flag_and_idea_stage(self):
+        make_item(self.repo, stage="idea", assurance=None, bug=False)
+        with self.assertRaisesRegex(items.ItemError, "bug: true"):
+            items.record_bug_assurance(self.repo, ITEM)
+
+        meta, body = items.load_item(self.repo, ITEM)
+        meta["bug"] = True
+        meta["stage"] = "verify"
+        items.save_item(self.repo, meta, body)
+        with self.assertRaisesRegex(items.ItemError, "stage idea"):
+            items.record_bug_assurance(self.repo, ITEM)
+
+    def test_generic_log_cannot_forge_bug_assurance_event(self):
+        make_item(self.repo, stage="idea", assurance=None)
+        code, _out, err = self.run_cli("log", ITEM,
+                                       items.BUG_ASSURANCE_EVENT)
+        self.assertEqual(code, 1)
+        self.assertIn("only by factory bug-assurance", err)
+        self.assertIsNone(items.assurance_mode(self.repo, ITEM))
+
+    def test_malformed_or_wrong_source_event_fails_closed(self):
+        for data in (None, {}, {"mode": "verify"},
+                     {"mode": "unknown", "source": "factory-bug"},
+                     {"mode": "verify", "source": "factory-triage"}):
+            with self.subTest(data=data), tempfile.TemporaryDirectory() as tmp:
+                repo = Path(tmp)
+                initrepo.init(repo)
+                make_item(repo, assurance=None)
+                logs.append_event(repo, ITEM, items.BUG_ASSURANCE_EVENT, data)
+                self.assertIsNone(items.assurance_mode(repo, ITEM))
+                meta, _ = items.load_item(repo, ITEM)
+                self.assertEqual(
+                    machine.next_stage(meta, items.assurance_mode(repo, ITEM)),
+                    "assure")
+
+    def test_status_reports_derived_mode_without_frontmatter(self):
+        make_item(self.repo, stage="idea", assurance=None)
+        code, out, err = self.run_cli("bug-assurance", ITEM)
+        self.assertEqual(code, 0, err)
+        code, out, err = self.run_cli("status", "--json")
+        self.assertEqual(code, 0, err)
+        row = json.loads(out)[0]
+        self.assertEqual(row["assurance"], "verify")
+        self.assertNotIn(
+            "\nassurance:",
+            (paths.item_dir(self.repo, ITEM) / "item.md").read_text())
 
     def test_verify_mode_skips_assure_with_affected_journeys(self):
         sequence = machine.stage_sequence(
@@ -67,7 +132,9 @@ class BugAssuranceModeTest(unittest.TestCase):
         self.assertEqual(sequence[-4:], ["review", "verify", "ship", "done"])
 
         meta = make_item(self.repo)
-        self.assertEqual(machine.next_stage(meta), "ship")
+        self.assertEqual(
+            machine.next_stage(meta, items.assurance_mode(self.repo, ITEM)),
+            "ship")
 
     def test_absent_or_unknown_mode_keeps_assure(self):
         for assurance in (None, "unknown", "VERIFY", ""):
@@ -124,22 +191,25 @@ class BugAssuranceModeTest(unittest.TestCase):
         self.mark_round()
         logs.append_event(self.repo, ITEM, "verify.green")
 
-        self.assertEqual(machine.next_stage(meta), "ship")
+        self.assertEqual(
+            machine.next_stage(meta, items.assurance_mode(self.repo, ITEM)),
+            "ship")
         advanced, _ = machine.advance(self.repo, ITEM, "ship")
         self.assertEqual(advanced["stage"], "ship")
 
-    def test_unknown_mode_uses_assurance_ship_gate(self):
-        make_item(self.repo, stage="assure", assurance="unknown")
+    def test_absent_event_uses_assurance_ship_gate(self):
+        make_item(self.repo, stage="assure", assurance=None)
         self.mark_round()
         logs.append_event(self.repo, ITEM, "verify.green")
 
         with self.assertRaisesRegex(machine.GateError, "assure.passed"):
             machine.advance(self.repo, ITEM, "ship")
 
-    def test_unknown_mode_is_reported_by_tree_validation(self):
-        make_item(self.repo, assurance="unknown")
-        errors = initrepo.validate_tree(self.repo)
-        self.assertTrue(any("assurance" in error for error in errors), errors)
+    def test_frontmatter_cannot_select_assurance_mode(self):
+        meta = make_item(self.repo, assurance=None)
+        meta["assurance"] = "verify"
+        with self.assertRaisesRegex(items.ItemError, "unknown field: assurance"):
+            items.save_item(self.repo, meta, "# Small bug\n")
 
 
 class PacketArtifactApplicabilityTest(unittest.TestCase):

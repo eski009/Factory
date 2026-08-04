@@ -15,8 +15,9 @@ repro.confirmed, and every file gate; review.rejected and
 assure.rejected (the capped rework edges) now count events since the
 latest redesign edge (lifetime when none). Item 0015 adds verify->implement
 (capped, round-scoped) and the APPROACH_FROM -> spec redesign edge
-(lifetime-capped). Item 0033 lets an explicit `assurance: verify` declaration
-omit the separate assure stage; the ship gate then requires the same fresh
+(lifetime-capped). Item 0033 lets the bug door's immutable
+`assurance.verify` event expose the derived mode `assurance: verify` and omit
+the separate assure stage; the ship gate then requires the same fresh
 verify.green event as the existing `journeys: none` substitution.
 
 advance() returns (meta, verdict): the cost breaker's verdict is computed
@@ -54,7 +55,6 @@ MAX_APPROACH_REJECTIONS = 1
 # event substrate the review/assure caps carry (a named live defect
 # this cap must not copy, B2).
 MAX_VERIFY_REWORKS = 2
-VERIFY_ASSURANCE = "verify"
 
 
 class GateError(Exception):
@@ -65,12 +65,13 @@ def runs_assure(journeys=None, assurance=None):
     """Whether the item gets a separate journey-assurance stage.
 
     `journeys: none` remains the declaration for work with no customer
-    journey impact. Item 0033 adds the orthogonal `assurance: verify`
-    declaration for confirmed bugs that do affect a journey but use fresh
-    verification as their ship evidence. Only the exact value shortens the
-    sequence; absent or unknown input fails closed by retaining assure.
+    journey impact. Item 0033 adds the orthogonal, door-keyed
+    `assurance: verify` mode for confirmed bugs that do affect a journey but
+    use fresh verification as their ship evidence. Only the exact value
+    shortens the sequence; absent or unknown input fails closed by retaining
+    assure.
     """
-    return journeys != "none" and assurance != VERIFY_ASSURANCE
+    return journeys != "none" and assurance != items.VERIFY_ASSURANCE
 
 
 def stage_sequence(kind, journeys=None, assurance=None):
@@ -82,9 +83,8 @@ def stage_sequence(kind, journeys=None, assurance=None):
     return seq
 
 
-def next_stage(meta):
-    seq = stage_sequence(meta["kind"], meta.get("journeys"),
-                         meta.get("assurance"))
+def next_stage(meta, assurance=None):
+    seq = stage_sequence(meta["kind"], meta.get("journeys"), assurance)
     if meta["stage"] not in seq:
         # A declaration can remove the item's CURRENT stage from its own
         # sequence (journeys set to none, or assurance set to verify, while
@@ -583,7 +583,8 @@ def _gate_assure(repo, meta):
 
 def _gate_ship(repo, meta):
     events = logs.read_events(repo, meta["id"])
-    if not runs_assure(meta.get("journeys"), meta.get("assurance")):
+    assurance = items.assurance_mode(repo, meta["id"])
+    if not runs_assure(meta.get("journeys"), assurance):
         _require_event_this_round(repo, meta, "verify.green", "verify",
                                   "verification evidence required",
                                   events=events)
@@ -679,7 +680,7 @@ def advance(repo, item_id, to, reason=None):
         if count >= MAX_APPROACH_REJECTIONS:
             approach.admit_over_cap(repo, item_id, count)
     else:
-        expected = next_stage(meta)
+        expected = next_stage(meta, items.assurance_mode(repo, item_id))
         if to != expected:
             raise GateError(f"illegal transition {frm} -> {to} (next is {expected!r})")
         GATES.get(to, lambda *_: None)(repo, meta)
