@@ -99,5 +99,22 @@ section below.)
      0026's precursor — the reverse, on the recorder half. See
      .factory/items/0026-*/triage.md. -->
 
-- [3] 0026-complexity-scored-bug-flow-bugs-run-a-su Complexity-scored bug flow: bugs run a subset of the pipeline chosen by a 1–5 score (triage → spec — BUILD-RESCOPED 6/6; score and stage-subset cut, becomes bug-door routing + depth recorder; owns bid-0125 and discharges bid-0042)
+<!-- Amended 2026-08-04 by the human, after reviewing 0026's cost and outcome:
+     0026 is PARKED at waiting-human, complete through verify on branch
+     factory/0026-... @ 687c1a1 (967 tests green, 28/28 criteria, review
+     approved round 2). Not shipped. The measurement half is deferred; the
+     ceremony-reduction ask 0026 was filed for is re-filed as 0033 at p1 and
+     goes first. 0026 cost ~1.24M tokens of subagent work through verify and
+     had not yet run its 14-scenario assure walk — an item about reducing
+     ceremony taking the full feature profile.
+
+     0033 also records that this section's stage-membership premise is FALSE:
+     machine.stage_sequence already drops stages conditionally (design for
+     kind backend, assure for journeys none), and _gate_plan already
+     conditions its gate on the same attribute, so a dropped stage strands
+     nothing. Conditional membership is a shipped pattern with two working
+     instances, not new architecture. -->
+
+- [3] 0026-complexity-scored-bug-flow-bugs-run-a-su Complexity-scored bug flow: bugs run a subset of the pipeline chosen by a 1–5 score (PARKED waiting-human — built through verify on branch @ 687c1a1, deliberately unshipped; score and stage-subset cut 6/6, what remains is bug-door signposting + a depth recorder nothing reads; owns bid-0125 and discharges bid-0042)
+- [1] 0033-bugs-run-less-pipeline-make-stage-member Bugs run less pipeline: make stage membership tier-conditional, the way it is already kind-conditional (idea, feature — **human-filed 2026-08-04**, "I want bugs to use less pipeline as a general rule"; carries the intent 0026's council cut, on the evidence that its stage-membership premise is refuted by three lines of machine.stage_sequence; triage decides WHICH stages a bug skips, not whether skipping is possible)
 - [-] 0032-dispatch-resilience-pool-exhaustion-and- Dispatch resilience: pool-exhaustion and no-synthesis council runs must fail fast and resume, not silently re-walk (idea, feature — filed by 0026's triage council; a malfunctioned council-review cost 1,499,591 tokens vs 135,475 for a complete fan-out, 11x; ranked second, after 0026's routing branch)
