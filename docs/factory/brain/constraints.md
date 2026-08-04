@@ -469,3 +469,30 @@
   — an assumption that is **0-for-9** (source: scripts/factory/lib/machine.py;
   commands/add.md; .factory/items/0026-…/reviews/round-1/engineering-quality.md;
   authorized: judgement on bid-0154).
+- **An absence marker must key on the event's presence, not on one provenance
+  class of it.** `cost.render_receipt` fires `(no spend events logged)` on
+  `bucket["measured"] is None`, but `cost.summarize` populates `measured` only
+  for `provenance: "measured"` — a proxy event increments `proxy_events` and
+  leaves `measured` at `None` (`cost.py:176-177`). So the proxy write that
+  0026's own `skills/factory-bug/SKILL.md` step 7.3 mandates unconditionally is
+  invisible to the marker, and on an item that never entered the triage *stage*
+  that same write is what **creates** the bucket that makes the "no spend events
+  logged" line appear: logging causes the line that says you did not log.
+  Reproduced by execution on a fixture repo — packet rendered the marker while
+  `log.jsonl` held a `provenance: "proxy"`, `stage: "triage"` spend event and the
+  bucket read `{'measured': None, 'proxy_events': 1}`. The same sentence carries
+  the same flaw at `cost.render_text:262-263`, which predates the branch (source:
+  .factory/items/0026-…/reviews/round-1/engineering-quality.md;
+  .factory/items/0026-…/reviews/round-2/commercial.md;
+  .factory/items/0026-…/reviews/synthesis.md; authorized: judgement on bid-0165).
+- **An acceptance criterion that asserts a hand-built fixture's *shape* instead
+  of the producing function's *behaviour* will let the next population bug
+  through exactly as it let this one through.** 0026's `TriageUnmeasuredLineTest`
+  hand-builds the cost summary dict with `"proxy_events": 0` in all four cases
+  and never calls `cost.summarize`; AC21 codified the same weaker predicate. The
+  suite was 965-green while the promise failed on the default path. No
+  dict-level test can catch a bug in how `summarize` *populates* the key, which
+  was the entire defect — an AC over a renderer must name the producing function
+  in the path under test (source:
+  .factory/items/0026-…/reviews/round-1/engineering-quality.md;
+  .factory/items/0026-…/reviews/synthesis.md; authorized: judgement on bid-0166).

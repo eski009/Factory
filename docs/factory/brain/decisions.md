@@ -570,3 +570,23 @@
   acting on bid-0152 rather than only recording it
   (source: .factory/items/0026-complexity-scored-bug-flow-bugs-run-a-su/triage.md;
   .factory/items/0026-complexity-scored-bug-flow-bugs-run-a-su/reviews/synthesis.md).
+- **2026-08-04 — 0026 review council: REJECTED at round 1, two HIGH blocking
+  findings, both shipped false claims on operator-facing surfaces.** Full
+  six-seat review (tier `feature`), two rounds, 18 claims; plus an inline
+  orchestrator walk of J-004 N1→N5 against the running engine. **B1:** README:96
+  claimed the packet prints "the depth the item **actually ran at**, so the
+  promise is auditable", but `packet.receipt_lines` recomputes live from current
+  tier + config and nothing anywhere reads the `data.depth` record the same
+  commit writes — resolution is **prose-only**, unanimous, and must move
+  `graph.json` and the J-004 contract to the same verb in the same commit.
+  **B2:** the triage absence marker calls a logged event unlogged, because it
+  keys on `measured is None` while the proxy event arm 5 mandates leaves that
+  `None` — reproduced by execution; resolution is the predicate fix
+  `and not bucket["proxy_events"]`, which makes the three shipped prose surfaces
+  true as already written. Three must-ride riders and six named follow-ons
+  recorded in the synthesis. design-principles.md gained three rules (judgements
+  on bids 0164, 0167, 0168); constraints.md gained two (judgements on bids 0165,
+  0166); bid-0169 (sweep the same fix through `cost.render_text`) was **deferred**
+  as rework guidance already covered by bid-0148 rather than durable memory.
+  Item returned to `implement`; rework round 1 of a cap of 2
+  (source: .factory/items/0026-complexity-scored-bug-flow-bugs-run-a-su/reviews/synthesis.md).

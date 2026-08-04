@@ -108,3 +108,50 @@
   (judgement on bid-0121, a walk that finds a defect must bid its known twin)
   (source: .factory/items/0027-…/reviews/synthesis.md; authorized: judgement
   on bid-0148).
+
+## Learned from item 0026 review (2026-08-04)
+
+- **A receipt that recomputes its subject is not a receipt.** A rendered claim
+  about what *happened* must read the engine's record of it, or must be worded
+  as a claim about what the configuration *selects*. 0026's packet `depth` line
+  calls `tiers.record()` live from the item's current tier and the repo's
+  current config at render time and never reads the `data.depth` record
+  `machine.advance` writes in the same commit — a reader sweep of every
+  `stage.advance` consumer (`machine.py:125,152,181`; `cost.py:108,339`;
+  `initrepo.py:174`) found all six key on `data.from`/`data.to` only, so the
+  record is write-only. README:96 nonetheless shipped "Every packet prints the
+  depth the item **actually ran at**, so the promise is auditable". The item's
+  own motivating case is the disproof: 0027 was `tier: bug`, paid a two-round
+  six-seat triage council, and would still print `review light`. Note the
+  seats' further finding — reading the record would *not* have fixed it either,
+  since the record holds the declared profile at advance time; the honest fix
+  is to word the line as a profile claim (source:
+  .factory/items/0026-…/reviews/round-1/architecture.md,
+  .factory/items/0026-…/reviews/round-2/customer.md,
+  .factory/items/0026-…/reviews/synthesis.md; authorized: judgement on
+  bid-0164).
+- **A prose fix that leaves the journey contract saying the same thing
+  relocates the overclaim into the layer that gets certified.** A journey
+  contract's `Outcome` line *is* the assure oracle, so shipping it unamended
+  means a walk is asked to certify the false claim — and once certified the
+  brain carries it as proven. README prose and the contract must move to the
+  same verb in the same commit; deferring the contract to the assure walk burns
+  a walk and discovers the problem in the wrong order. This names which layer
+  bid-0148's sweep must reach, and why the ordering is not free (source:
+  .factory/items/0026-…/reviews/round-1/architecture.md,
+  docs/factory/journeys/contracts/J-004-bug-door-intake.md; authorized:
+  judgement on bid-0168).
+- **The ship record is a claim surface with the same honesty duty as the code.**
+  Where a review's clusters resolve to "say less on the record" rather than "do
+  more in the product", the record must state the remainder rather than let a
+  partial discharge read as closed. Three of 0026's eight review clusters
+  resolved that way, and written loosely the item would ship having *added*
+  unfalsifiable claims while discharging bids that read as closed — bid-0152
+  only partially (the receipt marks one stage of six), bid-0155 only on its
+  second disjunct and only once the prose fix lands, bid-0157 not at all
+  (`intake.bug_route` guards `factory add` alone, while every skill that sets
+  `tier: bug` goes through the unguarded `items.set_tier`). A bid names the
+  remainder or it is not discharged (source:
+  .factory/items/0026-…/reviews/round-2/customer.md,
+  .factory/items/0026-…/reviews/round-1/product.md; authorized: judgement on
+  bid-0167).
