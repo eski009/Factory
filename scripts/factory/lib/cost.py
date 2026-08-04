@@ -19,10 +19,9 @@ TOKEN_KEYS = ("input", "output", "total")
 
 # The rework substrate: a backward stage.advance edge into implement.
 # Engine-written (machine.advance appends every stage.advance itself), so
-# no skill can forget to log it. "verify" counts zero today — machine
-# admits no verify -> implement edge — and is listed so 0014/0015 cannot
-# silently under-count when they add one. waiting-human -> implement is
-# deliberately absent: resumes must not inflate the count.
+# no skill can forget to log it. "verify" counts: the edge is admitted and
+# capped by machine.MAX_VERIFY_REWORKS. waiting-human -> implement is
+# deliberately absent so resumes cannot inflate the count.
 REWORK_FROM = frozenset({"review", "assure", "verify"})
 REWORK_TO = "implement"
 # Item 0015: the redesign firing set - aliased from the one declaration
@@ -70,11 +69,13 @@ def summarize(repo, item_id):
     """Aggregate one item's log into the cost-summary dict (spec §2).
 
     Raises items.ItemError for an unknown item, mirroring packet.
-    Tolerant of malformed events: stage.advance without dict data/"to"
-    or a parseable ts is skipped; invalid spend events are excluded
-    from every sum and surfaced as invalid_spend_events. Corrupt log
-    lines are skipped at the logs.read_events_with_stats boundary and
-    surfaced as corrupt_log_lines (item spec 0007 §2).
+    Tolerant of malformed events: stage.advance without dict data, with a
+    non-string `from`/`to` stage name, or without a parseable ts is skipped;
+    invalid spend events are excluded from every sum and surfaced as
+    invalid_spend_events. Corrupt log lines are skipped at the
+    logs.read_events_with_stats boundary and surfaced as corrupt_log_lines
+    (item spec 0007 §2). A missing `from` retains the legacy tracked-stage
+    fallback used for rework counting.
     """
     items.load_item(repo, item_id)
     events, corrupt = logs.read_events_with_stats(repo, item_id)
@@ -104,6 +105,12 @@ def summarize(repo, item_id):
         data = event.get("data")
         if not isinstance(data, dict) or "to" not in data:
             continue
+        to = data["to"]
+        if (not isinstance(to, str)
+                or ("from" in data and not isinstance(data["from"], str))):
+            continue
+        rework_from = data.get("from", current_stage)
+        approach_from = data.get("from")
         seconds = _seconds_between(prev, ts)
         resumed = current_stage in WAITING_STAGES
         if resumed:
@@ -111,19 +118,17 @@ def summarize(repo, item_id):
         else:
             _bucket(stages, current_stage)["active_seconds"] += seconds
         advances += 1
-        if (data.get("from", current_stage) in REWORK_FROM
-                and data["to"] == REWORK_TO):
+        if rework_from in REWORK_FROM and to == REWORK_TO:
             rework_edges += 1
             rework_since_redesign += 1
-        if (data.get("from") in APPROACH_FROM
-                and data["to"] == APPROACH_TO):
+        if approach_from in APPROACH_FROM and to == APPROACH_TO:
             # Item 0015 SS6: the redesign boundary. approach_edges is
             # lifetime; rework_since_redesign restarts here. The
             # cumulative rework_edges above is deliberately untouched -
             # the breaker measures spend across redesigns (B4).
             approach_edges += 1
             rework_since_redesign = 0
-        current_stage = data["to"]
+        current_stage = to
         prev = ts
         if current_stage not in WAITING_STAGES and not resumed:
             _bucket(stages, current_stage)["entries"] += 1

@@ -298,15 +298,16 @@ _OWNER_RE = re.compile(r"^[0-9]{4}-[a-z0-9-]+$")
 
 
 def _path_escape_error(rel):
-    """Relative, no '..' - the same containment rule the branch evidence
-    already uses (machine.py:134-144). Returns a message suffix or None."""
+    """Relative, no '..' - the same containment rule used by
+    `_validate_assurance_artifacts`' scenario-evidence loop. Returns a
+    message suffix or None."""
     parts = PurePosixPath(rel).parts
     if not rel or PurePosixPath(rel).is_absolute() or ".." in parts:
         return f"evidence path escapes the item dir: {rel}"
     return None
 
 
-def _attribution_error(repo, meta, item_dir, journey_id, s, attr_on):
+def _attribution_error(repo, meta, item_dir, s, attr_on):
     """The ordered attribution rules of item 0013 §5. Returns a message
     suffix when the scenario BLOCKS the advance to ship, or None when it
     does not block - a pass, or a validated non-blocking pre-existing fail.
@@ -425,18 +426,17 @@ def _validate_assurance_artifacts(repo, meta):
                 f"journey {j.get('id')}: verdicts contain no scenarios — "
                 "nothing was exercised")
         for s in j.get("scenarios", []):
-            problem = _attribution_error(
-                repo, meta, item_dir, j.get("id"), s, attr_on)
+            problem = _attribution_error(repo, meta, item_dir, s, attr_on)
             if problem:
                 raise GateError(
                     f"journey {j.get('id')} scenario {s.get('id')}: {problem}")
             for ev in s.get("evidence", []):
                 rel = ev.get("path", "")
-                parts = PurePosixPath(rel).parts
-                if PurePosixPath(rel).is_absolute() or ".." in parts:
+                escape = _path_escape_error(rel)
+                if escape:
                     raise GateError(
                         f"journey {j.get('id')} scenario {s.get('id')}: "
-                        f"evidence path escapes the item dir: {rel}")
+                        + escape)
                 if not (item_dir / rel).exists():
                     raise GateError(
                         f"journey {j.get('id')} scenario {s.get('id')}: "
@@ -672,10 +672,18 @@ def advance(repo, item_id, to, reason=None):
     if reason:
         event_data["reason"] = reason
     logs.append_event(repo, item_id, "stage.advance", event_data)
-    # Computed after the append so the verdict sees the edge this
-    # transition just created. Advisory only: the engine never mutates
-    # stage on its own initiative.
-    verdict = breaker.verdict(repo, item_id, meta, to)
+    # Computed after the append so the verdict sees the edge this transition
+    # just created. This post-mutation call must remain total: tolerant
+    # logs.read_events_with_stats and cost.summarize skip hostile log entries;
+    # read_answer catches OSError/UnicodeDecodeError and malformed watermark
+    # conversion; _config_gates catches config OSError/JSONDecodeError; and
+    # cost.summarize loads the item advance just wrote. Do not add a verdict
+    # dependency without preserving that invariant.
+    # Backlog is packet-only dead work here. On a cost-gated advance, the two
+    # cost.summarize reads are not collapsible: precondition must see the
+    # pre-transition edge count and verdict must see the post-append count.
+    # Advisory only: the engine never mutates stage on its own initiative.
+    verdict = breaker.verdict(repo, item_id, meta, to, backlog=False)
     if verdict["fired"]:
         # Audit trail only — nothing ever counts or gates on this event.
         logs.append_event(repo, item_id, "cost.breaker",

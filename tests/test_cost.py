@@ -107,6 +107,10 @@ class SummarizeTimelineTest(CostTestCase):
     def test_malformed_stage_advance_is_skipped(self):
         self.log_at("2026-07-03T09:00:00Z", "item.created")
         self.log_at("2026-07-03T09:10:00Z", "stage.advance", "oops")
+        self.log_at("2026-07-03T09:15:00Z", "stage.advance",
+                    {"from": "idea", "to": []})
+        self.log_at("2026-07-03T09:20:00Z", "stage.advance",
+                    {"from": {}, "to": "triage"})
         self.advance_at("2026-07-03T09:30:00Z", "idea", "triage")
         os.environ["FACTORY_NOW"] = "2026-07-03T09:30:00Z"
         summary = cost.summarize(self.repo, ITEM)

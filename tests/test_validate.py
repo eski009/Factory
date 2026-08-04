@@ -20,7 +20,77 @@ GOOD_ITEM = {
 }
 
 
+def schema_contract(schema):
+    """Collect keys only at schema positions and reject unsupported forms."""
+    keywords = set()
+    unsupported_shapes = set()
+
+    def collect(current):
+        if not isinstance(current, dict):
+            return
+        keywords.update(current)
+        for container in ("properties", "patternProperties", "definitions"):
+            for subschema in current.get(container, {}).values():
+                collect(subschema)
+        if "items" in current:
+            items_schema = current["items"]
+            if isinstance(items_schema, dict):
+                collect(items_schema)
+            else:
+                unsupported_shapes.add("items must contain one schema object")
+        if "additionalProperties" in current:
+            additional = current["additionalProperties"]
+            if not isinstance(additional, bool):
+                unsupported_shapes.add(
+                    "additionalProperties must be boolean, not a schema")
+                collect(additional)
+
+    collect(schema)
+    return keywords, unsupported_shapes
+
+
 class TestValidator(unittest.TestCase):
+    def test_every_schema_keyword_is_implemented_by_the_validator(self):
+        keywords = set()
+        unsupported_shapes = set()
+
+        for path in SCHEMAS.glob("*.json"):
+            found, shapes = schema_contract(
+                json.loads(path.read_text(encoding="utf-8")))
+            keywords.update(found)
+            unsupported_shapes.update(shapes)
+
+        implemented = {
+            "type", "enum", "properties", "required",
+            "additionalProperties", "items", "pattern", "minLength",
+            "minimum",
+        }
+        annotations = {"$schema", "title", "description"}
+        unsupported = keywords - implemented - annotations
+        self.assertFalse(
+            unsupported_shapes,
+            "schema form(s) are not implemented by validate.py: "
+            f"{', '.join(sorted(unsupported_shapes))}; implement each form "
+            "in validate.py or stop using it")
+        self.assertFalse(
+            unsupported,
+            "schema keyword(s) are not implemented by validate.py: "
+            f"{', '.join(sorted(unsupported))}; implement each keyword in "
+            "validate.py or stop using it")
+
+    def test_schema_contract_reaches_additional_properties_subschemas(self):
+        keywords, unsupported_shapes = schema_contract({
+            "type": "object",
+            "additionalProperties": {
+                "type": "string",
+                "maxLength": 5,
+            },
+        })
+        self.assertIn("maxLength", keywords)
+        self.assertIn(
+            "additionalProperties must be boolean, not a schema",
+            unsupported_shapes)
+
     def test_type_mismatch(self):
         self.assertTrue(validate("hi", {"type": "integer"}))
 

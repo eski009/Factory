@@ -6,9 +6,10 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 from scripts.factory import factory
-from scripts.factory.lib import breaker, cost, initrepo, items, logs, paths
+from scripts.factory.lib import breaker, cost, initrepo, items, logs, machine, paths
 from scripts.factory.lib.machine import GateError as GateErrorAlias
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -123,6 +124,29 @@ class VerdictTest(BreakerTestCase):
         self.assertTrue(v["over_threshold"])
         self.assertTrue(v["fired"])
         self.assertEqual(v["rework_edges"], 4)
+
+    def test_verdict_skips_the_backlog_scan_when_asked(self):
+        self.set_gates("design", "cost")
+        meta = self.put()
+        self.install_fixture()
+        default = breaker.verdict(self.repo, ITEM, meta, "implement")
+        without_backlog = breaker.verdict(
+            self.repo, ITEM, meta, "implement", backlog=False)
+        self.assertEqual(set(without_backlog), set(default))
+        self.assertIsNone(without_backlog["backlog"])
+        for key in ("fired", "rework_edges", "over_threshold"):
+            self.assertEqual(without_backlog[key], default[key])
+
+    def test_advance_does_not_scan_the_backlog(self):
+        self.put(stage="idea")
+        self.put("0002-other", stage="plan")
+        self.put("0003-another", stage="review")
+        with mock.patch.object(
+                breaker, "backlog_counts",
+                side_effect=AssertionError("advance scanned the backlog")):
+            meta, verdict = machine.advance(self.repo, ITEM, "triage")
+        self.assertEqual(meta["stage"], "triage")
+        self.assertIsNone(verdict["backlog"])
 
     def test_over_threshold_is_computed_gate_independent(self):
         self.set_gates("design")
@@ -294,6 +318,15 @@ class InvarianceTest(BreakerTestCase):
 
 
 class RecordAnswerTest(BreakerTestCase):
+    def write_packet_pair(self):
+        packet_dir = paths.docs_root(self.repo) / "packets"
+        packet_dir.mkdir(parents=True, exist_ok=True)
+        md = packet_dir / f"{ITEM}.md"
+        html = packet_dir / f"{ITEM}.html"
+        md.write_text("packet\n", encoding="utf-8")
+        html.write_text("packet\n", encoding="utf-8")
+        return md, html
+
     def test_writes_artifact_logs_event_and_returns_path(self):
         self.put()
         self.install_fixture()
@@ -339,6 +372,36 @@ class RecordAnswerTest(BreakerTestCase):
     def test_unknown_item_raises(self):
         with self.assertRaises(items.ItemError):
             breaker.record_answer(self.repo, "0999-nope", "continue")
+
+    def test_narrow_clears_the_packet(self):
+        self.put()
+        self.install_fixture()
+        md, html = self.write_packet_pair()
+        breaker.record_answer(self.repo, ITEM, "narrow")
+        self.assertFalse(md.exists())
+        self.assertFalse(html.exists())
+
+    def test_defer_clears_the_packet(self):
+        self.put()
+        self.install_fixture()
+        md, html = self.write_packet_pair()
+        breaker.record_answer(self.repo, ITEM, "defer")
+        self.assertFalse(md.exists())
+        self.assertFalse(html.exists())
+
+    def test_continue_leaves_the_packet_for_dispatch_to_clear(self):
+        self.put()
+        self.install_fixture()
+        md, html = self.write_packet_pair()
+        breaker.record_answer(self.repo, ITEM, "continue")
+        self.assertTrue(md.exists())
+        self.assertTrue(html.exists())
+
+    def test_missing_packet_pair_is_not_an_error(self):
+        self.put()
+        self.install_fixture()
+        breaker.record_answer(self.repo, ITEM, "narrow")
+        self.assertTrue(breaker.answer_path(self.repo, ITEM).exists())
 
 
 class AnswerCoversThenLapsesTest(BreakerTestCase):
@@ -394,6 +457,19 @@ class VerdictIsReadOnlyTest(BreakerTestCase):
         breaker.verdict(self.repo, ITEM, meta, "implement")
         self.assertEqual(log.read_bytes(), before_log)
         self.assertEqual(item_md.read_bytes(), before_item)
+
+    def test_unparseable_answer_watermark_does_not_raise(self):
+        meta = self.put()
+        self.install_fixture()
+        answer = breaker.answer_path(self.repo, ITEM)
+        answer.parent.mkdir(parents=True, exist_ok=True)
+        answer.write_text(
+            "- answer: continue\n- rework-edges: " + "9" * 5000 + "\n",
+            encoding="utf-8")
+        verdict = breaker.verdict(
+            self.repo, ITEM, meta, "implement", backlog=False)
+        self.assertIsNone(verdict["answered_at"])
+        self.assertFalse(verdict["fired"])
 
 
 class PreconditionTest(BreakerTestCase):

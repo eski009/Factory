@@ -20,6 +20,23 @@ def read(p):
 
 
 class TestPluginCoherence(unittest.TestCase):
+    def test_engine_comments_cite_symbols_not_source_lines(self):
+        citations = []
+        source_line = re.compile(r"[A-Za-z0-9_./-]+\.(?:py|md):\d+")
+        for path in (ROOT / "scripts/factory/lib").glob("*.py"):
+            for match in source_line.finditer(read(path)):
+                citations.append(f"{path.name}: {match.group(0)}")
+        self.assertEqual(
+            citations, [],
+            "replace source-line citations with symbol or named-section "
+            "references: " + ", ".join(citations))
+
+    def test_fingerprint_recipe_agrees_between_skill_and_engine(self):
+        skill = read(ROOT / "skills/factory-assure/SKILL.md")
+        engine = read(ROOT / "scripts/factory/lib/assure.py")
+        self.assertIn('"<journey id>\\n<scenario id>"', skill)
+        self.assertNotIn("normalised failing", engine)
+
     def test_every_dispatcher_mapped_stage_skill_exists(self):
         # factory-dispatch maps stages to factory-<stage> skills; each must exist.
         dispatch = read(ROOT / "skills/factory-dispatch/SKILL.md")

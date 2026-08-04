@@ -100,6 +100,65 @@ class TestLegality(MachineTest):
         self.assertEqual(meta["stage"], "triage")
         self.assertEqual(logs.count_events(self.repo, "0001-thing", "stage.advance"), 1)
 
+    def test_advance_still_returns_a_verdict_on_a_hostile_log(self):
+        expected_keys = {
+            "over_threshold", "fired", "reason", "rework_edges",
+            "threshold", "gate", "answered_at", "priority", "backlog",
+            "stage",
+        }
+        for gates in ([], ["cost"]):
+            with self.subTest(gates=gates), tempfile.TemporaryDirectory() as tmp:
+                repo = Path(tmp)
+                initrepo.init(repo)
+                config_path = paths.config_path(repo)
+                config = json.loads(config_path.read_text(encoding="utf-8"))
+                config["gates"] = gates
+                config_path.write_text(
+                    json.dumps(config, indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8")
+                make_item(repo)
+                log_path = paths.item_dir(repo, "0001-thing") / "log.jsonl"
+                log_path.write_text(
+                    "not json\n"
+                    "[]\n"
+                    '{"event":"stage.advance","ts":"2026-07-03T10:01:00Z"}\n'
+                    '{"data":[],"event":"stage.advance",'
+                    '"ts":"2026-07-03T10:02:00Z"}\n'
+                    '{"data":{"from":"idea","to":[]},'
+                    '"event":"stage.advance",'
+                    '"ts":"2026-07-03T10:03:00Z"}\n'
+                    '{"data":{"from":{},"to":"triage"},'
+                    '"event":"stage.advance",'
+                    '"ts":"2026-07-03T10:04:00Z"}\n',
+                    encoding="utf-8")
+
+                meta, verdict = machine.advance(
+                    repo, "0001-thing", "triage")
+
+                self.assertEqual(meta["stage"], "triage")
+                self.assertEqual(
+                    items.load_item(repo, "0001-thing")[0]["stage"],
+                    "triage")
+                self.assertEqual(set(verdict), expected_keys)
+                self.assertIsNone(verdict["backlog"])
+
+    def test_advance_still_returns_a_verdict_with_malformed_cost_watermark(self):
+        initrepo.init(self.repo)
+        make_item(self.repo)
+        answer = breaker.answer_path(self.repo, "0001-thing")
+        answer.parent.mkdir(parents=True, exist_ok=True)
+        answer.write_text(
+            "- answer: continue\n- rework-edges: " + "9" * 5000 + "\n",
+            encoding="utf-8")
+
+        meta, verdict = machine.advance(
+            self.repo, "0001-thing", "triage")
+
+        self.assertEqual(meta["stage"], "triage")
+        self.assertEqual(
+            items.load_item(self.repo, "0001-thing")[0]["stage"], "triage")
+        self.assertIsNone(verdict["answered_at"])
+
     def test_done_items_cannot_be_paused(self):
         make_item(self.repo, stage="done")
         with self.assertRaises(machine.GateError):

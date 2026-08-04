@@ -43,7 +43,6 @@
                                    "pattern": "^[0-9a-f]{40}$"},
                     "evidence": {
                       "type": "array",
-                      "minItems": 1,
                       "items": {
                         "type": "object",
                         "required": ["type", "path"],

@@ -11,6 +11,16 @@ from .machine import GateError, _postdates_latest_implement
 FINGERPRINT_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
+def _one_line(text):
+    """Collapse any whitespace run — newlines included — to a single space.
+    Every field below is rendered as a one-line `- key: value` body line, so a
+    multi-line value is malformed by construction; more importantly, an
+    embedded newline would let free text forge the `- base-defect-fingerprint:`
+    line that `marker_re` dedupes on, filing a later defect against the wrong
+    owner."""
+    return " ".join((text or "").split())
+
+
 def _require_assure_context(meta):
     stage = meta["stage"]
     paused_here = stage in ("waiting-human", "blocked") \
@@ -58,17 +68,25 @@ def file_base_defect(repo, item_id, journey, scenario, fingerprint, title,
     not 'done' for the body line `- base-defect-fingerprint: <hex>`. A
     match returns that id and creates nothing. Returns (owner_id, deduped).
 
-    The engine treats the fingerprint as an opaque 64-hex token; the caller
-    computes it as sha256("<journey>\\n<scenario>\\n<normalised failing
-    expectation text>"). Filed items are stage idea, kind backend, tier bug,
-    with NO priority (unprioritised sorts last) and NO `bug` flag (setting
-    it would engage _gate_plan's repro gate on an item nobody replicated).
+    The engine treats the fingerprint as an opaque 64-hex token. Per the
+    operational recipe owned by `skills/factory-assure/SKILL.md`, it is the
+    lowercase sha256 of "<journey id>\\n<scenario id>": that stable pair
+    excludes free-text expectations because fresh-context reviewers re-phrase
+    them between rounds, which would hash one defect to a new fingerprint each
+    round and defeat this function's dedupe. Filed items are stage idea, kind
+    backend, tier bug, with NO priority (unprioritised sorts last) and NO `bug`
+    flag (setting it would engage _gate_plan's repro gate on an item nobody
+    replicated).
     """
     items.load_item(repo, item_id)          # the originating item must exist
     fingerprint = (fingerprint or "").strip().lower()
     if not FINGERPRINT_RE.match(fingerprint):
         raise GateError("--fingerprint must be 64 lowercase hex characters")
-    title = (title or "").strip()
+    journey = _one_line(journey)
+    scenario = _one_line(scenario)
+    expected = _one_line(expected)
+    actual = _one_line(actual)
+    title = _one_line(title)
     if not title:
         raise GateError("--title must not be empty")
     marker = f"- base-defect-fingerprint: {fingerprint}"

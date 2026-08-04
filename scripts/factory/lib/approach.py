@@ -128,9 +128,6 @@ def record_answer(repo, item_id, answer, notes=None):
     logs.append_event(repo, item_id, "approach.answered",
                       {"answer": answer, "redesigns": edges})
     if answer in ("narrow", "defer"):
-        for name in (f"{item_id}.md", f"{item_id}.html"):
-            try:
-                (paths.docs_root(repo) / "packets" / name).unlink()
-            except OSError:
-                pass
+        from . import packet
+        packet.delete_packets(repo, item_id)
     return path

@@ -15,6 +15,18 @@ def packet_html_path(repo, item_id):
     return paths.docs_root(repo) / "packets" / f"{item_id}.html"
 
 
+def delete_packets(repo, item_id):
+    """Remove the item's rendered packet pair. The log and the answer
+    artifact are the durable record; a packet left behind after its
+    question is answered misleads the hook's 'awaiting review' listing.
+    Missing files are not an error."""
+    for name in (f"{item_id}.md", f"{item_id}.html"):
+        try:
+            (paths.docs_root(repo) / "packets" / name).unlink()
+        except OSError:
+            pass
+
+
 def view_links(repo, item_id, meta):
     """Return human-facing packet links in preferred viewing order."""
     links = []
@@ -36,11 +48,12 @@ def waiting_line(meta, summary):
 
     A cost-breaker pause is rendered from `summary["rework_edges"]`,
     never from the operator's free text: the park reason is hand-copied
-    by an agent (`skills/factory-dispatch/SKILL.md:50`) and a typo in it
-    must not reach the operator as a rework figure (B3/F4) — least of all
-    on the line that leads the page. Every other pause reason is echoed
-    faithfully; this is scoped to the cost-breaker prefix only, so a
-    design pause's free text (and its hosted URL) is untouched.
+    by an agent (the **Cost breaker** stopping rule in
+    `skills/factory-dispatch/SKILL.md`) and a typo in it must not reach the
+    operator as a rework figure (B3/F4) — least of all on the line that leads
+    the page. Every other pause reason is echoed faithfully; this is scoped to
+    the cost-breaker prefix only, so a design pause's free text (and its hosted
+    URL) is untouched.
 
     `summary` is the render's single aggregation, passed down by the
     caller: re-reading the clock here would let the two documents
@@ -50,11 +63,12 @@ def waiting_line(meta, summary):
     if reason.startswith(breaker.PAUSE_PREFIX):
         return (f"{breaker.PAUSE_PREFIX} {summary['rework_edges']} rework "
                 f"edges (threshold {breaker.REWORK_THRESHOLD})")
-    if reason.startswith("approach cap:"):
+    from . import approach
+    if reason.startswith(approach.PAUSE_PREFIX):
         # Derived, never echoed (the same B3/F4 rule as the breaker
         # branch above): the count is the engine's, not the reason's.
         from . import machine
-        return (f"approach cap: {summary.get('approach_edges', 0)} "
+        return (f"{approach.PAUSE_PREFIX} {summary.get('approach_edges', 0)} "
                 f"redesign(s) used (cap {machine.MAX_APPROACH_REJECTIONS})")
     return reason
 
@@ -102,8 +116,9 @@ def cost_decision_lines(repo, item_id, meta, summary=None):
     edges = summary["rework_edges"]
     entries = summary["stages"].get("implement", {}).get("entries", 0)
     priority = meta.get("priority", "-")
-    # AC8: `machine.py:620-622` lets a waiting-human item resume only to
-    # the stage it parked from, so a literal `implement` here is a
+    # AC8: `machine.advance`'s `elif frm in SPECIAL` arm lets a
+    # waiting-human item resume only to the stage it parked from, so a
+    # literal `implement` here is a
     # copy-pasteable command that errors on every non-implement park —
     # the same defect class as the `/factory:run` headline this item
     # exists to remove. An absent field is named rather than
@@ -341,8 +356,8 @@ def respond_action_lines(repo, item_id, meta):
     on its own — deleted in place it would leave the cost arm below the
     assure arm, and an assure-origin cost park would be answered with
     `factory confirm` / `factory waive`, which assure.py admits and
-    machine.py:584-586 treats as authoritative, shipping the item on an
-    unanswered spend gate (item 0027 B1). `assure` is in
+    `machine._gate_ship` treats as authoritative, shipping the item on
+    an unanswered spend gate (item 0027 B1). `assure` is in
     cost.REWORK_FROM, so that shadowing is reachable, not theoretical.
 
     The `design` and `assure` pauses carry no topic prefix at all, so

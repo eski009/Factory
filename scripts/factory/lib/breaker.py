@@ -9,7 +9,7 @@ the current edge count.
 The breaker is advisory: it parks, it never refuses on its own
 initiative. The one refusal it owns is the resume precondition, which
 exists only so a park with no recorded answer cannot ping-pong forever
-(machine.py:287-291 applies no gate to a waiting-human resume).
+(`machine.advance`'s `elif frm in SPECIAL` resume arm applies no gate).
 """
 
 import re
@@ -34,8 +34,9 @@ def answer_path(repo, item_id):
 def read_answer(repo, item_id):
     """Parse cost/answer.md. Returns None when it is absent, empty or
     unreadable; otherwise the two recorded fields, each None when the
-    line is missing. This function never judges — the precondition
-    decides what to refuse, so every refusal message lives in one place."""
+    line is missing or its watermark is unparseable. This function never
+    judges — the precondition decides what to refuse, so every refusal
+    message lives in one place."""
     try:
         text = answer_path(repo, item_id).read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
@@ -44,8 +45,16 @@ def read_answer(repo, item_id):
         return None
     answer = _ANSWER_RE.search(text)
     edges = _EDGES_RE.search(text)
+    watermark = None
+    if edges:
+        try:
+            watermark = int(edges.group(1))
+        except ValueError:
+            # Python bounds decimal conversion length; an oversized numeric
+            # field is malformed input, not an exception from verdict.
+            pass
     return {"answer": answer.group(1) if answer else None,
-            "rework_edges": int(edges.group(1)) if edges else None}
+            "rework_edges": watermark}
 
 
 def rework_edges(repo, item_id):
@@ -85,14 +94,19 @@ def backlog_counts(repo, meta):
                             if not isinstance(m.get("priority"), int))}
 
 
-def verdict(repo, item_id, meta, to, summary=None):
+def verdict(repo, item_id, meta, to, summary=None, *, backlog=True):
     """A plain dict, always, for every advance. Never raises for a
     missing or malformed answer artifact: the verdict reports, the
     precondition refuses.
 
     `summary` lets a caller that has already aggregated the log hand that
     one aggregation in, so every figure it renders comes from a single
-    read of the clock (packet.py renders two proxy figures from it)."""
+    read of the clock (packet.py renders two proxy figures from it).
+
+    With `backlog=False`, the `backlog` value is None: not computed, never
+    zero. A caller needing the populated sub-dict must call `verdict` itself,
+    as `packet.cost_decision_lines` does, rather than reading it from an
+    advance's return value."""
     edges = (summary["rework_edges"] if summary is not None
              else rework_edges(repo, item_id))
     gates = _config_gates(repo)
@@ -110,7 +124,7 @@ def verdict(repo, item_id, meta, to, summary=None):
         "gate": "cost" in gates,
         "answered_at": answered_at,
         "priority": meta.get("priority"),
-        "backlog": backlog_counts(repo, meta),
+        "backlog": backlog_counts(repo, meta) if backlog else None,
         "stage": to,
     }
 
@@ -138,6 +152,10 @@ def record_answer(repo, item_id, answer, notes=None):
         encoding="utf-8")
     logs.append_event(repo, item_id, "cost.answered",
                       {"answer": answer, "rework_edges": edges})
+    if answer in ("narrow", "defer"):
+        # Shared answered-but-still-parked packet lifecycle rule.
+        from . import packet
+        packet.delete_packets(repo, item_id)
     return path
 
 
@@ -180,7 +198,7 @@ def precondition(repo, item_id, meta, to):
         # chars later, and not the bare `- answer:` either: a literal
         # paste of that fails the value regex and re-fires this same arm
         # with a byte-identical message, an unbreaking loop. Mirrors
-        # approach.py:86 exactly.
+        # approach.admit_over_cap's missing-answer branch exactly.
         raise GateError(
             "cost breaker answer malformed: no '- answer: <option>' line; "
             + retry)

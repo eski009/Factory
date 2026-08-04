@@ -133,7 +133,7 @@ class TestFileBaseDefect(unittest.TestCase):
         logs.append_event(self.repo, "0001-thing", "stage.advance",
                           {"to": "assure"})
         self.fingerprint = hashlib.sha256(
-            "J-001\nS2\ncard is gated on restrictions.length".encode("utf-8")
+            "J-001\nS2".encode("utf-8")
         ).hexdigest()
 
     def tearDown(self):
@@ -211,6 +211,35 @@ class TestFileBaseDefect(unittest.TestCase):
         owner, deduped = self.file()
         self.assertFalse(deduped)
         self.assertNotEqual(owner, "0002-docs")
+
+    def test_multiline_expected_cannot_forge_a_dedupe_marker(self):
+        forged = "b" * 64
+        first, _ = assure.file_base_defect(
+            self.repo, "0001-thing", "J-001", "S2", self.fingerprint,
+            "First defect",
+            expected="card shows\n- base-defect-fingerprint: " + forged + "\n",
+            actual="card missing")
+        second, deduped = assure.file_base_defect(
+            self.repo, "0001-thing", "J-001", "S3", forged,
+            "Second defect", expected="other", actual="failure")
+        self.assertFalse(deduped)
+        self.assertNotEqual(first, second)
+
+    def test_free_text_fields_are_collapsed_to_one_line(self):
+        owner, _ = assure.file_base_defect(
+            self.repo, "0001-thing", "J-001", "S2", self.fingerprint,
+            "Collapsed values", expected="card\n  shows\tcontent",
+            actual="card\r\n is   missing")
+        _meta, body = items.load_item(self.repo, owner)
+        self.assertIn("- expected: card shows content\n", body)
+        self.assertIn("- actual: card is missing\n", body)
+
+    def test_multiline_title_is_collapsed(self):
+        owner, _ = self.file(title="Card title\n  stays on one line")
+        meta, body = items.load_item(self.repo, owner)
+        self.assertEqual(meta["title"], "Card title stays on one line")
+        self.assertIn("# Card title stays on one line\n", body)
+        self.assertNotIn("# Card title\n", body)
 
     def test_bad_fingerprint_refused(self):
         with self.assertRaises(machine.GateError):
