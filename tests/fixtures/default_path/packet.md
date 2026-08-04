@@ -4,6 +4,8 @@
 - stage: assure
 - kind: backend
 - priority: 1
+- tier: feature (declared)
+- depth: research web, review full, assure affected (tier feature profile, source defaults)
 
 ## View the options
 - [Open this packet as a page](<REPOURI>/docs/factory/packets/0001-thing.html)

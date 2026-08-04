@@ -29,6 +29,24 @@
         "attribution": {"type": "boolean"}
       }
     },
+    "depth": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "record": {"type": "boolean"},
+        "stages": {"type": "array",
+                   "items": {"type": "string",
+                             "enum": ["review", "assure"]}}
+      }
+    },
+    "intake": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bug_route": {"type": "string",
+                      "enum": ["off", "warn", "refuse"]}
+      }
+    },
     "tiers": {
       "type": "object",
       "additionalProperties": false,

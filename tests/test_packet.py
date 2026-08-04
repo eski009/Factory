@@ -1270,5 +1270,141 @@ class TestNarrowConsequenceNamesThePark(unittest.TestCase):
         self.assertIn("`- paused-from: <stage>`", self.narrow_line(repo))
 
 
+class ReceiptLinesTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        initrepo.init(self.repo)
+        os.environ["FACTORY_NOW"] = "2026-07-03T12:00:00Z"
+
+    def tearDown(self):
+        os.environ.pop("FACTORY_NOW", None)
+        self.tmp.cleanup()
+
+    def _item(self, item_id="0001-thing", **extra):
+        meta = {"id": item_id, "title": "Thing", "stage": "review",
+                "kind": "backend", "priority": 1,
+                "created": "2026-07-03T10:00:00Z",
+                "updated": "2026-07-03T10:00:00Z"}
+        meta.update(extra)
+        items.save_item(self.repo, meta, "# Thing\n")
+        return meta
+
+    def _labels(self, meta):
+        return dict(packet.receipt_lines(self.repo, meta))
+
+    def test_declared_tier_and_depth_lines(self):
+        meta = self._item(tier="bug")
+        lines = self._labels(meta)
+        self.assertEqual(lines["tier"], "bug (declared)")
+        self.assertEqual(
+            lines["depth"],
+            "research off, review light, assure node "
+            "(tier bug profile, source defaults)")
+
+    def test_undeclared_tier_says_so(self):
+        meta = self._item()
+        self.assertEqual(self._labels(meta)["tier"],
+                         "feature (default — no tier declared)")
+
+    def test_empty_tier_value_is_not_a_declaration(self):
+        """Twin of the depth recorder's call site in machine.advance: an
+        empty `tier:` line parses to '' with the key present, so keying on
+        presence would print `feature (declared)` for a tier nothing
+        declared — on the very receipt this item adds to make depth
+        auditable. Nothing validates tier on read (only set_tier does, on
+        the CLI write path; validate.py checks it not at all)."""
+        meta = self._item()
+        meta["tier"] = ""
+        lines = self._labels(meta)
+        self.assertEqual(lines["tier"], "feature (default — no tier declared)")
+        self.assertIn("source defaults", lines["depth"])
+
+    def test_repro_line_unverified_for_bug_tier_without_flag(self):
+        meta = self._item(tier="bug")
+        self.assertIn("bug tier, repro unverified",
+                      self._labels(meta)["repro"])
+
+    def test_repro_line_armed_when_bug_flag_set(self):
+        meta = self._item(tier="bug", bug=True)
+        self.assertIn("bug flag set", self._labels(meta)["repro"])
+        self.assertNotIn("repro unverified", self._labels(meta)["repro"])
+
+    def test_no_repro_line_for_a_non_bug_item(self):
+        self.assertNotIn("repro", self._labels(self._item(tier="feature")))
+        self.assertNotIn("repro", self._labels(self._item(
+            item_id="0002-thing", tier="epic")))
+
+    def test_no_triage_line_without_a_triage_intake_event(self):
+        self.assertNotIn("triage", self._labels(self._item(tier="bug")))
+
+    def test_triage_line_unverified_without_repro_confirmed(self):
+        meta = self._item(tier="bug")
+        logs.append_event(self.repo, meta["id"], "triage.intake",
+                          {"mode": "bug-intake", "council": "none",
+                           "source": "factory-bug"})
+        text = self._labels(meta)["triage"]
+        self.assertIn("no council triage — bug intake, repro UNVERIFIED", text)
+        self.assertIn("source: triage.intake event", text)
+        self.assertNotIn("repro-confirmed", text)
+
+    def test_triage_line_confirmed_with_repro_confirmed(self):
+        meta = self._item(tier="bug")
+        logs.append_event(self.repo, meta["id"], "triage.intake",
+                          {"mode": "bug-intake", "council": "none",
+                           "source": "factory-bug"})
+        logs.append_event(self.repo, meta["id"], "repro.confirmed",
+                          {"command": "foo", "exit": 1})
+        text = self._labels(meta)["triage"]
+        self.assertIn("no council triage — bug intake, repro-confirmed", text)
+
+    def test_triage_intake_with_a_council_is_not_a_bug_intake(self):
+        meta = self._item(tier="bug")
+        logs.append_event(self.repo, meta["id"], "triage.intake",
+                          {"council": "six-seat"})
+        self.assertNotIn("triage", self._labels(meta))
+
+    def test_no_receipt_line_carries_a_figure_or_a_saving_claim(self):
+        for kw in ({"tier": "bug"}, {"tier": "bug", "bug": True},
+                   {"tier": "epic"}, {}):
+            meta = self._item(item_id="0001-thing", **kw)
+            logs.append_event(self.repo, meta["id"], "triage.intake",
+                              {"council": "none"})
+            for label, text in packet.receipt_lines(self.repo, meta):
+                self.assertIsNone(re.search(r"\d{3,}", text), text)
+                for banned in ("saved", "saving", "token"):
+                    self.assertNotIn(banned, text.lower(), f"{label}: {text}")
+
+    def test_both_renderers_share_one_builder(self):
+        meta = self._item(tier="bug")
+        sentinel = [("sentinel", "one definition both renderers")]
+        with mock.patch.object(packet, "receipt_lines",
+                               return_value=sentinel):
+            md = packet.render_packet(self.repo, meta["id"])
+            html = packet.render_packet_html(self.repo, meta["id"])
+        self.assertIn("- sentinel: one definition both renderers", md)
+        self.assertIn(
+            "<li><strong>sentinel:</strong> one definition both renderers</li>",
+            html)
+
+    def test_both_renderers_render_the_same_label_value_set(self):
+        meta = self._item(tier="bug")
+        logs.append_event(self.repo, meta["id"], "triage.intake",
+                          {"council": "none"})
+        md = packet.render_packet(self.repo, meta["id"])
+        html = packet.render_packet_html(self.repo, meta["id"])
+        for label, text in packet.receipt_lines(self.repo, meta):
+            self.assertIn(f"- {label}: {text}", md)
+            self.assertIn(f"<li><strong>{label}:</strong>", html)
+
+    def test_no_new_html_section_id_or_stylesheet_rule(self):
+        meta = self._item(tier="bug")
+        html = packet.render_packet_html(self.repo, meta["id"])
+        self.assertEqual(html.count('<ul class="meta">'), 1)
+        for banned in ('id="depth"', 'id="receipt"', 'id="tier"',
+                       ".receipt", ".depth {"):
+            self.assertNotIn(banned, html)
+
+
 if __name__ == "__main__":
     unittest.main()

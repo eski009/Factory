@@ -8,10 +8,11 @@ import unittest
 from pathlib import Path
 
 from scripts.factory.lib import (
-    breaker, cost, initrepo, items, logs, machine, paths)
+    breaker, cost, doctor, initrepo, items, logs, machine, paths)
 
 
-def make_item(repo, kind="ui", stage="idea", priority=None, bug=False, journeys=None):
+def make_item(repo, kind="ui", stage="idea", priority=None, bug=False,
+              journeys=None, **extra):
     meta = {
         "id": "0001-thing", "title": "Thing", "stage": stage, "kind": kind,
         "created": "2026-07-03T10:00:00Z", "updated": "2026-07-03T10:00:00Z",
@@ -22,6 +23,7 @@ def make_item(repo, kind="ui", stage="idea", priority=None, bug=False, journeys=
         meta["bug"] = True
     if journeys:
         meta["journeys"] = journeys
+    meta.update(extra)
     items.save_item(repo, meta, "# Thing\n")
     return meta
 
@@ -821,6 +823,154 @@ class TestCostBreakerSeam(MachineTest):
                     f"{path}: advance() returns (meta, verdict); this call "
                     "site drops the verdict")
         self.assertGreaterEqual(found, 1)
+
+
+class DepthRecorderTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        initrepo.init(self.repo)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _advance_events(self):
+        return [e for e in logs.read_events(self.repo, "0001-thing")
+                if e["event"] == "stage.advance"]
+
+    def _item_at_implement(self, **kw):
+        """A backend item parked at implement with the artifacts the
+        implement->review->verify->assure gates need, so real advances run."""
+        make_item(self.repo, kind="backend", stage="review", priority=1,
+                  journeys="none", **kw)
+        write(self.repo, "spec.md", SPEC_MD)
+        write(self.repo, "plan.md", "- [ ] task\n")
+        machine.advance(self.repo, "0001-thing", "waiting-human",
+                        reason="parked for gate-free resume")
+
+    def test_advance_into_review_carries_a_depth_record(self):
+        self._item_at_implement(tier="bug")
+        machine.advance(self.repo, "0001-thing", "review",
+                        reason="skip-gate-test")
+        depth = self._advance_events()[-1]["data"]["depth"]
+        self.assertEqual(
+            set(depth),
+            {"tier", "tier_declared", "research", "review", "assure", "source"})
+        self.assertEqual(depth["tier"], "bug")
+        self.assertIs(depth["tier_declared"], True)
+        self.assertEqual(depth["source"], "defaults")
+
+    def test_depth_levels_equal_doctor_json_tier_profile(self):
+        self._item_at_implement(tier="bug")
+        machine.advance(self.repo, "0001-thing", "review",
+                        reason="skip-gate-test")
+        depth = self._advance_events()[-1]["data"]["depth"]
+        profile = doctor.report(self.repo)["tiers"]["bug"]
+        self.assertEqual(
+            {k: depth[k] for k in ("research", "review", "assure")}, profile)
+
+    def test_tier_declared_false_when_frontmatter_has_no_tier(self):
+        self._item_at_implement()
+        machine.advance(self.repo, "0001-thing", "review",
+                        reason="skip-gate-test")
+        depth = self._advance_events()[-1]["data"]["depth"]
+        self.assertIs(depth["tier_declared"], False)
+        self.assertEqual(depth["tier"], "feature")
+
+    def test_tier_declared_false_when_frontmatter_tier_is_empty(self):
+        """An empty `tier:` line parses to '' with the key present, so
+        keying `declared` on key presence would record the derived
+        `feature` as declared. items.parse_item does not validate against
+        TIERS (only set_tier does, on the CLI write path) and validate.py
+        does not check tier at all, so hand-edited frontmatter reaches
+        here — and this recorder exists to be honest about provenance."""
+        self._item_at_implement()
+        path = self.repo / ".factory" / "items" / "0001-thing" / "item.md"
+        text = path.read_text(encoding="utf-8")
+        self.assertNotIn("\ntier:", text)
+        path.write_text(text.replace("\nkind:", "\ntier:\nkind:", 1),
+                        encoding="utf-8")
+        machine.advance(self.repo, "0001-thing", "review",
+                        reason="skip-gate-test")
+        depth = self._advance_events()[-1]["data"]["depth"]
+        self.assertIs(depth["tier_declared"], False)
+        self.assertEqual(depth["tier"], "feature")
+
+    def test_source_is_config_when_tiers_block_overrides(self):
+        cfg = self.repo / ".factory" / "config.json"
+        data = json.loads(cfg.read_text(encoding="utf-8"))
+        data["tiers"] = {"bug": {"review": "full"}}
+        cfg.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n",
+                       encoding="utf-8")
+        self._item_at_implement(tier="bug")
+        machine.advance(self.repo, "0001-thing", "review",
+                        reason="skip-gate-test")
+        self.assertEqual(
+            self._advance_events()[-1]["data"]["depth"]["source"], "config")
+
+    def test_record_false_emits_no_depth_key(self):
+        cfg = self.repo / ".factory" / "config.json"
+        data = json.loads(cfg.read_text(encoding="utf-8"))
+        data["depth"] = {"record": False}
+        cfg.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n",
+                       encoding="utf-8")
+        self._item_at_implement(tier="bug")
+        machine.advance(self.repo, "0001-thing", "review",
+                        reason="skip-gate-test")
+        data = self._advance_events()[-1]["data"]
+        self.assertNotIn("depth", data)
+        self.assertEqual(set(data), {"from", "to", "reason"})
+
+    def test_stages_override_narrows_which_advances_record(self):
+        cfg = self.repo / ".factory" / "config.json"
+        data = json.loads(cfg.read_text(encoding="utf-8"))
+        data["depth"] = {"stages": ["review"]}
+        cfg.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n",
+                       encoding="utf-8")
+        self._item_at_implement(tier="bug")
+        machine.advance(self.repo, "0001-thing", "review",
+                        reason="skip-gate-test")
+        self.assertIn("depth", self._advance_events()[-1]["data"])
+        machine.advance(self.repo, "0001-thing", "implement",
+                        reason="skip-gate-test")
+        self.assertNotIn("depth", self._advance_events()[-1]["data"])
+
+    def test_advance_into_a_non_record_stage_carries_no_depth(self):
+        make_item(self.repo, kind="backend", stage="implement", priority=1,
+                  journeys="none", tier="bug")
+        machine.advance(self.repo, "0001-thing", "waiting-human",
+                        reason="parked")
+        self.assertNotIn("depth", self._advance_events()[-1]["data"])
+
+    def test_malformed_config_still_advances_and_records_defaults(self):
+        (self.repo / ".factory" / "config.json").write_text(
+            "{not json", encoding="utf-8")
+        self._item_at_implement(tier="bug")
+        machine.advance(self.repo, "0001-thing", "review",
+                        reason="skip-gate-test")
+        self.assertEqual(
+            self._advance_events()[-1]["data"]["depth"]["source"], "defaults")
+
+    def test_machine_never_derives_bug_from_tier(self):
+        # AC10: no read-time derivation of `bug` from `tier` anywhere.
+        src = (Path(machine.__file__)).read_text(encoding="utf-8")
+        self.assertNotIn("item_tier", src)
+        self.assertEqual(src.count('meta.get("bug")'), 1)
+
+    def test_stage_sequence_and_stages_are_untouched(self):
+        self.assertEqual(machine.STAGES,
+                         ["idea", "triage", "spec", "design", "plan",
+                          "implement", "review", "verify", "assure", "ship",
+                          "done"])
+
+    def test_resume_from_waiting_human_into_review_records_depth(self):
+        self._item_at_implement(tier="bug")
+        machine.advance(self.repo, "0001-thing", "review",
+                        reason="skip-gate-test")
+        machine.advance(self.repo, "0001-thing", "waiting-human",
+                        reason="parked")
+        machine.advance(self.repo, "0001-thing", "review")
+        self.assertIn("depth", self._advance_events()[-1]["data"])
 
 
 if __name__ == "__main__":

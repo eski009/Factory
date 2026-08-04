@@ -47,6 +47,6 @@ entries below were registered by the work that touched them._
   roadmap batch). Outcome: the defect is filed with its materiality tier
   (`tier`) and its evidence claim (`bug: true`) recorded separately, a confirmed
   repro exists before any fix work, the item is visible in
-  `docs/factory/roadmap.md` and `factory status`, and its packet names the depth
-  it ran at and the intake path it took (source:
+  `docs/factory/roadmap.md` and `factory status`, and its packet prints the depth
+  profile its tier selects and the intake path it took (source:
   .factory/items/0026-complexity-scored-bug-flow-bugs-run-a-su/spec.md).

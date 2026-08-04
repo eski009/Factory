@@ -16,8 +16,8 @@ declares and nothing more. Later items touching this journey extend it; a
 - **Outcome:** the defect is filed with its **materiality** claim (`tier`) and
   its **evidence** claim (`bug: true`) recorded separately and honestly, a
   confirmed repro exists before any fix work, the item is visible in
-  `docs/factory/roadmap.md` and in `factory status`, and its packet names the
-  depth the item ran at and the intake path it took.
+  `docs/factory/roadmap.md` and in `factory status`, and its packet prints the
+  depth profile its tier selects and the intake path it took.
 - **Surface:** CLI + filesystem + generated packet files. **No browser drive, no
   viewports.** Evidence is typed transcripts of real commands plus the produced
   artifact files (`item.md`, `repro.md`, `log.jsonl`, `docs/factory/roadmap.md`,
@@ -32,7 +32,7 @@ declares and nothing more. Later items touching this journey extend it; a
 | N2 door routes — bug door, or the generic door warns/refuses | `/factory:bug` and `/factory:do` hand the report to the `factory-bug` skill. `factory add --tier bug` on the default `warn` setting exits **0**, prints the id on stdout and a warning on stderr naming `/factory:bug` and the phrase `bug tier, repro unverified`; on `refuse` it exits **2** and creates nothing, naming both `/factory:bug` and the `warn` escape hatch; on `off` it is byte-identical to the pre-change engine | the two axes stay separate: filing at `--tier bug` records materiality only and does **not** arm the plan gate's repro requirement |
 | N3 repro recorded and confirmed before any fix | on the bug door, `repro.md` exists with Command / Expected / Observed / Environment, and a `repro.confirmed` event carries the exact command and exit code; `bug: true` is in frontmatter. On cannot-replicate, the item is parked `waiting-human` with the attempts recorded and **no** `repro.confirmed` | no fix work is reachable past `_gate_plan` without both artefacts — the recorded repro is the analogue of TDD's red test |
 | N4 item visible on the roadmap and in factory status | a `- [priority] <item-id> <title> (stage)` line exists in `docs/factory/roadmap.md`, written by `factory-bug` step 7; the item appears in `factory status --json`; a `triage.intake` event and a `stage: "triage"` spend event are logged | a bug-door item is never invisible to the operator scanning the backlog — the failure mode `roadmap.md:67-80` records for seven items, five of them `tier: bug` |
-| **N5 packet names the depth and the intake path** | the packet's metadata block names `tier` (with `(declared)` or `(default — no tier declared)`), the effective `depth` as named enum levels with a `source` provenance, the `repro` evidence state, and — when a `triage.intake` event with `council: none` exists — the intake receipt distinguishing `repro-confirmed` from `repro UNVERIFIED` | the depth promise is auditable from the packet alone; a narrowing that shipped invisibly is the thing this journey exists to prevent |
+| **N5 packet names the selected depth profile and the intake path** | the packet's metadata block names `tier` (with `(declared)` or `(default — no tier declared)`), the effective `depth` profile as named enum levels with a `source` provenance, the `repro` evidence state, and — when a `triage.intake` event with `council: none` exists — the intake receipt distinguishing `repro-confirmed` from `repro UNVERIFIED` | the depth profile the item's tier selects and its source are visible on the packet; a narrowing that shipped invisibly is the thing this journey exists to prevent |
 
 ## Trust and reassurance requirements
 

@@ -83,7 +83,7 @@
       "title": "Bug door intake — a reported defect is routed to /factory:bug, replicated before any fix, and lands visibly on the roadmap",
       "persona": "The Overnight Operator (docs/factory/brain/personas.md)",
       "trigger": "A human reports a defect at any intake door (/factory:bug, /factory:add, /factory:do, or a roadmap batch)",
-      "outcome": "The defect is filed with its materiality tier and its evidence claim recorded separately, a confirmed repro exists before any fix work, the item appears in docs/factory/roadmap.md and in factory status, and its packet names the depth the item ran at and the intake path it took",
+      "outcome": "The defect is filed with its materiality tier and its evidence claim recorded separately, a confirmed repro exists before any fix work, the item appears in docs/factory/roadmap.md and in factory status, and its packet prints the depth profile its tier selects and the intake path it took",
       "criticality": "high",
       "status": "draft",
       "contract": "contracts/J-004-bug-door-intake.md",

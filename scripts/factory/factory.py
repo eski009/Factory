@@ -40,12 +40,19 @@ def cmd_add(args):
     if not args.title.strip():
         print("error: title must not be empty", file=sys.stderr)
         return 1
+    tier = getattr(args, "tier", None)
+    # Item 0026 §2: routing, never a bug-flag write. The refusal runs
+    # before new_item_id so nothing is created — no item dir, no log line.
+    route = items.bug_route(args.repo) if tier == "bug" else "off"
+    if route == "refuse":
+        print(items.BUG_ROUTE_REFUSAL, file=sys.stderr)
+        return 2
     item_id = items.new_item_id(args.repo, args.title)
     now = logs.now_stamp()
     meta = {"id": item_id, "title": args.title, "stage": "idea",
             "kind": args.kind, "created": now, "updated": now}
-    if getattr(args, "tier", None):
-        meta["tier"] = args.tier
+    if tier:
+        meta["tier"] = tier
     try:
         items.save_item(args.repo, meta, f"# {args.title}\n")
     except items.ItemError as exc:
@@ -53,6 +60,9 @@ def cmd_add(args):
         return 1
     logs.append_event(args.repo, item_id, "item.created")
     print(item_id)
+    if route == "warn":
+        print(items.BUG_ROUTE_WARNING.format(item_id=item_id),
+              file=sys.stderr)
     return 0
 
 

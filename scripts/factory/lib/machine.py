@@ -27,7 +27,7 @@ import re
 import subprocess
 from pathlib import PurePosixPath
 
-from . import items, logs, paths
+from . import items, logs, paths, tiers
 
 STAGES = ["idea", "triage", "spec", "design", "plan",
           "implement", "review", "verify", "assure", "ship", "done"]
@@ -245,6 +245,37 @@ def assure_attribution_enabled(repo):
     if not isinstance(assure, dict):
         return False
     return assure.get("attribution") is True
+
+
+DEPTH_RECORD_STAGES = ("review", "assure")
+
+
+def depth_recording_enabled(repo):
+    """Item 0026 §5: the depth recorder's off-switch, `depth.record`.
+
+    An absent key, an unreadable or malformed config, or any non-boolean
+    value all read as the stated default True. The recorder is a read-only
+    receipt attached to an event the engine already writes — it can never
+    refuse a transition, so its safe default is on.
+    """
+    depth = _config_dict(repo).get("depth")
+    if not isinstance(depth, dict):
+        return True
+    return depth.get("record") is not False
+
+
+def depth_record_stages(repo):
+    """Which advance destinations carry a depth record — the recorder's
+    strength override, `depth.stages`.
+
+    Restricted by enum to DEPTH_RECORD_STAGES so this key can never become
+    a lever on assure DEPTH (item 0026 §5, non-goal 3). A malformed value
+    reads as the stated default; unknown members are dropped.
+    """
+    depth = _config_dict(repo).get("depth")
+    if not isinstance(depth, dict) or not isinstance(depth.get("stages"), list):
+        return list(DEPTH_RECORD_STAGES)
+    return [s for s in depth["stages"] if s in DEPTH_RECORD_STAGES]
 
 
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -671,6 +702,25 @@ def advance(repo, item_id, to, reason=None):
     event_data = {"from": frm, "to": to}
     if reason:
         event_data["reason"] = reason
+    # Item 0026 §3: the depth record is engine-written, additive data on an
+    # event the engine already writes. It records the level the tier table
+    # publishes; nothing reads it to gate, cap or narrow anything, and no
+    # failure here may raise out of advance().
+    #
+    # AC10 requires the tier resolution to remain visibly separate from the
+    # `bug` evidence lookup, so it is inlined here from items.py rather than
+    # routed through that module's tier helper.
+    # `declared` asks whether the RECORDED tier came from the item, not
+    # whether the key was present: `tier:` with an empty value parses to ''
+    # with the key in meta (items.parse_item does not validate against
+    # TIERS — only set_tier does, on the CLI write path, and validate.py
+    # checks tier not at all). Keying on presence would record
+    # `feature, tier_declared: true` for a tier nothing declared, which is
+    # the provenance lie this recorder exists to remove.
+    if depth_recording_enabled(repo) and to in depth_record_stages(repo):
+        event_data["depth"] = tiers.record(
+            repo, meta.get("tier") or items.DEFAULT_TIER,
+            declared=bool(meta.get("tier")))
     logs.append_event(repo, item_id, "stage.advance", event_data)
     # Computed after the append so the verdict sees the edge this
     # transition just created. Advisory only: the engine never mutates

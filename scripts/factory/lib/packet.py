@@ -3,7 +3,7 @@
 import html
 import re
 
-from . import cost, items, logs, paths
+from . import cost, items, logs, paths, tiers
 
 ARTIFACTS = ("triage.md", "spec.md", "plan.md", "design/choice.md",
              "reviews/synthesis.md", "assurance/impact.json",
@@ -370,6 +370,78 @@ def respond_action_lines(repo, item_id, meta):
     return ["- `/factory:run` — resume the pipeline."]
 
 
+def _bug_intake_state(repo, item_id):
+    """None when no `triage.intake` event with council "none" is in the
+    log; otherwise True when a `repro.confirmed` event is also present,
+    False when it is not.
+
+    Item 0026 G3: the "no council triage" fact is not engine-observable
+    (reviews/synthesis.md is written by the triage council AND the review
+    council, so its presence cannot discriminate). This gates DISPLAY
+    only — no engine decision reads it — and the rendered text names its
+    own source.
+    """
+    intake = False
+    confirmed = False
+    for event in logs.read_events(repo, item_id):
+        if not isinstance(event, dict):
+            continue
+        name = event.get("event")
+        data = event.get("data")
+        if (name == "triage.intake" and isinstance(data, dict)
+                and data.get("council") == "none"):
+            intake = True
+        elif name == "repro.confirmed":
+            confirmed = True
+    return confirmed if intake else None
+
+
+def receipt_lines(repo, meta):
+    """[(label, text)] appended to the packet's metadata block. One
+    definition, both renderers.
+
+    Item 0026 §4: named enum levels with provenance only — never a bare
+    integer, never a token or saving figure (AC20 asserts this). No new
+    section, no new HTML id, no new stylesheet rule.
+    """
+    tier = items.item_tier(meta)
+    # Whether the RENDERED tier came from the item, not whether the key was
+    # present: `tier:` with an empty value parses to '' with the key in meta
+    # (items.parse_item validates nothing against TIERS — only set_tier does,
+    # on the CLI write path — and validate.py does not check tier at all).
+    # Keying on presence would print `feature (declared)` for a tier nothing
+    # declared, on the very receipt this item adds to make depth auditable.
+    # Same defect, same fix, as the depth recorder's call site in
+    # machine.advance — swept together per the discharge-sweeps-the-mechanism
+    # rule rather than fixed one site at a time.
+    declared = bool(meta.get("tier"))
+    lines = [("tier", f"{tier} (declared)" if declared
+              else f"{tier} (default — no tier declared)")]
+    depth = tiers.record(repo, tier, declared)
+    lines.append((
+        "depth",
+        f"research {depth['research']}, review {depth['review']}, "
+        f"assure {depth['assure']} "
+        f"(tier {depth['tier']} profile, source {depth['source']})"))
+    if tier == "bug":
+        if meta.get("bug"):
+            lines.append(("repro",
+                          "bug flag set — the plan gate requires repro.md "
+                          "and a repro.confirmed event"))
+        else:
+            lines.append(("repro",
+                          "bug tier, repro unverified — filed outside "
+                          "/factory:bug; the plan gate's repro requirement "
+                          "is not armed"))
+    intake = _bug_intake_state(repo, meta["id"])
+    if intake is not None:
+        state = "repro-confirmed" if intake else "repro UNVERIFIED"
+        lines.append(("triage",
+                      f"no council triage — bug intake, {state} "
+                      "(source: triage.intake event, logged by factory-bug)"))
+    return lines
+
+
 def render_packet(repo, item_id, summary=None):
     meta, _body = items.load_item(repo, item_id)
     item_dir = paths.item_dir(repo, item_id)
@@ -380,6 +452,8 @@ def render_packet(repo, item_id, summary=None):
     lines.append(f"- stage: {meta['stage']}")
     lines.append(f"- kind: {meta['kind']}")
     lines.append(f"- priority: {meta.get('priority', '-')}")
+    for label, text in receipt_lines(repo, meta):
+        lines.append(f"- {label}: {text}")
     if meta.get("paused-reason"):
         lines.append(f"- waiting on you: {waiting_line(meta, summary)}")
     decision = cost_decision_lines(repo, item_id, meta, summary)
@@ -561,8 +635,12 @@ def render_packet_html(repo, item_id, summary=None):
             f"      <li><strong>id:</strong> {_e(meta['id'])}</li>",
             f"      <li><strong>stage:</strong> {_e(meta['stage'])}</li>",
             f"      <li><strong>kind:</strong> {_e(meta['kind'])}</li>",
-            f"      <li><strong>priority:</strong> {_e(meta.get('priority', '-'))}</li>",
-            "    </ul>", "  </section>",
+            f"      <li><strong>priority:</strong> {_e(meta.get('priority', '-'))}</li>"]
+    # Item 0026 §4: the same builder the markdown renderer uses, inside the
+    # existing <ul class="meta"> — no new section, id or stylesheet rule.
+    for label, text in receipt_lines(repo, meta):
+        out.append(f"      <li><strong>{_e(label)}:</strong> {_e(text)}</li>")
+    out += ["    </ul>", "  </section>",
             "  <section id=\"view-options\">", "    <h2>View the options</h2>",
             "    <ul class=\"links\">"]
     if not links:

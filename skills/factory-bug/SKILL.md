@@ -58,9 +58,15 @@ The core promise: **we never claim a bug is fixed when it isn't.** The recorded 
    a bug with genuinely no customer-visible surface seeds
    `None — no customer journey affected.` plus the justification.
 
-7. **Write the intake triage record and enter the pipeline.** Write `items/<id>/triage.md`: decision (build — confirmed replicated bug), the kind rationale from step 2, and priority. Set priority with `factory priority ITEM N` — ask the human while they are present; default 1 (front of queue) if they don't say. Then `factory advance ITEM triage` and `factory advance ITEM spec`. No council runs at intake; the council still reviews the fix at the review stage. From spec onward this is ordinary pipeline work — implement branches per item with TDD, ui/mixed items pass the design gate, ship merges per policy.
+7. **Write the intake triage record and enter the pipeline.** Write `items/<id>/triage.md`: decision (build — confirmed replicated bug), the kind rationale from step 2, and priority. Set priority with `factory priority ITEM N` — ask the human while they are present; default 1 (front of queue) if they don't say. Then, **in this order, before entering the pipeline**:
 
-8. **Spend.** If replication dispatches subagents, log spend per the dispatch convention: `factory log ITEM spend --data '{"provenance":"measured","stage":"triage","source":"factory-bug","dispatches":<n>,"tokens":{"total":<n>}}'` with harness-reported counts, or `"provenance":"proxy"` and no `tokens` key when the harness reports none. Never estimate; main-loop burn is never logged as measured.
+   1. **Write the roadmap line.** Append or update this item's line in `docs/factory/roadmap.md` in the file's existing format (`- [priority] <item-id> <title> (stage)`) — the same write `factory-triage` step 7 performs. A bug-door item that never gets this line is invisible to the operator scanning the backlog; `docs/factory/roadmap.md:67-80` records seven items lost exactly this way, five of them `tier: bug`.
+   2. **Log the intake receipt:** `factory log ITEM triage.intake --data '{"mode":"bug-intake","council":"none","source":"factory-bug"}'`. The packet reads this event to render "no council triage — bug intake"; without it the packet cannot tell a skipped council from a completed one.
+   3. **Log the triage spend, unconditionally:** `factory log ITEM spend --data '{"provenance":"proxy","stage":"triage","source":"factory-bug","dispatches":0,"note":"bug intake — no council fan-out"}'` — or `"provenance":"measured"` with harness-reported `tokens` when replication did dispatch subagents. Never estimated. Unconditional: a zero-fan-out intake still costs a stage, and an unlogged one renders as `[unmeasured] stage triage` on the packet.
+
+   Then `factory advance ITEM triage` and `factory advance ITEM spec`. No council runs at intake; the council still reviews the fix at the review stage. From spec onward this is ordinary pipeline work — implement branches per item with TDD, ui/mixed items pass the design gate, ship merges per policy.
+
+8. **Spend.** The triage spend event is written unconditionally at step 7.3 above. When replication dispatched subagents, use the measured variant there — `"provenance":"measured"` with the harness-reported counts — instead of the proxy variant. Never estimate; main-loop burn is never logged as measured.
 
 ## Sequencing note
 

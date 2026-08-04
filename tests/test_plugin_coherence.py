@@ -277,5 +277,72 @@ class TestPluginCoherence(unittest.TestCase):
         self.assertIn("spec.revised", text)
 
 
+class TestBugDoorCoherence(unittest.TestCase):
+    def test_add_command_routes_defects_and_names_the_tier_axis(self):
+        text = read(ROOT / "commands/add.md")
+        self.assertIn("factory:bug", text)
+        self.assertIn("--tier", text)
+        self.assertIn("does **not** arm the plan gate's repro requirement",
+                      text)
+
+    def test_triage_skill_drops_the_false_already_carrying_clause(self):
+        text = read(ROOT / "skills/factory-triage/SKILL.md")
+        self.assertNotIn(
+            "usually filed via `/factory:bug` already carrying `tier: bug`",
+            text)
+        self.assertIn("0 of 32 carry `bug: true`", text)
+        self.assertIn("set the tier here yourself", text)
+
+    def test_triage_skill_instructs_a_triage_spend_event(self):
+        text = read(ROOT / "skills/factory-triage/SKILL.md")
+        self.assertIn('"stage":"triage"', text.replace('"stage": "triage"',
+                                                       '"stage":"triage"'))
+        self.assertIn("factory log ITEM spend", text)
+
+    def test_bug_skill_writes_the_roadmap_line_and_both_events(self):
+        text = read(ROOT / "skills/factory-bug/SKILL.md")
+        self.assertIn("docs/factory/roadmap.md", text)
+        self.assertIn("- [priority] <item-id> <title> (stage)", text)
+        self.assertIn("factory log ITEM triage.intake", text)
+        self.assertIn('"council":"none"', text)
+        self.assertIn("factory log ITEM spend", text)
+        self.assertIn('"stage":"triage"', text)
+        self.assertIn('"provenance":"proxy"', text)
+        self.assertIn('"source":"factory-bug"', text)
+        self.assertIn("unconditionally", text)
+
+    def test_roadmap_skill_names_the_bug_door(self):
+        text = read(ROOT / "skills/factory-roadmap/SKILL.md")
+        self.assertIn("/factory:bug", text)
+        self.assertIn("a PRD is not a bug report", text)
+
+    def test_readme_promise_matches_the_product(self):
+        text = read(ROOT / "README.md")
+        promise = next(line for line in text.splitlines()
+                       if line.startswith("- **Effort scales"))
+        self.assertNotIn("No epic-weight ceremony for a one-line fix", text)
+        self.assertIn("depth profile the item's tier selects", promise)
+        self.assertIn("Stage membership never changes", promise)
+        for banned in ("tokens saved", "saving", "cheaper", "actually ran at",
+                       "auditable", "verified", "on record", "what it got"):
+            self.assertNotIn(banned, promise.lower())
+
+    def test_j004_outcomes_use_the_same_depth_profile_claim(self):
+        graph = json.loads(read(ROOT / "docs/factory/journeys/graph.json"))
+        graph_outcome = next(journey["outcome"] for journey in graph["journeys"]
+                             if journey["id"] == "J-004")
+        contract = read(ROOT / "docs/factory/journeys/contracts/"
+                        "J-004-bug-door-intake.md")
+        contract_outcome = contract.split("- **Outcome:**", 1)[1].split(
+            "- **Surface:**", 1)[0]
+        for outcome in (graph_outcome, contract_outcome):
+            text = " ".join(outcome.lower().split())
+            self.assertIn("packet prints the depth profile its tier selects",
+                          text)
+            for banned in ("depth the item ran at", "actually ran at",
+                           "auditable", "verified", "on record", "what it got"):
+                self.assertNotIn(banned, text)
+
+
 if __name__ == "__main__":
     unittest.main()

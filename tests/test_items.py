@@ -1,3 +1,4 @@
+import json
 import shutil
 import tempfile
 import unittest
@@ -274,6 +275,47 @@ class TestJourneys(unittest.TestCase):
                 "created": "2026-07-15T10:00:00Z", "updated": "2026-07-15T10:00:00Z"}
         parsed, _ = items.parse_item(items.render_item(meta, "body"))
         self.assertEqual(parsed["journeys"], "J-001,J-002")
+
+
+class BugRouteReaderTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        initrepo.init(self.repo)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _write(self, block):
+        p = self.repo / ".factory" / "config.json"
+        data = json.loads(p.read_text(encoding="utf-8"))
+        data["intake"] = block
+        p.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n",
+                     encoding="utf-8")
+
+    def test_stock_default_is_warn(self):
+        self.assertEqual(items.bug_route(self.repo), "warn")
+
+    def test_each_enum_value_reads_back(self):
+        for value in items.BUG_ROUTES:
+            self._write({"bug_route": value})
+            self.assertEqual(items.bug_route(self.repo), value)
+
+    def test_out_of_enum_non_dict_and_missing_all_read_as_warn(self):
+        for block in ({"bug_route": "nonsense"}, {"bug_route": 3}, {}, "x", 7):
+            self._write(block)
+            self.assertEqual(items.bug_route(self.repo), "warn")
+
+    def test_warning_interpolates_the_id_and_refusal_takes_no_field(self):
+        msg = items.BUG_ROUTE_WARNING.format(item_id="0099-x")
+        self.assertIn("0099-x", msg)
+        self.assertIn("/factory:bug", msg)
+        self.assertIn("bug tier, repro unverified", msg)
+        self.assertIn(
+            "file it with `/factory:bug` instead; this item stays on the "
+            "roadmap unless you delete its line by hand.", msg)
+        self.assertNotIn("{item_id}", items.BUG_ROUTE_REFUSAL)
+        self.assertIn("/factory:bug", items.BUG_ROUTE_REFUSAL)
 
 
 if __name__ == "__main__":

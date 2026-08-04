@@ -718,5 +718,62 @@ class AggregateModeTest(unittest.TestCase):
             self.assertEqual(sum(line.count(tag) for tag in tags), 1, line)
 
 
+class TriageUnmeasuredLineTest(CostTestCase):
+    LINE = ("- [unmeasured] stage triage: tokens UNMEASURED "
+            "(no spend events logged)")
+
+    def _render(self):
+        summary = cost.summarize(self.repo, ITEM)
+        return summary, cost.render_receipt(summary), cost.render_text(summary)
+
+    def _assert_marker_present(self, receipt, text):
+        self.assertIn(self.LINE, receipt)
+        self.assertIn(self.LINE.removeprefix("- "), text)
+
+    def _assert_marker_absent(self, receipt, text):
+        self.assertNotIn(self.LINE, receipt)
+        self.assertNotIn(self.LINE.removeprefix("- "), text)
+
+    def test_line_renders_when_log_has_no_triage_spend_event(self):
+        self.advance_at("2026-07-03T00:01:00Z", "idea", "triage")
+        summary, receipt, text = self._render()
+        self.assertEqual(summary["stages"]["triage"]["proxy_events"], 0)
+        self._assert_marker_present(receipt, text)
+        self.assertEqual(cost.TRIAGE_UNMEASURED_LINE, self.LINE)
+
+    def test_line_is_absent_without_a_triage_bucket(self):
+        summary, receipt, text = self._render()
+        self.assertNotIn("triage", summary["stages"])
+        self._assert_marker_absent(receipt, text)
+
+    def test_line_is_absent_when_proxy_triage_event_is_logged(self):
+        logs.append_event(
+            self.repo, ITEM, "spend",
+            {"provenance": "proxy", "stage": "triage",
+             "source": "factory-bug", "dispatches": 0,
+             "note": "bug intake — no council fan-out"})
+        summary, receipt, text = self._render()
+        self.assertEqual(summary["stages"]["triage"]["proxy_events"], 1)
+        self.assertIsNone(summary["stages"]["triage"]["measured"])
+        self._assert_marker_absent(receipt, text)
+
+    def test_line_is_absent_when_triage_is_measured(self):
+        logs.append_event(
+            self.repo, ITEM, "spend",
+            {"provenance": "measured", "stage": "triage",
+             "source": "factory-bug", "dispatches": 1,
+             "tokens": {"total": 12}})
+        summary, receipt, text = self._render()
+        self._assert_marker_absent(receipt, text)
+        self.assertIn("[measured] stage triage", receipt)
+        self.assertIn("[measured] stage triage", text)
+
+    def test_every_receipt_line_still_carries_a_provenance_tag(self):
+        self.advance_at("2026-07-03T00:01:00Z", "idea", "triage")
+        _summary, out, _text = self._render()
+        for line in out.splitlines():
+            self.assertRegex(line, r"^\s*[-•]?\s*\[(measured|proxy|unmeasured)\]")
+
+
 if __name__ == "__main__":
     unittest.main()

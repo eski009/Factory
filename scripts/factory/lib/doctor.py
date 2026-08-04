@@ -78,6 +78,12 @@ def report(repo):
         "tiers": tier_profiles(repo),
         "gates": config.get("gates", []),
         "assure_attribution": machine.assure_attribution_enabled(repo),
+        # Item 0026 §4: JSON-only, on the `tiers`/`assure_attribution`
+        # precedent — REPORT_KEYS (the text render) is deliberately
+        # unchanged.
+        "depth": {"record": machine.depth_recording_enabled(repo),
+                  "stages": machine.depth_record_stages(repo)},
+        "intake": {"bug_route": items.bug_route(repo)},
         "open_items": sum(1 for m in metas if m["stage"] not in ("done", "blocked")),
         "pending_human": len(dispatch.pending_human(repo)),
     }

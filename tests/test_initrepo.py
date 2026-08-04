@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.factory.lib import initrepo, items, paths
+from scripts.factory.lib import initrepo, items, paths, validate
 
 
 class InitTest(unittest.TestCase):
@@ -594,6 +594,52 @@ class ConsistencyTest(unittest.TestCase):
         errors = initrepo.validate_tree(self.repo)
         self.assertTrue(any(
             "has 2 reputation events" in e for e in errors))
+
+
+class ConfigDefaultsTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        initrepo.init(self.repo)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_default_config_carries_depth_and_intake(self):
+        self.assertEqual(initrepo.DEFAULT_CONFIG["depth"],
+                         {"record": True, "stages": ["review", "assure"]})
+        self.assertEqual(initrepo.DEFAULT_CONFIG["intake"],
+                         {"bug_route": "warn"})
+
+    def test_fresh_repo_config_validates_against_the_schema(self):
+        config = json.loads(
+            (self.repo / ".factory" / "config.json").read_text(
+                encoding="utf-8"))
+        self.assertEqual(
+            validate.validate(config, initrepo.load_schema("config"),
+                              "config"),
+            [])
+
+    def test_schema_rejects_an_out_of_enum_bug_route(self):
+        schema = initrepo.load_schema("config")
+        errors = validate.validate(
+            {"version": 1, "merge": "auto", "gates": [],
+             "intake": {"bug_route": "nonsense"}}, schema, "config")
+        self.assertTrue(any("bug_route" in e for e in errors), errors)
+
+    def test_schema_rejects_a_depth_stage_outside_review_assure(self):
+        schema = initrepo.load_schema("config")
+        errors = validate.validate(
+            {"version": 1, "merge": "auto", "gates": [],
+             "depth": {"stages": ["verify"]}}, schema, "config")
+        self.assertTrue(any("stages" in e for e in errors), errors)
+
+    def test_schema_rejects_an_unknown_key_inside_depth(self):
+        schema = initrepo.load_schema("config")
+        errors = validate.validate(
+            {"version": 1, "merge": "auto", "gates": [],
+             "depth": {"threshold": 3}}, schema, "config")
+        self.assertTrue(any("threshold" in e for e in errors), errors)
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ Frontmatter is a strict scalar subset of YAML: `key: value` lines between
 Writes are deterministic: fixed field order, LF endings, trailing newline.
 """
 
+import json
 import re
 
 from . import logs, paths
@@ -19,6 +20,48 @@ BOOL_FIELDS = ("bug",)
 KINDS = ("ui", "backend", "mixed")
 TIERS = ("epic", "feature", "bug")
 DEFAULT_TIER = "feature"
+BUG_ROUTES = ("off", "warn", "refuse")
+DEFAULT_BUG_ROUTE = "warn"
+
+# Item 0026 §2. Declared once, here, so both the engine and its tests
+# quote one string. `tier` is a MATERIALITY claim; `bug: true` is an
+# EVIDENCE claim that only /factory:bug sets. cmd_add never writes `bug`.
+BUG_ROUTE_WARNING = (
+    "warning: --tier bug records a materiality claim only; it does not "
+    "confirm a repro. A defect belongs at /factory:bug, which replicates it "
+    "before any fix and sets the bug flag the plan gate reads. Filed "
+    '{item_id} as "bug tier, repro unverified"; file it with `/factory:bug` '
+    "instead; this item stays on the roadmap unless you delete its line by "
+    "hand.")
+
+BUG_ROUTE_REFUSAL = (
+    "refused: --tier bug is not the door for a defect. Run /factory:bug with "
+    "the report in your own words — it replicates the defect before any fix "
+    "and sets both the tier and the bug flag. To file an unreplicated item at "
+    'this tier anyway, set "intake": {"bug_route": "warn"} in '
+    ".factory/config.json.")
+
+
+def bug_route(repo):
+    """How `factory add --tier bug` behaves: off | warn | refuse.
+
+    An absent, unreadable, malformed or out-of-enum value reads as the
+    stated default "warn" (the machine._config_dict tolerance pattern);
+    `factory validate` flags an out-of-enum value through the config
+    schema. Read here rather than in machine.py so items.py keeps the
+    constants and their reader together without an import cycle.
+    """
+    p = paths.config_path(repo)
+    if not p.exists():
+        return DEFAULT_BUG_ROUTE
+    try:
+        raw = json.loads(p.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return DEFAULT_BUG_ROUTE
+    if not isinstance(raw, dict) or not isinstance(raw.get("intake"), dict):
+        return DEFAULT_BUG_ROUTE
+    value = raw["intake"].get("bug_route")
+    return value if value in BUG_ROUTES else DEFAULT_BUG_ROUTE
 
 
 class ItemError(ValueError):

@@ -14,6 +14,12 @@ from datetime import datetime, timezone
 from . import initrepo, items, logs, machine
 
 UNMEASURED_NOTE = "orchestrator main-loop tokens"
+# Item 0026 §4 / G5: the bid-0018 remedy for "triage spend is unlogged, so
+# factory cost under-reports by a whole fan-out, unmarked" — on the one
+# readout the bill-payer opens. Strictly an absence marker: it invents no
+# figure, and it disappears by itself the moment the skills log the event.
+TRIAGE_UNMEASURED_LINE = ("- [unmeasured] stage triage: tokens UNMEASURED "
+                          "(no spend events logged)")
 WAITING_STAGES = frozenset(machine.SPECIAL)
 TOKEN_KEYS = ("input", "output", "total")
 
@@ -258,7 +264,21 @@ def render_text(summary):
             lines.append(f"[measured] stage {name}: tokens "
                          f"{', '.join(segments)} "
                          f"({bucket['measured']['events']} spend events)")
-        else:
+        elif name == "triage" and bucket["measured"] is None and not bucket["proxy_events"]:
+            lines.append(f"[unmeasured] stage {name}: tokens UNMEASURED "
+                         "(no spend events logged)")
+        elif name != "triage":
+            # NOTE (review round 1, B2 sweep): a non-triage stage carrying
+            # only PROXY spend events still prints "(no spend events
+            # logged)" here, one row under its own `dispatches N`. That is
+            # the same false claim B2 removes for triage, and bid-0169's
+            # sweep does not reach it — because removing the line collides
+            # with `test_no_stage_line_is_silently_omitted`, which requires
+            # every stage to carry a token line. Satisfying both invariants
+            # needs new copy for the proxy case, which the council reserved
+            # (commercial's residual, folded into Cluster C's widening).
+            # Left as the council scoped it; raised for the re-review rather
+            # than settled here.
             lines.append(f"[unmeasured] stage {name}: tokens UNMEASURED "
                          "(no spend events logged)")
     lines.append(f"[proxy] advances: {summary['advances']}, "
@@ -307,6 +327,8 @@ def render_receipt(summary):
         if segments:
             lines.append(f"- [measured] stage {name}: {', '.join(segments)} "
                          f"({bucket['measured']['events']} events)")
+        elif name == "triage" and bucket["measured"] is None and not bucket["proxy_events"]:
+            lines.append(TRIAGE_UNMEASURED_LINE)
     return "\n".join(lines)
 
 

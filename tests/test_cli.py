@@ -470,5 +470,98 @@ class CliTest(unittest.TestCase):
             "implement")
 
 
+class BugRouteTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = self.tmp.name
+        os.environ["FACTORY_NOW"] = "2026-07-03T12:00:00Z"
+        self.run_cli("init", "--product", "demo")
+
+    def tearDown(self):
+        os.environ.pop("FACTORY_NOW", None)
+        self.tmp.cleanup()
+
+    def run_cli(self, *args):
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = factory.main(["--repo", self.repo, *args])
+        return code, out.getvalue(), err.getvalue()
+
+    def _set_route(self, value):
+        p = Path(self.repo) / ".factory" / "config.json"
+        data = json.loads(p.read_text(encoding="utf-8"))
+        data["intake"] = {"bug_route": value}
+        p.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n",
+                     encoding="utf-8")
+
+    def test_warn_is_the_stock_default(self):
+        code, out, err = self.run_cli("add", "T", "--kind", "backend",
+                                      "--tier", "bug")
+        self.assertEqual(code, 0)
+        item_id = out.strip()
+        self.assertEqual(out, item_id + "\n")          # stdout: id only
+        self.assertIn("/factory:bug", err)
+        self.assertIn("bug tier, repro unverified", err)
+        self.assertIn(item_id, err)
+        text = (Path(self.repo) / ".factory" / "items" / item_id
+                / "item.md").read_text(encoding="utf-8")
+        self.assertIn("tier: bug", text)
+        self.assertNotIn("bug:", text.split("---")[1])  # no `bug` frontmatter
+
+    def test_refuse_creates_nothing_and_exits_two(self):
+        self._set_route("refuse")
+        code, out, err = self.run_cli("add", "T", "--kind", "backend",
+                                      "--tier", "bug")
+        self.assertEqual(code, 2)
+        self.assertEqual(out, "")
+        self.assertIn("/factory:bug", err)
+        self.assertIn('"bug_route": "warn"', err)
+        self.assertEqual(
+            list((Path(self.repo) / ".factory" / "items").iterdir()), [])
+
+    def test_off_prints_nothing_on_stderr(self):
+        self._set_route("off")
+        code, out, err = self.run_cli("add", "T", "--kind", "backend",
+                                      "--tier", "bug")
+        self.assertEqual(code, 0)
+        self.assertEqual(err, "")
+        self.assertTrue(out.strip())
+
+    def test_non_bug_tier_is_silent_on_every_setting(self):
+        for route in ("off", "warn", "refuse"):
+            self._set_route(route)
+            for tier in (None, "feature", "epic"):
+                args = ["add", f"T-{route}-{tier}", "--kind", "backend"]
+                if tier:
+                    args += ["--tier", tier]
+                code, out, err = self.run_cli(*args)
+                self.assertEqual(code, 0, f"{route}/{tier}")
+                self.assertEqual(err, "", f"{route}/{tier}")
+                self.assertTrue(out.strip())
+
+    def test_out_of_enum_route_reads_as_warn_with_no_traceback(self):
+        self._set_route("nonsense")
+        code, out, err = self.run_cli("add", "T", "--kind", "backend",
+                                      "--tier", "bug")
+        self.assertEqual(code, 0)
+        self.assertIn("bug tier, repro unverified", err)
+        self.assertNotIn("Traceback", err)
+
+    def test_malformed_config_reads_as_warn_with_no_traceback(self):
+        (Path(self.repo) / ".factory" / "config.json").write_text(
+            "{not json", encoding="utf-8")
+        code, out, err = self.run_cli("add", "T", "--kind", "backend",
+                                      "--tier", "bug")
+        self.assertEqual(code, 0)
+        self.assertIn("bug tier, repro unverified", err)
+        self.assertNotIn("Traceback", err)
+
+    def test_validate_flags_an_out_of_enum_bug_route(self):
+        self._set_route("nonsense")
+        code, _out, err = self.run_cli("validate")
+        self.assertEqual(code, 2)
+        self.assertIn("bug_route", err + _out)
+
+
 if __name__ == "__main__":
     unittest.main()

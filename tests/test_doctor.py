@@ -119,10 +119,20 @@ class TestDoctor(unittest.TestCase):
         self.assertIs(doctor.report(self.repo)["assure_attribution"], False)
 
     def test_report_keys_text_render_unchanged(self):
-        # AC4: the text render never grows the new key.
-        self.assertNotIn("assure_attribution", doctor.REPORT_KEYS)
-        text = doctor.render(doctor.report(self.repo))
-        self.assertNotIn("assure_attribution", text)
+        self.assertEqual(
+            doctor.REPORT_KEYS,
+            ("tree_valid", "design_system_present", "designsync_project",
+             "schedule_configured", "merge_policy", "gates",
+             "open_items", "pending_human"))
+        rendered = doctor.render(doctor.report(self.repo))
+        self.assertNotIn("depth", rendered)
+        self.assertNotIn("bug_route", rendered)
+
+    def test_report_names_the_depth_and_intake_blocks(self):
+        rep = doctor.report(self.repo)
+        self.assertEqual(rep["depth"],
+                         {"record": True, "stages": ["review", "assure"]})
+        self.assertEqual(rep["intake"], {"bug_route": "warn"})
 
 
 def fake_jwt(exp):
