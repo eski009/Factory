@@ -654,3 +654,10 @@
   exclusion) carry into `spec` as blocking findings
   (source: .factory/items/0033-…/triage.md;
   .factory/items/0033-…/reviews/triage/synthesis.md).
+- **Ship record — 0033 completed (2026-08-04).** Auto-merged as
+  `c673fd5c0732b0c294c7e01416f7169cde14cf4a`: confirmed bugs now carry an
+  immutable, door-keyed `assurance.verify` declaration, advance from fresh
+  verification directly to ship, and render omitted-stage artifacts as n/a.
+  The merged tree passed 940 tests. The triage skip and tier/depth/intake
+  receipts remain with 0026; no tier-based stage routing shipped (item 0033,
+  mode `auto`).
