@@ -183,8 +183,20 @@ def validate_tree(repo):
                         errors.append(f"{rel}: invalid JSON ({exc})")
                         continue
                     from . import review_selection
+                    round_number = int(match.group(1))
+                    prior_receipt = None
+                    if round_number == 2:
+                        prior_path = reviews / "selection-round-1.json"
+                        if prior_path.exists():
+                            try:
+                                prior_receipt = json.loads(prior_path.read_text(
+                                    encoding="utf-8", errors="replace"))
+                            except json.JSONDecodeError:
+                                prior_receipt = None
                     errors.extend(review_selection.receipt_errors(
-                        data, rel, review_root=reviews))
+                        data, rel, review_root=reviews,
+                        expected_item=sub.name, expected_round=round_number,
+                        prior_receipt=prior_receipt))
             if meta is not None and not schema_errors and log_valid:
                 expected = "idea"
                 for event in log_events:

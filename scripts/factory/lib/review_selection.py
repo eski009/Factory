@@ -201,7 +201,9 @@ def _degradation_section(text):
     return section.split("\n## ", 1)[0]
 
 
-def receipt_errors(data, path, review_root=None, synthesis_text=None):
+def receipt_errors(data, path, review_root=None, synthesis_text=None,
+                   expected_item=None, expected_round=None,
+                   prior_receipt=None):
     """Validate one persisted review-selection receipt.
 
     Schema errors are returned before semantic checks so corrupt input never
@@ -213,6 +215,14 @@ def receipt_errors(data, path, review_root=None, synthesis_text=None):
     errors = validate(data, load_schema("review-selection"), path)
     if errors:
         return errors
+
+    if expected_item is not None and data["item"] != expected_item:
+        errors.append(
+            f"{path}.item: {data['item']!r} does not match {expected_item!r}")
+    if expected_round is not None and data["round"] != expected_round:
+        errors.append(
+            f"{path}.round: {data['round']!r} does not match filename round "
+            f"{expected_round}")
 
     round_number = data["round"]
     if round_number not in (1, 2):
@@ -247,6 +257,22 @@ def receipt_errors(data, path, review_root=None, synthesis_text=None):
         errors.append(f"{path}: selected/omitted must partition all six roles")
 
     escalation = data["escalation"]
+    if round_number == 2:
+        if prior_receipt is None:
+            errors.append(f"{path}: Round 2 requires a valid Round 1 receipt")
+        else:
+            prior_errors = receipt_errors(
+                prior_receipt, f"{path} prior Round 1", review_root=review_root,
+                expected_item=expected_item or data["item"], expected_round=1)
+            if prior_errors:
+                errors.append(f"{path}: Round 1 receipt is invalid")
+            else:
+                actual_prior = [entry["role"]
+                                for entry in prior_receipt["selected"]]
+                if escalation["prior_roles"] != actual_prior:
+                    errors.append(
+                        f"{path}.escalation.prior_roles: must exactly match "
+                        "Round 1 selected roles")
     if round_number in (1, 2):
         try:
             expected = select_roles(
