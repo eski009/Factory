@@ -570,8 +570,28 @@ def _gate_review(repo, meta):
                               "implementation must be finished")
 
 
+def _require_review_selection(repo, meta):
+    receipt = _artifact(repo, meta, "reviews/selection-round-1.json")
+    if not receipt.exists():
+        raise GateError("review selection receipt required")
+    try:
+        data = json.loads(receipt.read_text(
+            encoding="utf-8", errors="replace"))
+    except json.JSONDecodeError as exc:
+        raise GateError(f"review selection receipt invalid: {exc}")
+    from . import review_selection
+    synthesis = _read_text_or_empty(
+        _artifact(repo, meta, "reviews/synthesis.md"))
+    errors = review_selection.receipt_errors(
+        data, "reviews/selection-round-1.json", review_root=receipt.parent,
+        synthesis_text=synthesis, expected_item=meta["id"], expected_round=1)
+    if errors:
+        raise GateError("review selection receipt invalid: " + "; ".join(errors))
+
+
 def _gate_verify(repo, meta):
     _require_file(repo, meta, "reviews/synthesis.md", "council review synthesis required")
+    _require_review_selection(repo, meta)
     _require_event_this_round(repo, meta, "review.approved", "review",
                               "review must be approved with no blocking findings")
 

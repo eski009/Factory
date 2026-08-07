@@ -13,6 +13,7 @@ import unittest
 from pathlib import Path
 
 from scripts.factory.lib import assure, design, dispatch, initrepo, items, logs, machine, paths
+from tests.test_review_selection import valid_receipt
 
 
 def _write_assurance(repo, item_id, verdict="pass", journey="J-001",
@@ -35,6 +36,18 @@ def _write_assurance(repo, item_id, verdict="pass", journey="J-001",
     vp = item_dir / "assurance" / "verdicts.json"
     vp.parent.mkdir(parents=True, exist_ok=True)
     vp.write_text(json.dumps(verdicts, indent=2), encoding="utf-8")
+
+
+def _write_review_receipt(repo, item_id):
+    item_dir = paths.item_dir(repo, item_id)
+    data = valid_receipt(item=item_id)
+    for outcome in data["outcomes"]:
+        report = item_dir / "reviews" / outcome["report"]
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("# returned\n", encoding="utf-8")
+    receipt = item_dir / "reviews" / "selection-round-1.json"
+    receipt.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n",
+                       encoding="utf-8")
 
 
 class TestUiPipelineWalk(unittest.TestCase):
@@ -98,6 +111,7 @@ class TestUiPipelineWalk(unittest.TestCase):
         machine.advance(self.repo, self.item, "review")
         # review -> verify (gate: synthesis + approval)
         self.art("reviews/synthesis.md")
+        _write_review_receipt(self.repo, self.item)
         logs.append_event(self.repo, self.item, "review.approved")
         machine.advance(self.repo, self.item, "verify")
         # verify -> assure (declared journey routes through assure; gate:
@@ -143,6 +157,7 @@ class TestUiPipelineWalk(unittest.TestCase):
         logs.append_event(self.repo, self.item, "implement.completed")
         machine.advance(self.repo, self.item, "review")
         self.art("reviews/synthesis.md")
+        _write_review_receipt(self.repo, self.item)
         logs.append_event(self.repo, self.item, "review.approved")
         machine.advance(self.repo, self.item, "verify")
         logs.append_event(self.repo, self.item, "verify.green")

@@ -32,6 +32,32 @@ def write(repo, rel, text="content\n"):
     p.write_text(text, encoding="utf-8")
 
 
+def write_review_receipt(repo, *, outcome="returned", degraded=False):
+    from tests.test_review_selection import valid_receipt
+
+    data = valid_receipt(item="0001-thing")
+    if degraded:
+        for entry in data["outcomes"]:
+            if entry["role"] == "architecture":
+                entry["status"] = outcome
+                entry["report"] = ""
+        data["independence"] = {
+            "requested": True, "achieved": False,
+            "degradation": ["fresh dispatch unavailable"]}
+    for entry in data["outcomes"]:
+        if entry["status"] == "returned":
+            write(repo, "reviews/" + entry["report"], "# returned\n")
+    write(repo, "reviews/selection-round-1.json",
+          json.dumps(data, indent=2, sort_keys=True) + "\n")
+    if degraded:
+        write(repo, "reviews/synthesis.md",
+              "# Review\n\n## Degradation\n\n"
+              "fresh dispatch unavailable\n\narchitecture: unavailable\n")
+    else:
+        write(repo, "reviews/synthesis.md", "# Review\n")
+    return data
+
+
 def mark_round(repo, item_id="0001-thing"):
     """Item 0025: the engine-written entry-into-implement marker. Tests
     that seed an item mid-pipeline (rather than walking it through
@@ -304,14 +330,58 @@ class TestGates(MachineTest):
         logs.append_event(self.repo, "0001-thing", "implement.completed")
         self.assertEqual(machine.advance(self.repo, "0001-thing", "review")[0]["stage"], "review")
 
-    def test_verify_requires_synthesis_and_approval(self):
+    def test_verify_requires_review_selection_receipt(self):
         make_item(self.repo, stage="review", priority=1)
         mark_round(self.repo)
-        with self.assertRaises(machine.GateError):
-            machine.advance(self.repo, "0001-thing", "verify")
         write(self.repo, "reviews/synthesis.md")
         logs.append_event(self.repo, "0001-thing", "review.approved")
+        with self.assertRaisesRegex(
+                machine.GateError, "review selection receipt required"):
+            machine.advance(self.repo, "0001-thing", "verify")
+
+    def test_verify_refuses_invalid_review_selection_receipt(self):
+        make_item(self.repo, stage="review", priority=1)
+        mark_round(self.repo)
+        write(self.repo, "reviews/synthesis.md")
+        write(self.repo, "reviews/selection-round-1.json", "{}\n")
+        logs.append_event(self.repo, "0001-thing", "review.approved")
+        with self.assertRaisesRegex(
+                machine.GateError, "review selection receipt invalid"):
+            machine.advance(self.repo, "0001-thing", "verify")
+
+    def test_verify_refuses_missing_returned_report(self):
+        make_item(self.repo, stage="review", priority=1)
+        mark_round(self.repo)
+        write_review_receipt(self.repo)
+        write(self.repo, "reviews/round-1/architecture.md", "")
+        logs.append_event(self.repo, "0001-thing", "review.approved")
+        with self.assertRaisesRegex(machine.GateError, "missing or empty"):
+            machine.advance(self.repo, "0001-thing", "verify")
+
+    def test_verify_refuses_undisclosed_degradation(self):
+        make_item(self.repo, stage="review", priority=1)
+        mark_round(self.repo)
+        write_review_receipt(self.repo, outcome="unavailable", degraded=True)
+        write(self.repo, "reviews/synthesis.md", "# Review\n")
+        logs.append_event(self.repo, "0001-thing", "review.approved")
+        with self.assertRaisesRegex(machine.GateError, "Degradation"):
+            machine.advance(self.repo, "0001-thing", "verify")
+
+    def test_verify_accepts_valid_review_selection_receipt(self):
+        make_item(self.repo, stage="review", priority=1)
+        mark_round(self.repo)
+        write_review_receipt(self.repo)
+        logs.append_event(self.repo, "0001-thing", "review.approved")
         self.assertEqual(machine.advance(self.repo, "0001-thing", "verify")[0]["stage"], "verify")
+
+    def test_verify_accepts_disclosed_degraded_review(self):
+        make_item(self.repo, stage="review", priority=1)
+        mark_round(self.repo)
+        write_review_receipt(self.repo, outcome="unavailable", degraded=True)
+        logs.append_event(self.repo, "0001-thing", "review.approved")
+        self.assertEqual(
+            machine.advance(self.repo, "0001-thing", "verify")[0]["stage"],
+            "verify")
 
     def test_ship_and_done_require_evidence_events(self):
         make_item(self.repo, stage="verify", priority=1, journeys="none")
@@ -385,7 +455,7 @@ class TestGateCorruption(MachineTest):
         # must refuse exactly as if the event were never logged.
         make_item(self.repo, stage="review", priority=1)
         mark_round(self.repo)
-        write(self.repo, "reviews/synthesis.md")
+        write_review_receipt(self.repo)
         self.corrupt_line()
         with self.assertRaises(machine.GateError):
             machine.advance(self.repo, "0001-thing", "verify")
@@ -393,7 +463,7 @@ class TestGateCorruption(MachineTest):
     def test_valid_approval_beside_corrupt_line_advances(self):
         make_item(self.repo, stage="review", priority=1)
         mark_round(self.repo)
-        write(self.repo, "reviews/synthesis.md")
+        write_review_receipt(self.repo)
         self.corrupt_line('{"event": "spend", "ts": ')
         logs.append_event(self.repo, "0001-thing", "review.approved")
         self.assertEqual(
