@@ -1,10 +1,40 @@
+import copy
+import tempfile
 import unittest
+from pathlib import Path
 
 from scripts.factory.lib import council, review_selection as selection
 
 
 def signal(name, evidence=None):
     return {"name": name, "evidence": evidence or [f"src/{name}.py:10"]}
+
+
+def valid_receipt(item="0001-x"):
+    return {
+        "item": item, "round": 1, "mode": "adaptive",
+        "diff": {"base": "abc123", "head": "def456",
+                 "changed_paths": ["scripts/factory/lib/x.py"]},
+        "signals": [],
+        "selected": [
+            {"role": "engineering-quality",
+             "reasons": ["baseline.correctness-evidence"]},
+            {"role": "architecture",
+             "reasons": ["fallback.general-backend"]}],
+        "omitted": [
+            {"role": "product", "reasons": ["signal.not-applicable"]},
+            {"role": "ui-taste", "reasons": ["signal.not-applicable"]},
+            {"role": "customer", "reasons": ["signal.not-applicable"]},
+            {"role": "commercial", "reasons": ["signal.not-applicable"]}],
+        "escalation": {"conflicts": [], "blocking_roles": [],
+                       "prior_roles": [], "added_role": ""},
+        "outcomes": [
+            {"role": "engineering-quality", "status": "returned",
+             "report": "round-1/engineering-quality.md"},
+            {"role": "architecture", "status": "returned",
+             "report": "round-1/architecture.md"}],
+        "independence": {"requested": True, "achieved": True,
+                         "degradation": []}}
 
 
 class SelectorTest(unittest.TestCase):
@@ -146,6 +176,77 @@ class SelectorTest(unittest.TestCase):
                 prior_roles=["architecture", "customer"],
                 conflicts=[{"roles": ["architecture", "customer"],
                             "evidence": ""}])
+
+
+class ReceiptTest(unittest.TestCase):
+    def errors(self, mutate=None):
+        data = valid_receipt()
+        if mutate:
+            mutate(data)
+        return selection.receipt_errors(data, "receipt")
+
+    def test_valid_receipt_with_returned_reports(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for outcome in valid_receipt()["outcomes"]:
+                path = root / outcome["report"]
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("# review\n", encoding="utf-8")
+            self.assertEqual(selection.receipt_errors(
+                valid_receipt(), "receipt", review_root=root), [])
+
+    def test_refuses_schema_and_semantic_mutations(self):
+        mutations = {
+            "unknown top-level field":
+                lambda d: d.__setitem__("surprise", True),
+            "unknown role":
+                lambda d: d["selected"][0].__setitem__("role", "intern"),
+            "empty changed paths":
+                lambda d: d["diff"].__setitem__("changed_paths", []),
+            "empty signal evidence": lambda d: d["signals"].append(
+                {"name": "security", "evidence": []}),
+            "empty reasons":
+                lambda d: d["selected"][0].__setitem__("reasons", []),
+            "duplicate selected":
+                lambda d: d["selected"].append(copy.deepcopy(d["selected"][0])),
+            "selected omitted overlap":
+                lambda d: d["omitted"].append(
+                    {"role": "architecture", "reasons": ["x"]}),
+            "incomplete partition": lambda d: d["omitted"].pop(),
+            "outcome mismatch": lambda d: d["outcomes"].pop(),
+        }
+        for name, mutate in mutations.items():
+            with self.subTest(name=name):
+                self.assertTrue(self.errors(mutate), name)
+
+    def test_refuses_selector_receipt_disagreement(self):
+        data = valid_receipt()
+        data["selected"][1]["role"] = "customer"
+        data["omitted"][2]["role"] = "architecture"
+        data["outcomes"][1] = {
+            "role": "customer", "status": "returned",
+            "report": "round-1/customer.md"}
+        errors = selection.receipt_errors(data, "receipt")
+        self.assertTrue(any("selector" in error for error in errors), errors)
+
+    def test_refuses_round_two_without_trigger(self):
+        data = valid_receipt()
+        data["round"] = 2
+        errors = selection.receipt_errors(data, "receipt")
+        self.assertTrue(any("delta-only" in error for error in errors), errors)
+
+    def test_refuses_round_two_with_five_distinct_roles(self):
+        data = valid_receipt()
+        data["round"] = 2
+        data["escalation"] = {
+            "prior_roles": ["engineering-quality", "architecture",
+                            "customer", "commercial"],
+            "blocking_roles": [],
+            "conflicts": [{"roles": ["architecture", "customer"],
+                           "evidence": "synthesis-1.md:F2"}],
+            "added_role": "product"}
+        errors = selection.receipt_errors(data, "receipt")
+        self.assertTrue(any("four distinct" in error for error in errors), errors)
 
 
 if __name__ == "__main__":

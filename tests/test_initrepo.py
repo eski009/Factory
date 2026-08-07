@@ -396,6 +396,47 @@ class InitTest(unittest.TestCase):
         self.assertTrue(
             any("log.jsonl:1: invalid event" in e for e in errors), errors)
 
+    def _review_receipt_dir(self):
+        meta = {"id": "0001-x", "title": "X", "stage": "idea",
+                "kind": "backend", "created": "2026-07-03T10:00:00Z",
+                "updated": "2026-07-03T10:00:00Z"}
+        items.save_item(self.repo, meta, "")
+        reviews = paths.item_dir(self.repo, "0001-x") / "reviews"
+        reviews.mkdir(parents=True, exist_ok=True)
+        return reviews
+
+    def test_validate_checks_every_review_selection_receipt(self):
+        from tests.test_review_selection import valid_receipt
+
+        initrepo.init(self.repo)
+        reviews = self._review_receipt_dir()
+        receipt = valid_receipt()
+        (reviews / "selection-round-1.json").write_text(
+            json.dumps(receipt), encoding="utf-8")
+        for outcome in receipt["outcomes"]:
+            report = reviews / outcome["report"]
+            report.parent.mkdir(parents=True, exist_ok=True)
+            report.write_text("# returned\n", encoding="utf-8")
+        errors = initrepo.validate_tree(self.repo)
+        self.assertFalse([e for e in errors if "selection-round" in e], errors)
+
+        (reviews / "selection-round-1.json").write_text(
+            "{}\n", encoding="utf-8")
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any(
+            "0001-x/reviews/selection-round-1.json" in e
+            for e in errors), errors)
+
+    def test_validate_flags_invalid_review_selection_json(self):
+        initrepo.init(self.repo)
+        reviews = self._review_receipt_dir()
+        (reviews / "selection-round-1.json").write_text(
+            "{not json\n", encoding="utf-8")
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any(
+            "0001-x/reviews/selection-round-1.json: invalid JSON" in e
+            for e in errors), errors)
+
 
 class SpendValidateTest(unittest.TestCase):
     def setUp(self):

@@ -5,6 +5,7 @@ never touches product code, CLAUDE.md, or existing docs. Spec §2.
 """
 
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -166,6 +167,24 @@ def validate_tree(repo):
                         continue
                     errors.extend(validate(data, load_schema(schema_name),
                                            f"{sub.name}/{rel}"))
+            reviews = sub / "reviews"
+            if reviews.exists():
+                for receipt in sorted(reviews.glob("selection-round-*.json")):
+                    rel = f"{sub.name}/reviews/{receipt.name}"
+                    match = re.fullmatch(r"selection-round-([12])\.json",
+                                         receipt.name)
+                    if not match:
+                        errors.append(f"{rel}: invalid review selection filename")
+                        continue
+                    try:
+                        data = json.loads(receipt.read_text(
+                            encoding="utf-8", errors="replace"))
+                    except json.JSONDecodeError as exc:
+                        errors.append(f"{rel}: invalid JSON ({exc})")
+                        continue
+                    from . import review_selection
+                    errors.extend(review_selection.receipt_errors(
+                        data, rel, review_root=reviews))
             if meta is not None and not schema_errors and log_valid:
                 expected = "idea"
                 for event in log_events:

@@ -185,3 +185,144 @@ def select_roles(*, mode, round_number, signals, conflicts=None,
         return _round_one(mode, normalized_signals)
     return _round_two(mode, normalized_signals, normalized_conflicts,
                       normalized_blocking, normalized_prior, added_role)
+
+
+def _duplicates(values):
+    seen = set()
+    return sorted({value for value in values
+                   if value in seen or seen.add(value)})
+
+
+def _degradation_section(text):
+    marker = "## Degradation"
+    if marker not in text:
+        return ""
+    section = text.split(marker, 1)[1]
+    return section.split("\n## ", 1)[0]
+
+
+def receipt_errors(data, path, review_root=None, synthesis_text=None):
+    """Validate one persisted review-selection receipt.
+
+    Schema errors are returned before semantic checks so corrupt input never
+    reaches the selector or filesystem validation paths.
+    """
+    from .initrepo import load_schema
+    from .validate import validate
+
+    errors = validate(data, load_schema("review-selection"), path)
+    if errors:
+        return errors
+
+    round_number = data["round"]
+    if round_number not in (1, 2):
+        errors.append(f"{path}.round: must be exactly 1 or 2")
+    if not data["diff"]["changed_paths"] or any(
+            not value.strip() for value in data["diff"]["changed_paths"]):
+        errors.append(f"{path}.diff.changed_paths: must be non-empty strings")
+    for index, signal in enumerate(data["signals"]):
+        evidence = signal["evidence"]
+        if not evidence or any(not value.strip() for value in evidence):
+            errors.append(
+                f"{path}.signals[{index}].evidence: must be non-empty strings")
+    for group in ("selected", "omitted"):
+        for index, entry in enumerate(data[group]):
+            reasons = entry["reasons"]
+            if not reasons or any(not value.strip() for value in reasons):
+                errors.append(
+                    f"{path}.{group}[{index}].reasons: must be non-empty strings")
+
+    selected_roles = [entry["role"] for entry in data["selected"]]
+    omitted_roles = [entry["role"] for entry in data["omitted"]]
+    for group, roles in (("selected", selected_roles),
+                         ("omitted", omitted_roles)):
+        duplicate = _duplicates(roles)
+        if duplicate:
+            errors.append(f"{path}.{group}: duplicate roles {duplicate}")
+    overlap = sorted(set(selected_roles) & set(omitted_roles))
+    if overlap:
+        errors.append(f"{path}: selected/omitted overlap {overlap}")
+    partition = set(selected_roles) | set(omitted_roles)
+    if partition != set(council.ROLES):
+        errors.append(f"{path}: selected/omitted must partition all six roles")
+
+    escalation = data["escalation"]
+    if round_number in (1, 2):
+        try:
+            expected = select_roles(
+                mode=data["mode"], round_number=round_number,
+                signals=data["signals"],
+                conflicts=escalation["conflicts"],
+                blocking_roles=escalation["blocking_roles"],
+                prior_roles=escalation["prior_roles"],
+                added_role=escalation["added_role"])
+        except ValueError as exc:
+            errors.append(f"{path}: selector refused receipt: {exc}")
+        else:
+            if data["selected"] != expected["selected"]:
+                errors.append(f"{path}.selected: selector/receipt disagreement")
+            if data["omitted"] != expected["omitted"]:
+                errors.append(f"{path}.omitted: selector/receipt disagreement")
+
+    outcome_roles = [entry["role"] for entry in data["outcomes"]]
+    duplicate_outcomes = _duplicates(outcome_roles)
+    if duplicate_outcomes:
+        errors.append(f"{path}.outcomes: duplicate roles {duplicate_outcomes}")
+    if set(outcome_roles) != set(selected_roles) or len(outcome_roles) != len(selected_roles):
+        errors.append(f"{path}.outcomes: must exactly cover selected roles")
+
+    non_returned = []
+    for index, outcome in enumerate(data["outcomes"]):
+        role = outcome["role"]
+        status = outcome["status"]
+        report = outcome["report"]
+        expected_report = f"round-{round_number}/{role}.md"
+        if status == "returned":
+            if report != expected_report:
+                errors.append(
+                    f"{path}.outcomes[{index}].report: expected {expected_report!r}")
+            elif review_root is not None:
+                report_path = review_root / report
+                if not report_path.exists() or not report_path.is_file() \
+                        or not report_path.read_text(
+                            encoding="utf-8", errors="replace").strip():
+                    errors.append(
+                        f"{path}.outcomes[{index}]: returned report missing or empty")
+        else:
+            non_returned.append(outcome)
+            if report:
+                errors.append(
+                    f"{path}.outcomes[{index}].report: non-returned report must be empty")
+
+    independence = data["independence"]
+    degradation = independence["degradation"]
+    if any(not value.strip() for value in degradation):
+        errors.append(f"{path}.independence.degradation: must be non-empty strings")
+    if independence["achieved"]:
+        if not independence["requested"]:
+            errors.append(f"{path}.independence: achieved requires requested")
+        if degradation:
+            errors.append(f"{path}.independence: achieved forbids degradation")
+        if non_returned:
+            errors.append(f"{path}.independence: achieved requires all outcomes returned")
+    elif not degradation:
+        errors.append(f"{path}.independence: unachieved review requires degradation")
+    if non_returned and not degradation:
+        errors.append(f"{path}: non-returned outcomes require degradation")
+
+    degradation_required = not independence["achieved"] or bool(non_returned)
+    if synthesis_text is not None and degradation_required:
+        section = _degradation_section(synthesis_text)
+        if not section:
+            errors.append(f"{path}: synthesis requires ## Degradation")
+        else:
+            for detail in degradation:
+                if detail not in section:
+                    errors.append(
+                        f"{path}: synthesis degradation missing {detail!r}")
+            for outcome in non_returned:
+                token = f"{outcome['role']}: {outcome['status']}"
+                if token not in section:
+                    errors.append(
+                        f"{path}: synthesis degradation missing {token!r}")
+    return errors
