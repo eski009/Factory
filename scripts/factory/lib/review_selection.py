@@ -267,6 +267,10 @@ def receipt_errors(data, path, review_root=None, synthesis_text=None,
             if prior_errors:
                 errors.append(f"{path}: Round 1 receipt is invalid")
             else:
+                if data["mode"] != prior_receipt["mode"]:
+                    errors.append(
+                        f"{path}.mode: Round 2 must match Round 1 mode "
+                        f"{prior_receipt['mode']!r}")
                 actual_prior = [entry["role"]
                                 for entry in prior_receipt["selected"]]
                 if escalation["prior_roles"] != actual_prior:

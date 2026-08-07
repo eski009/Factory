@@ -490,6 +490,27 @@ class InitTest(unittest.TestCase):
         self.assertTrue(any("prior_roles" in e and "Round 1" in e
                             for e in errors), errors)
 
+        round_two["escalation"]["prior_roles"] = [
+            entry["role"] for entry in round_one["selected"]]
+        round_two["escalation"]["blocking_roles"] = ["architecture"]
+        round_two["selected"] = [{
+            "role": "architecture", "reasons": ["round2.blocking-finding"]}]
+        round_two["omitted"] = [
+            {"role": role, "reasons": ["signal.not-applicable"]}
+            for role in ("product", "ui-taste", "engineering-quality",
+                         "customer", "commercial")]
+        round_two["outcomes"] = [{
+            "role": "architecture", "status": "returned",
+            "report": "round-2/architecture.md"}]
+        (reviews / "round-2/architecture.md").write_text(
+            "# returned\n", encoding="utf-8")
+        round_two["mode"] = "full"
+        (reviews / "selection-round-2.json").write_text(
+            json.dumps(round_two), encoding="utf-8")
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any("Round 2 must match Round 1 mode" in e
+                            for e in errors), errors)
+
         (reviews / "selection-round-1.json").unlink()
         errors = initrepo.validate_tree(self.repo)
         self.assertTrue(any("requires a valid Round 1 receipt" in e
