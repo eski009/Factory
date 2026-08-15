@@ -19,7 +19,7 @@ def read(p):
     return p.read_text(encoding="utf-8")
 
 
-class TestPluginCoherence(unittest.TestCase):
+class PluginCoherenceTest(unittest.TestCase):
     def test_engine_comments_cite_symbols_not_source_lines(self):
         citations = []
         source_line = re.compile(r"[A-Za-z0-9_./-]+\.(?:py|md):\d+")
@@ -178,13 +178,88 @@ class TestPluginCoherence(unittest.TestCase):
                 self.assertNotIn("factory-interview", read(cmd),
                                  f"{cmd.name} must not invoke the interview")
 
-    def test_tier_consume_wiring_present(self):
+    def test_adaptive_review_wiring_present(self):
         review = read(ROOT / "skills/factory-review/SKILL.md")
-        self.assertIn("Review depth by tier", review)
+        self.assertIn("adaptive", review.lower())
+        self.assertIn("explicit full", review.lower())
+        self.assertNotIn("Review depth by tier", review)
         council = read(ROOT / "skills/council-review/SKILL.md")
-        self.assertIn("light", council)
+        self.assertNotIn("light review", council.lower())
+
+    def test_research_tier_consume_wiring_present(self):
         research = read(ROOT / "skills/factory-research/SKILL.md")
         self.assertIn("epic", research)
+
+    def test_adaptive_council_contract_is_complete(self):
+        text = read(ROOT / "skills/council-review/SKILL.md")
+        lowered = text.lower()
+
+        for required in (
+                "selection-round-N.json",
+                "review_selection.select_roles",
+                "fallback.general-backend",
+                "ambiguous",
+                "high-blast-radius",
+                "irreversible",
+                "fresh context",
+                "at most three",
+                "returned, missing, or unavailable",
+                "## Degradation",
+                "delta-only",
+                "synthesis-1.md",
+                "never run Round 3",
+                "at most four distinct adaptive roles",
+                "orchestrator alone writes reports, receipts, and synthesis",
+        ):
+            self.assertIn(required.lower(), lowered)
+
+        precedence = re.search(
+            r"precedence order(?P<signals>[^.]+)\.", text,
+            flags=re.IGNORECASE,
+        )
+        self.assertIsNotNone(
+            precedence,
+            "council-review must state one explicit signal precedence order",
+        )
+        ordered_signals = (
+            "security",
+            "architecture",
+            "customer-trust",
+            "ui-taste",
+            "product-behavior",
+            "commercial",
+        )
+        clause = precedence.group("signals").lower()
+        positions = [clause.index(signal) for signal in ordered_signals]
+        self.assertEqual(positions, sorted(positions))
+
+        roles = {
+            "product",
+            "ui-taste",
+            "architecture",
+            "engineering-quality",
+            "customer",
+            "commercial",
+        }
+        triage = re.search(
+            r"Triage mode always dispatches all six roles exactly once:"
+            r"(?P<roles>[^.]+)\.",
+            text,
+        )
+        self.assertIsNotNone(triage)
+        self.assertEqual(set(re.findall(r"`([a-z-]+)`", triage.group("roles"))),
+                         roles)
+
+        research = re.search(
+            r"Research mode dispatches exactly the four outward roles:"
+            r"(?P<roles>[^.]+)\.",
+            text,
+        )
+        self.assertIsNotNone(research)
+        self.assertEqual(
+            set(re.findall(r"`([a-z-]+)`", research.group("roles"))),
+            {"customer", "commercial", "product", "ui-taste"},
+        )
 
     def test_spec_section_lists_stay_synced(self):
         # the spec.md section order is defined in two places; Journey impact
