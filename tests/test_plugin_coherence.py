@@ -345,6 +345,18 @@ class PluginCoherenceTest(unittest.TestCase):
             ["customer", "commercial", "product", "ui-taste"],
         )
 
+    def test_degraded_review_requires_reproduced_execution(self):
+        council = read(ROOT / "skills/council-review/SKILL.md")
+        review = read(ROOT / "skills/factory-review/SKILL.md")
+
+        for name, text in (("council", council), ("review", review)):
+            with self.subTest(skill=name):
+                self.assertIn("## Execution", text)
+                self.assertRegex(text.lower(), r"execut(?:e|ed).*(?:command|probe)")
+                self.assertIn("observed result", text.lower())
+                self.assertIn("static inspection alone is insufficient",
+                              text.lower())
+
     def test_spec_section_lists_stay_synced(self):
         # the spec.md section order is defined in two places; Journey impact
         # must sit between Behavior and Non-goals in BOTH.

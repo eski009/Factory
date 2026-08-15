@@ -193,8 +193,8 @@ def _duplicates(values):
                    if value in seen or seen.add(value)})
 
 
-def _degradation_section(text):
-    marker = "## Degradation"
+def _synthesis_section(text, heading):
+    marker = f"## {heading}"
     if marker not in text:
         return ""
     section = text.split(marker, 1)[1]
@@ -356,7 +356,7 @@ def receipt_errors(data, path, review_root=None, synthesis_text=None,
 
     degradation_required = not independence["achieved"] or bool(non_returned)
     if synthesis_text is not None and degradation_required:
-        section = _degradation_section(synthesis_text)
+        section = _synthesis_section(synthesis_text, "Degradation")
         if not section:
             errors.append(f"{path}: synthesis requires ## Degradation")
         else:
@@ -369,4 +369,7 @@ def receipt_errors(data, path, review_root=None, synthesis_text=None,
                 if token not in section:
                     errors.append(
                         f"{path}: synthesis degradation missing {token!r}")
+        if not _synthesis_section(synthesis_text, "Execution").strip():
+            errors.append(
+                f"{path}: synthesis requires non-empty ## Execution")
     return errors

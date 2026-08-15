@@ -67,7 +67,10 @@ def write_review_receipt(repo, *, outcome="returned", degraded=False):
     if degraded:
         write(repo, "reviews/synthesis.md",
               "# Review\n\n## Degradation\n\n"
-              "fresh dispatch unavailable\n\narchitecture: unavailable\n")
+              "fresh dispatch unavailable\n\narchitecture: unavailable\n\n"
+              "## Execution\n\n"
+              "Command: `python3 -m unittest tests.test_machine -v`\n\n"
+              "Observed result: `OK`\n")
     else:
         write(repo, "reviews/synthesis.md", "# Review\n")
     return data
@@ -433,6 +436,19 @@ class TestGates(MachineTest):
         write(self.repo, "reviews/synthesis.md", "# Review\n")
         logs.append_event(self.repo, "0001-thing", "review.approved")
         with self.assertRaisesRegex(machine.GateError, "Degradation"):
+            machine.advance(self.repo, "0001-thing", "verify")
+
+    def test_verify_refuses_degraded_review_without_execution_evidence(self):
+        make_item(self.repo, stage="review", priority=1)
+        mark_round(self.repo)
+        write_review_receipt(self.repo, outcome="unavailable", degraded=True)
+        write(self.repo, "reviews/synthesis.md",
+              "# Review\n\n## Degradation\n\n"
+              "fresh dispatch unavailable\n\narchitecture: unavailable\n")
+        logs.append_event(self.repo, "0001-thing", "review.approved")
+
+        with self.assertRaisesRegex(
+                machine.GateError, r"non-empty ## Execution"):
             machine.advance(self.repo, "0001-thing", "verify")
 
     def test_verify_refuses_undisclosed_round_two_degradation(self):

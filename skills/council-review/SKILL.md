@@ -34,7 +34,7 @@ Before Round 1, run `factory reputation --json`. Use scores to order which agent
 
    In review mode, record every selected outcome as returned, missing, or unavailable. Persist a report at `reviews/round-1/<role>.md` only for a returned output; never manufacture a report for a missing or unavailable outcome. The closed Round 1 receipt contains exactly these top-level fields: `item`, `round`, `mode`, `diff`, `signals`, `selected`, `omitted`, `escalation`, `outcomes`, `independence`. Set `item` to the item id, `round` to 1, and `mode` to the selection mode; record diff base/head/changed paths, normalized signals/evidence, selector-returned selected/omitted roles and reasons, empty Round 1 escalation inputs, every seat outcome/report, and independence. Persist the completed receipt to `reviews/selection-round-1.json` before synthesis.
 
-   Successful independent execution records `independence.requested=true`, `independence.achieved=true`, and an empty `independence.degradation`. Any lost independence or output sets `independence.achieved` to false, records the exact loss in `independence.degradation`, and requires a matching `## Degradation` section in synthesis. Never describe degraded execution as equivalent to an independent council.
+   Successful independent execution records `independence.requested=true`, `independence.achieved=true`, and an empty `independence.degradation`. Any lost independence or output sets `independence.achieved` to false, records the exact loss in `independence.degradation`, and requires a matching `## Degradation` section in synthesis. For any degraded review, actually execute a command or probe that reproduces the reviewed behavior and ground the verdict in that evidence; static inspection alone is insufficient. Never describe degraded execution as equivalent to an independent council.
 
 3. **Orchestrator synthesis.** The invoking session (not a subagent) reads the returned round-1 reports it wrote, dedupes overlapping claims, groups by topic, flags conflicts between roles, and decides whether Round 2 is required. Write `reviews/synthesis-1.md`. In review mode, keep its selection facts consistent with `selection-round-1.json`.
 
@@ -46,7 +46,7 @@ Before Round 1, run `factory reputation --json`. Use scores to order which agent
 
 5. **Hard stop and final synthesis.** Maximum two rounds: never run Round 3. If another round seems warranted, write why it was needed but skipped. Tag every finding **low**, **medium**, or **high** severity. Write the final combined synthesis to `reviews/synthesis.md`; it retains the rule that a finding blocks only when severity is high and it contradicts the spec, a brain surface, or the test evidence.
 
-   For review mode, include `## Selection` with diff identity, signals and evidence, selected and omitted roles with reasons, escalation, outcomes, and independence, all consistent with the JSON receipts. Include `## Degradation` whenever a receipt records degraded independence, naming exactly what was lost.
+   For review mode, include `## Selection` with diff identity, signals and evidence, selected and omitted roles with reasons, escalation, outcomes, and independence, all consistent with the JSON receipts. Include `## Degradation` whenever a receipt records degraded independence, naming exactly what was lost. Every degraded final synthesis also includes a non-empty `## Execution` section that records the executed command or probe and its observed result.
 
 ## After synthesis
 

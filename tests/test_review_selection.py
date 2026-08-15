@@ -235,6 +235,37 @@ class ReceiptTest(unittest.TestCase):
             self.assertEqual(selection.receipt_errors(
                 valid_receipt(), "receipt", review_root=root), [])
 
+    def test_degraded_receipt_requires_non_empty_execution_section(self):
+        data = valid_receipt()
+        data["outcomes"][1] = {
+            "role": "architecture", "status": "unavailable", "report": ""}
+        data["independence"] = {
+            "requested": True,
+            "achieved": False,
+            "degradation": ["fresh dispatch unavailable"],
+        }
+        degradation = (
+            "# Review\n\n## Degradation\n\n"
+            "fresh dispatch unavailable\n\narchitecture: unavailable\n")
+
+        for name, synthesis in (
+                ("missing", degradation),
+                ("empty", degradation + "\n## Execution\n\n## Verdict\n\nClean\n")):
+            with self.subTest(name=name):
+                errors = selection.receipt_errors(
+                    data, "receipt", synthesis_text=synthesis)
+                self.assertTrue(any(
+                    "requires non-empty ## Execution" in error
+                    for error in errors), errors)
+
+        synthesis = (
+            degradation
+            + "\n## Execution\n\n"
+            + "Command: `python3 -m unittest tests.test_review_selection -v`\n\n"
+            + "Observed result: `OK`\n")
+        self.assertEqual(selection.receipt_errors(
+            data, "receipt", synthesis_text=synthesis), [])
+
     def test_refuses_schema_and_semantic_mutations(self):
         mutations = {
             "unknown top-level field":
