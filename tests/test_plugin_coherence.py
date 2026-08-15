@@ -193,6 +193,23 @@ class PluginCoherenceTest(unittest.TestCase):
         self.assertIn("`mode` is `triage`, `review`, or `research`", council)
         self.assertIn("`selection_mode` is `adaptive` or `full`", council)
 
+    def test_readme_describes_adaptive_review_without_savings_overclaim(self):
+        readme = read(ROOT / "README.md")
+        plain = readme.replace("`", "").lower()
+        for claim in (
+            "two independent seats",
+            "current diff",
+            "explicit full",
+            "does not solve retry cost",
+        ):
+            with self.subTest(claim=claim):
+                self.assertIn(claim, plain)
+        self.assertRegex(plain, r"\blower(?:s)? routine review ceremony\b")
+        self.assertNotRegex(
+            plain,
+            r"\b(?:feature|epic)\b[^\n]*(?:full council|all six)",
+        )
+
     def test_research_tier_consume_wiring_present(self):
         research = read(ROOT / "skills/factory-research/SKILL.md")
         self.assertIn("epic", research)
