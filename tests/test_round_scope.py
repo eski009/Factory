@@ -56,15 +56,20 @@ class RoundScopeTest(unittest.TestCase):
         logs.append_event(self.repo, self.item, event, data)
 
     def make_branch(self):
-        subprocess.run(["git", "branch", "-f", f"factory/{self.item}"],
-                       cwd=self.repo, check=True)
+        exists = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet",
+             f"refs/heads/factory/{self.item}"], cwd=self.repo,
+            capture_output=True).returncode == 0
+        if not exists:
+            subprocess.run(["git", "branch", f"factory/{self.item}"],
+                           cwd=self.repo, check=True)
 
     def finish_implement(self):
         self.make_branch()
         self.log("implement.completed")
 
     def write_review_receipt(self):
-        data = valid_receipt(item=self.item)
+        data = valid_receipt(item=self.item, repo=self.repo)
         for outcome in data["outcomes"]:
             self.art("reviews/" + outcome["report"], "# returned\n")
         self.art("reviews/selection-round-1.json",
@@ -363,7 +368,7 @@ class TestMissingRoundMarker(unittest.TestCase):
         p = paths.item_dir(self.repo, "0001-x") / "reviews" / "synthesis.md"
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text("s\n", encoding="utf-8")
-        data = valid_receipt(item="0001-x")
+        data = valid_receipt(item="0001-x", repo=self.repo)
         for outcome in data["outcomes"]:
             report = p.parent / outcome["report"]
             report.parent.mkdir(parents=True, exist_ok=True)

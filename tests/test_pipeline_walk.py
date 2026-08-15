@@ -40,7 +40,7 @@ def _write_assurance(repo, item_id, verdict="pass", journey="J-001",
 
 def _write_review_receipt(repo, item_id):
     item_dir = paths.item_dir(repo, item_id)
-    data = valid_receipt(item=item_id)
+    data = valid_receipt(item=item_id, repo=repo)
     for outcome in data["outcomes"]:
         report = item_dir / "reviews" / outcome["report"]
         report.parent.mkdir(parents=True, exist_ok=True)

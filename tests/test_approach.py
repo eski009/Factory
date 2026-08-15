@@ -70,7 +70,7 @@ class ApproachTest(unittest.TestCase):
         self._branched = True
 
     def write_review_receipt(self):
-        data = valid_receipt(item=ITEM)
+        data = valid_receipt(item=ITEM, repo=self.repo)
         for outcome in data["outcomes"]:
             self.art("reviews/" + outcome["report"], "# returned\n")
         self.art("reviews/selection-round-1.json",

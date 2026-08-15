@@ -45,22 +45,12 @@ def write(repo, rel, text="content\n"):
 def write_review_receipt(repo, *, outcome="returned", degraded=False):
     from tests.test_review_selection import valid_receipt
 
-    data = valid_receipt(item="0001-thing")
     if not (Path(repo) / ".git").exists():
         git(repo, "init", "-q")
         git(repo, "commit", "-q", "--allow-empty", "-m", "root")
         git(repo, "branch", "-M", "main")
-        git(repo, "checkout", "-q", "-b", "factory/0001-thing")
-        implementation = Path(repo) / "implementation.txt"
-        implementation.write_text("implementation\n", encoding="utf-8")
-        git(repo, "add", "implementation.txt")
-        git(repo, "commit", "-q", "-m", "implementation")
-    base = git(repo, "merge-base", "main", "factory/0001-thing")
-    head = git(repo, "rev-parse", "factory/0001-thing")
-    changed_paths = git(
-        repo, "diff", "--name-only", f"{base}..{head}", "--").splitlines()
-    data["diff"] = {
-        "base": base, "head": head, "changed_paths": changed_paths}
+        git(repo, "branch", "factory/0001-thing")
+    data = valid_receipt(item="0001-thing", repo=repo)
     if degraded:
         for entry in data["outcomes"]:
             if entry["role"] == "architecture":

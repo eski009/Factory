@@ -58,7 +58,7 @@ class TestE2ECli(unittest.TestCase):
         self.art(item, "assurance/verdicts.json", json.dumps(verdicts, indent=2))
 
     def _write_review_receipt(self, item):
-        data = valid_receipt(item=item)
+        data = valid_receipt(item=item, repo=self.target)
         for outcome in data["outcomes"]:
             self.art(item, "reviews/" + outcome["report"], "# returned\n")
         self.art(item, "reviews/selection-round-1.json",

@@ -1,17 +1,54 @@
 import copy
+import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.factory.lib import council, review_selection as selection
+from scripts.factory.lib import council, machine, review_selection as selection
 
 
 def signal(name, evidence=None):
     return {"name": name, "evidence": evidence or [f"src/{name}.py:10"]}
 
 
-def valid_receipt(item="0001-x"):
-    return {
+GIT_ENV = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
+               GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t")
+
+
+def _git(repo, *args):
+    return subprocess.run(
+        ["git", *args], cwd=repo, check=True, env=GIT_ENV,
+        capture_output=True, text=True).stdout.strip()
+
+
+def live_review_diff(repo, item):
+    """Build and resolve a non-empty current-round diff for gate fixtures."""
+    repo = Path(repo)
+    if _git(repo, "rev-parse", "--is-inside-work-tree") != "true":
+        raise AssertionError(f"review fixture is not a git repository: {repo}")
+    branch = f"factory/{item}"
+    if subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet",
+             f"refs/heads/{branch}"], cwd=repo, env=GIT_ENV,
+            capture_output=True).returncode != 0:
+        _git(repo, "branch", branch)
+
+    diff = machine._current_review_diff(repo, {"id": item})
+    if not diff["changed_paths"]:
+        _git(repo, "checkout", "-q", branch)
+        marker = repo / f"implementation-{item}.txt"
+        marker.write_text(diff["head"] + "\n", encoding="utf-8")
+        _git(repo, "add", marker.name)
+        _git(repo, "commit", "-q", "-m", f"implementation {item}")
+        diff = machine._current_review_diff(repo, {"id": item})
+    if not diff["changed_paths"]:
+        raise AssertionError("review fixture must carry a committed delta")
+    return diff
+
+
+def valid_receipt(item="0001-x", repo=None):
+    data = {
         "item": item, "round": 1, "mode": "adaptive",
         "diff": {"base": "abc123", "head": "def456",
                  "changed_paths": ["scripts/factory/lib/x.py"]},
@@ -35,6 +72,9 @@ def valid_receipt(item="0001-x"):
              "report": "round-1/architecture.md"}],
         "independence": {"requested": True, "achieved": True,
                          "degradation": []}}
+    if repo is not None:
+        data["diff"] = live_review_diff(repo, item)
+    return data
 
 
 class SelectorTest(unittest.TestCase):
