@@ -193,6 +193,38 @@ class PluginCoherenceTest(unittest.TestCase):
         self.assertIn("`mode` is `triage`, `review`, or `research`", council)
         self.assertIn("`selection_mode` is `adaptive` or `full`", council)
 
+    def test_factory_review_scopes_each_review_to_current_round_delta(self):
+        review = read(ROOT / "skills/factory-review/SKILL.md")
+        lowered = review.lower()
+
+        self.assertIn(
+            "for the first review, use the default-branch merge base",
+            lowered,
+        )
+        self.assertIn(
+            "for a re-review, use the `head` from the most recent prior "
+            "`review.rejected` event",
+            lowered,
+        )
+        for command in (
+            "`git rev-parse factory/<item-id>`",
+            "`git merge-base <default-branch> <head>`",
+            "`git diff <base>..<head>`",
+            "`git diff --name-only <base>..<head>`",
+        ):
+            with self.subTest(command=command):
+                self.assertIn(command, review)
+        self.assertIn(
+            "receipt `diff.base`, `diff.head`, and `diff.changed_paths` "
+            "come from this exact comparison",
+            review,
+        )
+        self.assertIn(
+            "review.rejected --data "
+            "'{\"round\": N, \"head\": \"<head>\"}'",
+            review,
+        )
+
     def test_readme_describes_adaptive_review_without_savings_overclaim(self):
         readme = read(ROOT / "README.md")
         plain = readme.replace("`", "").lower()
