@@ -11,6 +11,16 @@ from scripts.factory.lib import (
     breaker, cost, initrepo, items, logs, machine, paths)
 
 
+GIT_ENV = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
+               GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t")
+
+
+def git(repo, *args):
+    return subprocess.run(
+        ["git", *args], cwd=repo, check=True, env=GIT_ENV,
+        capture_output=True, text=True).stdout.strip()
+
+
 def make_item(repo, kind="ui", stage="idea", priority=None, bug=False, journeys=None):
     meta = {
         "id": "0001-thing", "title": "Thing", "stage": stage, "kind": kind,
@@ -36,6 +46,21 @@ def write_review_receipt(repo, *, outcome="returned", degraded=False):
     from tests.test_review_selection import valid_receipt
 
     data = valid_receipt(item="0001-thing")
+    if not (Path(repo) / ".git").exists():
+        git(repo, "init", "-q")
+        git(repo, "commit", "-q", "--allow-empty", "-m", "root")
+        git(repo, "branch", "-M", "main")
+        git(repo, "checkout", "-q", "-b", "factory/0001-thing")
+        implementation = Path(repo) / "implementation.txt"
+        implementation.write_text("implementation\n", encoding="utf-8")
+        git(repo, "add", "implementation.txt")
+        git(repo, "commit", "-q", "-m", "implementation")
+    base = git(repo, "merge-base", "main", "factory/0001-thing")
+    head = git(repo, "rev-parse", "factory/0001-thing")
+    changed_paths = git(
+        repo, "diff", "--name-only", f"{base}..{head}", "--").splitlines()
+    data["diff"] = {
+        "base": base, "head": head, "changed_paths": changed_paths}
     if degraded:
         for entry in data["outcomes"]:
             if entry["role"] == "architecture":
@@ -389,6 +414,7 @@ class TestGates(MachineTest):
         round_one = write_review_receipt(self.repo)
         round_two = valid_receipt(item="0001-thing")
         round_two["round"] = 2
+        round_two["diff"] = round_one["diff"]
         round_two["selected"] = [{
             "role": "architecture",
             "reasons": ["round2.blocking-finding"],
@@ -438,6 +464,54 @@ class TestGates(MachineTest):
         self.assertEqual(
             machine.advance(self.repo, "0001-thing", "verify")[0]["stage"],
             "verify")
+
+    def test_verify_refuses_stale_review_receipt_after_rework(self):
+        make_item(self.repo, stage="review", priority=1)
+        mark_round(self.repo)
+        git(self.repo, "init", "-q")
+        git(self.repo, "commit", "-q", "--allow-empty", "-m", "root")
+        git(self.repo, "branch", "-M", "main")
+        git(self.repo, "checkout", "-q", "-b", "factory/0001-thing")
+
+        implementation = self.repo / "implementation.txt"
+        implementation.write_text("first\n", encoding="utf-8")
+        git(self.repo, "add", "implementation.txt")
+        git(self.repo, "commit", "-q", "-m", "first implementation")
+        first_head = git(self.repo, "rev-parse", "HEAD")
+        first_base = git(
+            self.repo, "merge-base", "main", "factory/0001-thing")
+
+        receipt = write_review_receipt(self.repo)
+        receipt["diff"] = {
+            "base": first_base,
+            "head": first_head,
+            "changed_paths": ["implementation.txt"],
+        }
+        write(
+            self.repo, "reviews/selection-round-1.json",
+            json.dumps(receipt, indent=2, sort_keys=True) + "\n")
+
+        logs.append_event(
+            self.repo, "0001-thing", "review.rejected",
+            {"round": 1, "head": first_head})
+        machine.advance(self.repo, "0001-thing", "implement")
+        implementation.write_text("second\n", encoding="utf-8")
+        git(self.repo, "add", "implementation.txt")
+        git(self.repo, "commit", "-q", "-m", "reworked implementation")
+        logs.append_event(self.repo, "0001-thing", "implement.completed")
+        machine.advance(self.repo, "0001-thing", "review")
+        logs.append_event(self.repo, "0001-thing", "review.approved")
+
+        log_path = paths.item_dir(
+            self.repo, "0001-thing") / "log.jsonl"
+        log_before = log_path.read_text(encoding="utf-8")
+        with self.assertRaisesRegex(
+                machine.GateError, "review selection receipt invalid"):
+            machine.advance(self.repo, "0001-thing", "verify")
+
+        self.assertEqual(
+            items.load_item(self.repo, "0001-thing")[0]["stage"], "review")
+        self.assertEqual(log_path.read_text(encoding="utf-8"), log_before)
 
     def test_ship_and_done_require_evidence_events(self):
         make_item(self.repo, stage="verify", priority=1, journeys="none")
