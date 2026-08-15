@@ -248,6 +248,42 @@ class ReceiptTest(unittest.TestCase):
         errors = selection.receipt_errors(data, "receipt")
         self.assertTrue(any("four distinct" in error for error in errors), errors)
 
+    def test_refuses_round_two_cross_subject_receipts(self):
+        round_one = valid_receipt()
+        round_two = copy.deepcopy(round_one)
+        round_two["round"] = 2
+        round_two["selected"] = [{
+            "role": "architecture", "reasons": ["round2.blocking-finding"]}]
+        round_two["omitted"] = [
+            {"role": role, "reasons": ["signal.not-applicable"]}
+            for role in council.ROLES if role != "architecture"]
+        round_two["escalation"] = {
+            "conflicts": [], "blocking_roles": ["architecture"],
+            "prior_roles": [entry["role"] for entry in round_one["selected"]],
+            "added_role": ""}
+        round_two["outcomes"] = [{
+            "role": "architecture", "status": "returned",
+            "report": "round-2/architecture.md"}]
+        self.assertEqual(selection.receipt_errors(
+            round_two, "receipt", prior_receipt=round_one), [])
+
+        mutations = {
+            "diff": lambda receipt: receipt.__setitem__("diff", {
+                "base": "other-base", "head": "other-head",
+                "changed_paths": ["scripts/factory/lib/other.py"]}),
+            "signals": lambda receipt: receipt.__setitem__("signals", [
+                signal("security")]),
+        }
+        for subject, mutate in mutations.items():
+            with self.subTest(subject=subject):
+                data = copy.deepcopy(round_two)
+                mutate(data)
+                errors = selection.receipt_errors(
+                    data, "receipt", prior_receipt=round_one)
+                self.assertTrue(any(
+                    "cross-round identity" in error and subject in error
+                    for error in errors), errors)
+
 
 if __name__ == "__main__":
     unittest.main()

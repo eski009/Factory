@@ -271,6 +271,20 @@ def receipt_errors(data, path, review_root=None, synthesis_text=None,
                     errors.append(
                         f"{path}.mode: Round 2 must match Round 1 mode "
                         f"{prior_receipt['mode']!r}")
+                if data["diff"] != prior_receipt["diff"]:
+                    errors.append(
+                        f"{path}.diff: cross-round identity must exactly "
+                        "match Round 1 diff")
+                try:
+                    round_two_signals = _signals(data["signals"])
+                except ValueError:
+                    round_two_signals = None
+                if (round_two_signals is not None
+                        and round_two_signals != _signals(
+                            prior_receipt["signals"])):
+                    errors.append(
+                        f"{path}.signals: cross-round identity must exactly "
+                        "match Round 1 normalized signals")
                 actual_prior = [entry["role"]
                                 for entry in prior_receipt["selected"]]
                 if escalation["prior_roles"] != actual_prior:
