@@ -367,6 +367,48 @@ class TestGates(MachineTest):
         with self.assertRaisesRegex(machine.GateError, "Degradation"):
             machine.advance(self.repo, "0001-thing", "verify")
 
+    def test_verify_refuses_undisclosed_round_two_degradation(self):
+        from tests.test_review_selection import valid_receipt
+
+        make_item(self.repo, stage="review", priority=1)
+        mark_round(self.repo)
+        round_one = write_review_receipt(self.repo)
+        round_two = valid_receipt(item="0001-thing")
+        round_two["round"] = 2
+        round_two["selected"] = [{
+            "role": "architecture",
+            "reasons": ["round2.blocking-finding"],
+        }]
+        round_two["omitted"] = [{
+            "role": role,
+            "reasons": ["signal.not-applicable"],
+        } for role in (
+            "product", "ui-taste", "engineering-quality", "customer",
+            "commercial")]
+        round_two["escalation"] = {
+            "conflicts": [],
+            "blocking_roles": ["architecture"],
+            "prior_roles": [entry["role"] for entry in round_one["selected"]],
+            "added_role": "",
+        }
+        round_two["outcomes"] = [{
+            "role": "architecture", "status": "unavailable", "report": "",
+        }]
+        round_two["independence"] = {
+            "requested": True,
+            "achieved": False,
+            "degradation": ["Round 2 architecture dispatch unavailable"],
+        }
+        write(self.repo, "reviews/selection-round-2.json",
+              json.dumps(round_two, indent=2, sort_keys=True) + "\n")
+        logs.append_event(self.repo, "0001-thing", "review.approved")
+
+        with self.assertRaisesRegex(
+                machine.GateError,
+                r"review selection receipt invalid: .*selection-round-2"
+                r".*Degradation"):
+            machine.advance(self.repo, "0001-thing", "verify")
+
     def test_verify_accepts_valid_review_selection_receipt(self):
         make_item(self.repo, stage="review", priority=1)
         mark_round(self.repo)

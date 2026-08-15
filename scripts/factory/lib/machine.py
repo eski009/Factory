@@ -571,20 +571,34 @@ def _gate_review(repo, meta):
 
 
 def _require_review_selection(repo, meta):
-    receipt = _artifact(repo, meta, "reviews/selection-round-1.json")
-    if not receipt.exists():
+    reviews = _artifact(repo, meta, "reviews")
+    round_one = reviews / "selection-round-1.json"
+    if not round_one.exists():
         raise GateError("review selection receipt required")
-    try:
-        data = json.loads(receipt.read_text(
-            encoding="utf-8", errors="replace"))
-    except json.JSONDecodeError as exc:
-        raise GateError(f"review selection receipt invalid: {exc}")
     from . import review_selection
     synthesis = _read_text_or_empty(
         _artifact(repo, meta, "reviews/synthesis.md"))
-    errors = review_selection.receipt_errors(
-        data, "reviews/selection-round-1.json", review_root=receipt.parent,
-        synthesis_text=synthesis, expected_item=meta["id"], expected_round=1)
+    errors = []
+    prior_receipt = None
+    for receipt in sorted(reviews.glob("selection-round-*.json")):
+        rel = f"reviews/{receipt.name}"
+        match = re.fullmatch(r"selection-round-([12])\.json", receipt.name)
+        if not match:
+            errors.append(f"{rel}: invalid review selection filename")
+            continue
+        try:
+            data = json.loads(receipt.read_text(
+                encoding="utf-8", errors="replace"))
+        except json.JSONDecodeError as exc:
+            errors.append(f"{rel}: invalid JSON ({exc})")
+            continue
+        round_number = int(match.group(1))
+        errors.extend(review_selection.receipt_errors(
+            data, rel, review_root=reviews, synthesis_text=synthesis,
+            expected_item=meta["id"], expected_round=round_number,
+            prior_receipt=prior_receipt if round_number == 2 else None))
+        if round_number == 1:
+            prior_receipt = data
     if errors:
         raise GateError("review selection receipt invalid: " + "; ".join(errors))
 
