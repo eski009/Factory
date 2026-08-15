@@ -2,6 +2,8 @@ import inspect
 import io
 import os
 import re
+import subprocess
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -1268,6 +1270,124 @@ class TestNarrowConsequenceNamesThePark(unittest.TestCase):
         self.assertNotIn("None", markdown)
         self.assertNotIn("None", page)
         self.assertIn("`- paused-from: <stage>`", self.narrow_line(repo))
+
+
+class TestContinueConsequenceNamesThePark(unittest.TestCase):
+    """The cost-decision consequence must name the recorded park origin."""
+
+    ITEM = "0001-runaway"
+    ORIGINS = ("implement", "review", "assure")
+    CONTINUE_SUFFIX = (
+        "; the next rework edge parks it again at 3; the 0 items at priority "
+        "≤ 2 keep waiting; in loop mode the next actionable item runs while "
+        "this one waits; in item/step mode the run stops here.")
+
+    def tearDown(self):
+        os.environ.pop("FACTORY_NOW", None)
+
+    def fresh(self, paused_from):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        repo = Path(tmp.name)
+        initrepo.init(repo)
+        park_matrix_fixture(repo, self.ITEM, paused_from, PARK_REASONS["cost"])
+        return repo
+
+    def artifacts(self, repo):
+        markdown_path = packet.write_packet(repo, self.ITEM)
+        return (markdown_path.read_text(encoding="utf-8"),
+                packet.packet_html_path(repo, self.ITEM).read_text(encoding="utf-8"))
+
+    def continue_lines(self, markdown, page):
+        markdown_lines = [line for line in markdown.splitlines()
+                          if line.startswith("- continue — ")]
+        html_lines = [line.strip() for line in page.splitlines()
+                      if line.strip().startswith("<li>continue — ")]
+        self.assertEqual(len(markdown_lines), 1, markdown_lines)
+        self.assertEqual(len(html_lines), 1, html_lines)
+        return markdown_lines[0], html_lines[0]
+
+    def run_cli(self, repo, *args):
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = factory.main(["--repo", str(repo), *args])
+        return code, out.getvalue(), err.getvalue()
+
+    def test_continue_names_each_park_origin_in_both_artifacts(self):
+        for paused_from in self.ORIGINS:
+            with self.subTest(paused_from=paused_from):
+                markdown, page = self.artifacts(self.fresh(paused_from))
+                markdown_line, html_line = self.continue_lines(markdown, page)
+                self.assertEqual(
+                    markdown_line,
+                    f"- continue — the item returns to {paused_from}"
+                    + self.CONTINUE_SUFFIX)
+                self.assertEqual(
+                    html_line,
+                    f"<li>continue — the item returns to {paused_from}"
+                    + self.CONTINUE_SUFFIX + "</li>")
+                for other in set(self.ORIGINS) - {paused_from}:
+                    self.assertNotIn(
+                        f"the item returns to {other}", markdown)
+                    self.assertNotIn(f"the item returns to {other}", page)
+
+    def test_fresh_process_uses_the_recorded_review_origin(self):
+        repo = self.fresh("review")
+        result = subprocess.run(
+            [sys.executable, str(Path(factory.__file__).resolve()), "--repo",
+             str(repo), "packet", self.ITEM],
+            capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        markdown, page = self.artifacts(repo)
+        markdown_line, html_line = self.continue_lines(markdown, page)
+        self.assertIn("the item returns to review", markdown_line)
+        self.assertIn("the item returns to review", html_line)
+        self.assertNotIn("the item returns to implement", markdown_line)
+        self.assertNotIn("the item returns to implement", html_line)
+
+    def test_missing_park_origin_is_named_without_none_or_a_destination(self):
+        repo = self.fresh("assure")
+        meta, body = items.load_item(repo, self.ITEM)
+        meta.pop("paused-from")
+        items.save_item(repo, meta, body)
+        markdown, page = self.artifacts(repo)
+        markdown_line, html_line = self.continue_lines(markdown, page)
+        missing = ("the item returns to the stage it parked from — this item "
+                   "records no `- paused-from: <stage>` field")
+        self.assertIn(missing, markdown_line)
+        self.assertIn("<code>- paused-from: &lt;stage&gt;</code>", html_line)
+        for text in (markdown_line, html_line):
+            self.assertNotIn("None", text)
+            for origin in self.ORIGINS:
+                self.assertNotIn(f"the item returns to {origin}", text)
+
+    def test_source_reads_the_park_once_and_has_no_implement_destination(self):
+        source = inspect.getsource(packet.cost_decision_lines)
+        self.assertEqual(source.count('meta.get("paused-from")'), 1)
+        self.assertNotIn("the item returns to implement", source)
+
+    def test_cli_continue_and_resume_agree_on_review_and_assure(self):
+        for paused_from in ("review", "assure"):
+            with self.subTest(paused_from=paused_from):
+                repo = self.fresh(paused_from)
+                markdown, page = self.artifacts(repo)
+                markdown_line, html_line = self.continue_lines(markdown, page)
+                self.assertIn(f"the item returns to {paused_from}", markdown_line)
+                self.assertIn(f"the item returns to {paused_from}", html_line)
+                code, _out, err = self.run_cli(
+                    repo, "cost-answer", self.ITEM, "continue")
+                self.assertEqual(code, 0, err)
+                code, _out, err = self.run_cli(repo, "advance", self.ITEM,
+                                               "implement")
+                self.assertEqual(code, 2, err)
+                self.assertIn(f"may only resume to '{paused_from}'", err)
+                self.assertEqual(items.load_item(repo, self.ITEM)[0]["stage"],
+                                 "waiting-human")
+                code, _out, err = self.run_cli(repo, "advance", self.ITEM,
+                                               paused_from)
+                self.assertEqual(code, 0, err)
+                self.assertEqual(items.load_item(repo, self.ITEM)[0]["stage"],
+                                 paused_from)
 
 
 if __name__ == "__main__":
