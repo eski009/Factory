@@ -649,6 +649,7 @@ def _require_review_selection(repo, meta):
         _artifact(repo, meta, "reviews/synthesis.md"))
     errors = []
     prior_receipt = None
+    validated_round_one = None
     for receipt in sorted(reviews.glob("selection-round-*.json")):
         rel = f"reviews/{receipt.name}"
         match = re.fullmatch(r"selection-round-([12])\.json", receipt.name)
@@ -668,9 +669,18 @@ def _require_review_selection(repo, meta):
             prior_receipt=prior_receipt if round_number == 2 else None)
         errors.extend(receipt_errors)
         if round_number == 1 and not receipt_errors:
-            errors.extend(_review_diff_errors(repo, meta, data, rel))
+            diff_errors = _review_diff_errors(repo, meta, data, rel)
+            errors.extend(diff_errors)
+            if not diff_errors:
+                validated_round_one = data
         if round_number == 1:
             prior_receipt = data
+    if validated_round_one is not None:
+        escalation = validated_round_one["escalation"]
+        if (escalation["conflicts"] or escalation["blocking_roles"]):
+            if not (reviews / "selection-round-2.json").exists():
+                errors.append(
+                    "Round 2 selection receipt required by Round 1 escalation")
     if errors:
         raise GateError("review selection receipt invalid: " + "; ".join(errors))
 

@@ -378,6 +378,45 @@ class TestGates(MachineTest):
         self.assertEqual(
             items.load_item(self.repo, "0001-thing")[0]["stage"], "review")
 
+    def _assert_round_two_required_for_round_one_escalation(self, escalation):
+        make_item(self.repo, stage="review", priority=1)
+        mark_round(self.repo)
+        receipt = write_review_receipt(self.repo)
+        receipt["escalation"].update(escalation)
+        write(
+            self.repo, "reviews/selection-round-1.json",
+            json.dumps(receipt, indent=2, sort_keys=True) + "\n")
+        logs.append_event(self.repo, "0001-thing", "review.approved")
+
+        reviews = paths.item_dir(self.repo, "0001-thing") / "reviews"
+        self.assertFalse((reviews / "selection-round-2.json").exists())
+        self.assertFalse((reviews / "round-2").exists())
+        log_path = paths.item_dir(
+            self.repo, "0001-thing") / "log.jsonl"
+        log_before = log_path.read_text(encoding="utf-8")
+
+        with self.assertRaisesRegex(
+                machine.GateError,
+                "Round 2 selection receipt required by Round 1 escalation"):
+            machine.advance(self.repo, "0001-thing", "verify")
+
+        self.assertEqual(
+            items.load_item(self.repo, "0001-thing")[0]["stage"], "review")
+        self.assertEqual(log_path.read_text(encoding="utf-8"), log_before)
+
+    def test_verify_requires_round_two_for_round_one_conflict(self):
+        self._assert_round_two_required_for_round_one_escalation({
+            "conflicts": [{
+                "roles": ["engineering-quality", "architecture"],
+                "evidence": "reviewers disagree on blocking severity",
+            }],
+        })
+
+    def test_verify_requires_round_two_for_round_one_blocking_role(self):
+        self._assert_round_two_required_for_round_one_escalation({
+            "blocking_roles": ["architecture"],
+        })
+
     def test_verify_refuses_missing_returned_report(self):
         make_item(self.repo, stage="review", priority=1)
         mark_round(self.repo)
