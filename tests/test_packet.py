@@ -1338,7 +1338,9 @@ class TestContinueConsequenceNamesThePark(unittest.TestCase):
              str(repo), "packet", self.ITEM],
             capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        markdown, page = self.artifacts(repo)
+        markdown_path = Path(result.stdout.strip())
+        markdown = markdown_path.read_text(encoding="utf-8")
+        page = markdown_path.with_suffix(".html").read_text(encoding="utf-8")
         markdown_line, html_line = self.continue_lines(markdown, page)
         self.assertIn("the item returns to review", markdown_line)
         self.assertIn("the item returns to review", html_line)
