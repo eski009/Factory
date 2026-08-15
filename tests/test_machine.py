@@ -451,6 +451,30 @@ class TestGates(MachineTest):
                 machine.GateError, r"non-empty ## Execution"):
             machine.advance(self.repo, "0001-thing", "verify")
 
+    def test_verify_refuses_execution_heading_bypasses(self):
+        degradation = (
+            "# Review\n\n## Degradation\n\n"
+            "fresh dispatch unavailable\n\narchitecture: unavailable\n")
+
+        for name, synthesis in (
+                ("heading prefix",
+                 degradation + "\n## Executioner\n\nStatic inspection only.\n"),
+                ("inline marker",
+                 degradation
+                 + "\nStatic inspection mentions ## Execution but ran nothing.\n")):
+            with self.subTest(name=name):
+                with tempfile.TemporaryDirectory() as tmp:
+                    repo = Path(tmp)
+                    make_item(repo, stage="review", priority=1)
+                    mark_round(repo)
+                    write_review_receipt(
+                        repo, outcome="unavailable", degraded=True)
+                    write(repo, "reviews/synthesis.md", synthesis)
+                    logs.append_event(repo, "0001-thing", "review.approved")
+                    with self.assertRaisesRegex(
+                            machine.GateError, r"non-empty ## Execution"):
+                        machine.advance(repo, "0001-thing", "verify")
+
     def test_verify_refuses_undisclosed_round_two_degradation(self):
         from tests.test_review_selection import valid_receipt
 

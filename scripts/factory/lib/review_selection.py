@@ -195,10 +195,14 @@ def _duplicates(values):
 
 def _synthesis_section(text, heading):
     marker = f"## {heading}"
-    if marker not in text:
+    lines = text.splitlines()
+    try:
+        start = lines.index(marker) + 1
+    except ValueError:
         return ""
-    section = text.split(marker, 1)[1]
-    return section.split("\n## ", 1)[0]
+    end = next((index for index in range(start, len(lines))
+                if lines[index].startswith("## ")), len(lines))
+    return "\n".join(lines[start:end])
 
 
 def receipt_errors(data, path, review_root=None, synthesis_text=None,

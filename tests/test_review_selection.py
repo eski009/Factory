@@ -250,7 +250,12 @@ class ReceiptTest(unittest.TestCase):
 
         for name, synthesis in (
                 ("missing", degradation),
-                ("empty", degradation + "\n## Execution\n\n## Verdict\n\nClean\n")):
+                ("empty", degradation + "\n## Execution\n\n## Verdict\n\nClean\n"),
+                ("heading prefix",
+                 degradation + "\n## Executioner\n\nStatic inspection only.\n"),
+                ("inline marker",
+                 degradation
+                 + "\nStatic inspection mentions ## Execution but ran nothing.\n")):
             with self.subTest(name=name):
                 errors = selection.receipt_errors(
                     data, "receipt", synthesis_text=synthesis)
