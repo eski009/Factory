@@ -575,6 +575,13 @@ def _require_review_selection(repo, meta):
     round_one = reviews / "selection-round-1.json"
     if not round_one.exists():
         raise GateError("review selection receipt required")
+    round_two_reports = reviews / "round-2"
+    if (any(_read_text_or_empty(report).strip()
+            for report in sorted(round_two_reports.glob("*.md"))
+            if report.is_file())
+            and not (reviews / "selection-round-2.json").exists()):
+        raise GateError(
+            "review selection receipt required for persisted Round 2 evidence")
     from . import review_selection
     synthesis = _read_text_or_empty(
         _artifact(repo, meta, "reviews/synthesis.md"))

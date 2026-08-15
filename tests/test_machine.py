@@ -349,6 +349,20 @@ class TestGates(MachineTest):
                 machine.GateError, "review selection receipt invalid"):
             machine.advance(self.repo, "0001-thing", "verify")
 
+    def test_verify_refuses_round_two_report_without_selection_receipt(self):
+        make_item(self.repo, stage="review", priority=1)
+        mark_round(self.repo)
+        write_review_receipt(self.repo)
+        write(self.repo, "reviews/round-2/architecture.md", "# Round 2\n")
+        logs.append_event(self.repo, "0001-thing", "review.approved")
+
+        with self.assertRaisesRegex(
+                machine.GateError,
+                "review selection receipt required for persisted Round 2 evidence"):
+            machine.advance(self.repo, "0001-thing", "verify")
+        self.assertEqual(
+            items.load_item(self.repo, "0001-thing")[0]["stage"], "review")
+
     def test_verify_refuses_missing_returned_report(self):
         make_item(self.repo, stage="review", priority=1)
         mark_round(self.repo)
