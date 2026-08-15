@@ -155,10 +155,13 @@ def cost_decision_lines(repo, item_id, meta, summary=None):
     # and is otherwise swallowed by markdown renderers.
     paused_from = meta.get("paused-from")
     if paused_from:
+        continue_destination = paused_from
         narrow_resume = f"then factory advance {item_id} {paused_from}."
     else:
-        narrow_resume = ("then resume it to the stage it parked from — this "
-                         "item records no `- paused-from: <stage>` field.")
+        missing_park = ("the stage it parked from — this item records no "
+                        "`- paused-from: <stage>` field")
+        continue_destination = missing_park
+        narrow_resume = f"then resume it to {missing_park}."
     at_or_above = v["backlog"]["at_or_above"]
     total = v["backlog"]["actionable_total"]
     unreadable = v["backlog"]["unreadable"]
@@ -246,7 +249,8 @@ def cost_decision_lines(repo, item_id, meta, summary=None):
         # Deviation from plan Task 10 step 4: the loop-mode clause is joined
         # with a semicolon, not a full stop, so the M9 sentence reads as one
         # lower-case clause exactly as the AC12 test asserts it.
-        f"- continue — the item returns to implement; the next rework edge "
+        f"- continue — the item returns to {continue_destination}; the next "
+        "rework edge "
         f"parks it again at {edges + 1}; {waiting}in loop mode the next "
         "actionable item runs while this one waits; in item/step mode the "
         "run stops here.",
