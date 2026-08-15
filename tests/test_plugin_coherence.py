@@ -183,8 +183,15 @@ class PluginCoherenceTest(unittest.TestCase):
         self.assertIn("adaptive", review.lower())
         self.assertIn("explicit full", review.lower())
         self.assertNotIn("Review depth by tier", review)
+        self.assertIn("`mode: review`", review)
+        self.assertIn("`selection_mode: adaptive`", review)
+        self.assertIn("`selection_mode: full`", review)
+        self.assertNotIn("Pass `mode: adaptive`", review)
+        self.assertNotIn("passes `mode: full`", review)
         council = read(ROOT / "skills/council-review/SKILL.md")
         self.assertNotIn("light review", council.lower())
+        self.assertIn("`mode` is `triage`, `review`, or `research`", council)
+        self.assertIn("`selection_mode` is `adaptive` or `full`", council)
 
     def test_research_tier_consume_wiring_present(self):
         research = read(ROOT / "skills/factory-research/SKILL.md")
@@ -233,21 +240,49 @@ class PluginCoherenceTest(unittest.TestCase):
         positions = [clause.index(signal) for signal in ordered_signals]
         self.assertEqual(positions, sorted(positions))
 
-        roles = {
+        receipt = re.search(
+            r"closed Round 1 receipt contains exactly these top-level fields:"
+            r"(?P<fields>[^.]+)\.",
+            text,
+        )
+        self.assertIsNotNone(receipt)
+        self.assertEqual(
+            re.findall(r"`([a-z]+)`", receipt.group("fields")),
+            ["item", "round", "mode", "diff", "signals", "selected",
+             "omitted", "escalation", "outcomes", "independence"],
+        )
+        self.assertIn(
+            "Successful independent execution records "
+            "`independence.requested=true`, `independence.achieved=true`, "
+            "and an empty `independence.degradation`.",
+            text,
+        )
+
+        self.assertIn(
+            "Only review mode limits Round 2 to a blocking finding or conflict.",
+            text,
+        )
+        self.assertIn(
+            "Triage and research may select Round 2 for any synthesis-driven "
+            "follow-up",
+            text,
+        )
+
+        roles = [
             "product",
             "ui-taste",
             "architecture",
             "engineering-quality",
             "customer",
             "commercial",
-        }
+        ]
         triage = re.search(
             r"Triage mode always dispatches all six roles exactly once:"
             r"(?P<roles>[^.]+)\.",
             text,
         )
         self.assertIsNotNone(triage)
-        self.assertEqual(set(re.findall(r"`([a-z-]+)`", triage.group("roles"))),
+        self.assertEqual(re.findall(r"`([a-z-]+)`", triage.group("roles")),
                          roles)
 
         research = re.search(
@@ -257,8 +292,8 @@ class PluginCoherenceTest(unittest.TestCase):
         )
         self.assertIsNotNone(research)
         self.assertEqual(
-            set(re.findall(r"`([a-z-]+)`", research.group("roles"))),
-            {"customer", "commercial", "product", "ui-taste"},
+            re.findall(r"`([a-z-]+)`", research.group("roles")),
+            ["customer", "commercial", "product", "ui-taste"],
         )
 
     def test_spec_section_lists_stay_synced(self):
