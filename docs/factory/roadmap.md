@@ -152,6 +152,7 @@ section below.)
      into spec. See .factory/items/0033-*/triage.md. -->
 
 - [1] 0033-bugs-run-less-pipeline-make-stage-member Bugs run less pipeline: make stage membership tier-conditional, the way it is already kind-conditional (done, feature — **human-filed 2026-08-04**, "I want bugs to use less pipeline as a general rule"; 6/6 BUILD-RESCOPED: goal affirmed, `tier`-parameter mechanism refused 6/6, **assure is the one stage a confirmed bug skips**, triage skip excluded to 0026's parked branch; shipped as a door-keyed immutable assurance declaration, not a tier axis)
+- [1] 0034-independent-council-review-defaults-to-t Independent council review defaults to two seats with risk-triggered escalation (blocked — review rejected too many times after round 3; implementation remains isolated on its branch)
 - [-] 0032-dispatch-resilience-pool-exhaustion-and- Dispatch resilience: pool-exhaustion and no-synthesis council runs must fail fast and resume, not silently re-walk (idea, feature — filed by 0026's triage council; a malfunctioned council-review cost 1,499,591 tokens vs 135,475 for a complete fan-out, 11x; ranked second, after 0026's routing branch)
 
 <!-- TWO CROSS-ITEM CONSTRAINTS, recorded here 2026-08-04 because both were
