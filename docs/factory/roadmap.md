@@ -50,8 +50,9 @@
      scope extended beyond the filed one-line change — the fix is branch ORDER,
      not the branch key, and acceptance is a bidirectional section-to-bullet
      coupling invariant on rendered HTML. 0028 is ABSORBED into 0027 (6/6);
-     0031 is NOT (6/6 — it amends approved J-002 oracles plus J-001's
-     permitted-diffs enumeration). 0027's ranking reason was also corrected:
+     0031 is NOT; its own 2026-08-15 triage later rescoped it to the distinct
+     live `continue` destination falsehood and cut the earlier J-001 furniture
+     work. 0027's ranking reason was also corrected:
      "HARD dependency of 0018" was a contingent driver (0018's own line below
      records it as unblocking only if 0030 finds a separating threshold), so the
      standalone
@@ -59,9 +60,9 @@
 
 - [2] 0027-packet-respond-falls-through-to-factory- Packet Respond falls through to /factory:run when a decision pause is parked from an unexpected stage (done — shipped 2026-08-03 as merge 0bd2a36; the Respond verb is now keyed on the pause's reason rather than its stage, absorbing 0028's None-repr refusal; also unblocks 0018 if 0030 revives it)
 - [-] 0028-the-cost-breaker-leaks-a-python-none-rep The cost breaker leaks a Python None repr in its malformed-answer refusal (blocked — its scope item 4 SHIPPED 2026-08-03 in 0027's merge 0bd2a36: the missing `- answer:` line now gets its own refusal and no None repr reaches the operator. Stays blocked only for bid-0129's rework-edges regex residual, which 0027 did not touch; corrected 2026-08-04, the line previously read "absorbed into 0027" as though nothing had landed)
+- [3] 0031-the-cost-packet-s-decision-copy-is-churn The cost packet's decision copy is churn-shaped in four places and its recommendation never reads the verdict reason (done — BUILD-RESCOPED to the live state-derived `continue` destination defect; generalized reason/copy/recommendation work cut; backend bug)
 - [5] 0029-scope-spend-events-a-leaf-vs-fork-discri Scope spend events: a leaf-vs-fork discriminator so measured token totals are trustworthy (idea — the precursor; finally owns bid-0063, the brain's top open question)
 - [6] 0030-measurement-spike-gap-capped-per-pass-at Measurement spike: gap-capped per-pass attributed_seconds, and whether any threshold separates a runaway from healthy work (idea — replaces 0018's build; gates it)
-- [3] 0031-the-cost-packet-s-decision-copy-is-churn The cost packet's decision copy is churn-shaped in four places and its recommendation never reads the verdict reason (idea — standing defect, independent of 0018)
 - [8] 0018-wall-clock-trigger-arm-catch-the-spend-r Wall-clock trigger arm: catch the spend runaways the churn breaker misses (blocked — triage rejected the mechanism; unblocks only if 0030's spike finds a separating threshold)
 
 ## Filed but not yet council-ranked (added 2026-08-03)

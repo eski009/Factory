@@ -661,3 +661,4 @@
   The merged tree passed 940 tests. The triage skip and tier/depth/intake
   receipts remain with 0026; no tier-based stage routing shipped (item 0033,
   mode `auto`).
+- **Ship record — 0031 completed (2026-08-15).** Auto-merged as `36ea7fea87fcd1b23f51431368c2ed561c32afa9`; the cost packet's `continue` consequence now derives its displayed resume destination from persisted `paused-from`, including an explicit missing-field fallback. The merged default checkout passed 958 tests (item 0031, mode `auto`).
