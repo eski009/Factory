@@ -3,7 +3,7 @@ name: factory-roadmap
 description: Use when a PRD (and optionally a design file) needs to become tickets and a prioritized roadmap - extracts candidates, seeds the brain, triages the batch, files items
 ---
 
-Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.py" --repo .`. Item paths like `items/<id>/...` live under `.factory/` — the full path is `.factory/items/<id>/...`.
+First read the capabilities skill's `references/host-adapter.md` and resolve the plugin root for this host. Below, `factory` means `python3 "${FACTORY_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/factory/factory.py" --repo .`. Item paths like `items/<id>/...` live under `.factory/` — the full path is `.factory/items/<id>/...`.
 
 ## Inputs
 

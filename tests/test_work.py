@@ -38,6 +38,7 @@ class WorkerConfigTest(unittest.TestCase):
         self.assertEqual(cfg["network"], "off")
         self.assertEqual(cfg["retry"]["max_attempts"], 3)
         self.assertEqual(cfg["codex"]["sandbox"], "workspace-write")
+        self.assertEqual(cfg["codex"]["reasoning_effort"], "medium")
 
     def test_overrides_merge_over_defaults(self):
         _set_workers(self.repo, {"enabled": True, "backend": "codex",
@@ -54,6 +55,15 @@ class WorkerConfigTest(unittest.TestCase):
                                  "max_parallel": 3, "network": "off",
                                  "models": {"claude": "claude-sonnet-5"}})
         self.assertEqual(initrepo.validate_tree(self.repo), [])
+
+    def test_valid_codex_reasoning_effort_passes_validation(self):
+        _set_workers(self.repo, {"codex": {"reasoning_effort": "xhigh"}})
+        self.assertEqual(initrepo.validate_tree(self.repo), [])
+
+    def test_bad_codex_reasoning_effort_rejected(self):
+        _set_workers(self.repo, {"codex": {"reasoning_effort": "enormous"}})
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any("reasoning_effort" in e for e in errors), errors)
 
     def test_bad_backend_enum_rejected(self):
         _set_workers(self.repo, {"backend": "gpt"})

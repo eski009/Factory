@@ -33,7 +33,7 @@ DEFAULTS = {
     "timeout_seconds": 1800,
     "network": "off",
     "retry": {"max_attempts": 3, "base_delay_seconds": 20},
-    "codex": {"sandbox": "workspace-write"},
+    "codex": {"sandbox": "workspace-write", "reasoning_effort": "medium"},
 }
 
 REASONS = ("crash", "timeout", "no_changes", "red_tests",
@@ -136,9 +136,11 @@ def git_state(worktree, base_sha):
 
 
 # ---- backends: a backend is fn(brief, worktree, model, timeout, network,
-#      sandbox, env) -> RawRun {exit_code, stdout, stderr, timed_out} ----
+#      sandbox, env, reasoning_effort) -> RawRun
+#      {exit_code, stdout, stderr, timed_out} ----
 
-def _stub_run(brief, worktree, model, timeout, network, sandbox, env):
+def _stub_run(brief, worktree, model, timeout, network, sandbox, env,
+              reasoning_effort=None):
     """Test-only in-process backend. Simulates an agent: optionally writes a
     file and commits it, then returns a canned RawRun. Controlled by the
     FACTORY_WORK_STUB env var (JSON); defaults to one successful commit."""
@@ -264,7 +266,8 @@ def _claude_parse(raw):
             "summary": summary, "cost_usd": cost}
 
 
-def _claude_run(brief, worktree, model, timeout, network, sandbox, env):
+def _claude_run(brief, worktree, model, timeout, network, sandbox, env,
+                reasoning_effort=None):
     return _real_run(_claude_argv(brief, worktree, model, network),
                      worktree, timeout, env)
 
@@ -283,12 +286,15 @@ def _real_run(argv, worktree, timeout, env):
 BACKENDS["claude"] = _claude_run
 
 
-def _codex_argv(brief, worktree, model, network, sandbox):
+def _codex_argv(brief, worktree, model, network, sandbox,
+                reasoning_effort=None):
     sbox = "danger-full-access" if network == "on" else sandbox
     argv = ["codex", "exec", brief, "--json", "-C", str(worktree),
             "-a", "never", "--sandbox", sbox]
     if model:
         argv += ["-m", model]
+    if reasoning_effort:
+        argv += ["-c", f'model_reasoning_effort="{reasoning_effort}"']
     return argv
 
 
@@ -334,8 +340,10 @@ def _codex_parse(raw):
             "summary": summary, "cost_usd": None}
 
 
-def _codex_run(brief, worktree, model, timeout, network, sandbox, env):
-    return _real_run(_codex_argv(brief, worktree, model, network, sandbox),
+def _codex_run(brief, worktree, model, timeout, network, sandbox, env,
+               reasoning_effort=None):
+    return _real_run(_codex_argv(brief, worktree, model, network, sandbox,
+                                 reasoning_effort),
                      worktree, timeout, env)
 
 
@@ -442,7 +450,7 @@ def _worker_env(cfg, backend):
 
 
 def run_work(repo, item_id, backend=None, model=None, timeout=None,
-             network=None, worktree=None):
+             network=None, worktree=None, reasoning_effort=None):
     cfg = worker_config(repo)
     backend = backend or cfg["backend"]
     timeout = timeout or cfg["timeout_seconds"]
@@ -476,10 +484,14 @@ def run_work(repo, item_id, backend=None, model=None, timeout=None,
     env = _worker_env(cfg, backend)
     model = model or (cfg.get("models") or {}).get(backend)
     sandbox = (cfg.get("codex") or {}).get("sandbox", "workspace-write")
+    if backend == "codex":
+        reasoning_effort = (reasoning_effort
+                            or (cfg.get("codex") or {}).get(
+                                "reasoning_effort", "medium"))
     base_sha = git_head(work_tree)
     started = time.monotonic()
     raw = BACKENDS[backend](brief, work_tree, model, timeout, network,
-                            sandbox, env)
+                            sandbox, env, reasoning_effort)
     duration_s = int(time.monotonic() - started)
     (worker_dir / "worker.log").write_text(raw.get("stderr") or "",
                                            encoding="utf-8")

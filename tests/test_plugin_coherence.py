@@ -78,6 +78,12 @@ class TestPluginCoherence(unittest.TestCase):
         names = {p["name"] for p in market["plugins"]}
         self.assertIn("factory", names)
 
+    def test_claude_and_codex_manifests_agree(self):
+        claude = json.loads(read(ROOT / ".claude-plugin/plugin.json"))
+        codex = json.loads(read(ROOT / ".codex-plugin/plugin.json"))
+        self.assertEqual(codex["name"], claude["name"])
+        self.assertEqual(codex["version"], claude["version"])
+
     def test_every_command_names_a_real_skill_or_cli(self):
         # each command body references either a skill (…-skill / factory-…) or the CLI.
         for cmd in (ROOT / "commands").glob("*.md"):

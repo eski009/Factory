@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## Unreleased
+
+### Added
+
+- Factory now ships a native Codex plugin manifest and Codex-valid shared skills
+  for every pipeline stage and common command entry point. The host adapter preserves
+  fresh-context, question, filesystem, and optional MCP semantics without
+  relying on Claude-only frontmatter or environment variables.
+- Initialization asks whether design work should use native Codex or Claude
+  Design through MCP and records the choice in `design.provider`. Existing
+  repositories remain valid, and init never overwrites a recorded choice.
+- Codex headless workers accept a configurable reasoning effort, with
+  role-based routing guidance for `gpt-5.6-terra` and `gpt-5.6-sol`.
+
+### Changed
+
+- Design execution now honors the selected provider instead of opportunistically
+  switching after an explicit choice. Legacy repositories retain the previous
+  best-effort behavior until a provider is recorded.
+
 ## [0.15.0] - 2026-08-04
 
 This release gives confirmed bugs a shorter pipeline without weakening the

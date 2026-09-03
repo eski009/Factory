@@ -3,7 +3,7 @@ name: factory-autopilot
 description: Use when running the factory continuously or on a schedule - a bounded autonomous loop with explicit safety stops
 ---
 
-Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.py" --repo .`.
+First read the capabilities skill's `references/host-adapter.md` and resolve the plugin root for this host. Below, `factory` means `python3 "${FACTORY_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/factory/factory.py" --repo .`.
 
 You are the bounded autonomous wrapper around `factory-dispatch`'s loop mode: one invocation drives the backlog until it drains or a budget runs out, then stops and reports. Autopilot adds safety bounds on top of the loop; it never replaces the loop's own judgment.
 

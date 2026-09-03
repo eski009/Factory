@@ -3,7 +3,7 @@ name: council-judgement
 description: Use when council findings need to become durable product memory - files bids and records orchestrator judgements through the ledger firewall
 ---
 
-Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.py" --repo .`.
+First read the capabilities skill's `references/host-adapter.md` and resolve the plugin root for this host. Below, `factory` means `python3 "${FACTORY_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/factory/factory.py" --repo .`.
 
 Memory firewall (spec §6, ported from `pblib.py`): specialists never edit `docs/factory/brain/` directly. Every durable claim passes through a schema-validated bid, then exactly one orchestrator judgement, before any brain surface changes.
 

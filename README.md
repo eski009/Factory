@@ -1,10 +1,10 @@
 # Factory
 
-> **From idea to shipped — on an assembly line of AI specialists, inside [Claude Code](https://claude.com/claude-code).**
+> **From idea to shipped — on an assembly line of AI specialists in Codex or [Claude Code](https://claude.com/claude-code).**
 
 You give Factory a feature idea (or a whole PRD, or an existing codebase). It carries that idea all the way to merged, tested code — triage, spec, design, build, review, ship — with a team of AI specialists doing the work and a review *council* that checks the work — and learns your taste as it goes. It stops for you where judgment lives: **which design direction do you want** — and, when it can't honestly assure a customer journey, it parks and asks rather than guessing. Everything else runs on its own.
 
-Runs on any Claude model.
+Runs natively in Codex and Claude Code.
 
 ## The idea in one minute
 
@@ -95,7 +95,7 @@ flowchart LR
 - **Evidence, not vibes.** Every stage transition is gate-checked by a deterministic engine; "done" requires proof — a spec on disk, a plan with tasks, green tests.
 - **"Done" means a customer got through it.** For features and epics, a fresh-context journey reviewer — no memory of the implementation — walks the affected journeys between verify and ship and files evidence the engine validates. Bugs filed through `/factory:bug` use fresh, round-scoped verification as the ship evidence instead. What a required walk can't run parks for you; what you still find becomes an escape that stays open until it's promoted into a permanent check.
 - **Effort scales to how much the work matters.** Every item is a *bug*, a *feature*, or an *epic*, and Factory sizes the process to match — a bug gets a fast, correctness-only review; a material epic gets the full council and a market focus group. No epic-weight ceremony for a one-line fix.
-- **Portable.** Works on any Claude model; faster-model features are bonuses, never requirements.
+- **Portable.** Works in Codex or Claude Code; provider-specific tools are capability-gated rather than silently assumed.
 
 ## Three ways to start
 
@@ -107,7 +107,7 @@ flowchart LR
 
 ## Install
 
-Factory is a Claude Code plugin:
+For Claude Code:
 
 ```
 /plugin marketplace add https://github.com/jzjq567/Factory
@@ -122,12 +122,21 @@ For local hacking, point Claude Code at a checkout directly instead:
 claude --plugin-dir /path/to/Factory
 ```
 
+For Codex, this repository now includes a native `.codex-plugin` manifest and
+Codex-valid shared skills. Put the checkout at the `factory` source path in a
+personal/local Codex marketplace, then install it with `codex plugin add
+factory@<marketplace>`. Install Superpowers from the curated marketplace with:
+
+```bash
+codex plugin add superpowers@openai-curated
+```
+
 ## Quickstart
 
 In the repo you want Factory to work on:
 
 ```
-/factory:init your-product   # scaffold state + seed the product "brain" from real sources, then interview you on the gaps
+/factory:init your-product   # first asks: Codex design or Claude Design via MCP
 /factory:add "Dark mode"     # add a work item
 /factory:bug "Save button crashes on empty title"   # report a bug — replicated before any fix, proven fixed before merge
 /factory:run                 # run the pipeline — one item, stage by stage
@@ -161,7 +170,7 @@ Four CLI verbs are **human-only** — Factory never runs them on its own behalf,
 - A **deterministic, zero-dependency engine** (Python) owns all state and the gate checks. The AI skills drive it but can't bypass a gate. State splits into `.factory/` (machine-owned: work items, council ledgers) and `docs/factory/` (human-readable: the brain, the roadmap, review packets awaiting a decision).
 - **Optional parallel execution.** Turn on *headless workers* and Factory builds independent items concurrently — each in its own isolated git worktree, driven by a headless `claude` or `codex` process — while the orchestrator only collects the results and advances them through the same gates. Off by default; absent, it degrades to in-process building. Both this and the materiality *tiers* are config knobs in `.factory/config.json`.
 - **Full design spec:** [docs/superpowers/specs/2026-07-03-software-factory-design.md](docs/superpowers/specs/2026-07-03-software-factory-design.md)
-- **Tests:** `python3 -m unittest discover -s tests -v` (540+, all green)
+- **Tests:** `python3 -m unittest discover -s tests -v` (950+, all green)
 
 ## Status
 

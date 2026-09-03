@@ -3,7 +3,7 @@ name: factory-workers
 description: Use when the headless-worker capability is present and several independent items are ready to implement - runs a bounded parallel pool of out-of-process workers, one per worktree, then advances each through the existing gates
 ---
 
-Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.py" --repo .`.
+First read the capabilities skill's `references/host-adapter.md` and resolve the plugin root for this host. Below, `factory` means `python3 "${FACTORY_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/factory/factory.py" --repo .`.
 
 You are the Layer-2 scheduler: a bounded pool that keeps **K** headless workers busy across **independent** items, each in its own `factory/<id>` worktree, then advances each result through Factory's *existing* gates. You do the loop/pacing/collect-advance; the engine primitives (`factory next -n`, `factory provision`, `factory work`, `factory cleanup`) do the mechanics. You never type code and never lower a gate — worker output is untrusted until it clears `review` + `verify` + green tests exactly like a subagent's.
 

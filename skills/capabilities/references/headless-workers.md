@@ -9,6 +9,7 @@ orchestrator only ever reads the result packet.
 
 ```
 factory work <id> [--backend claude|codex|stub] [--model M]
+                  [--reasoning-effort low|medium|high|xhigh|max|ultra]
                   [--timeout S] [--network on|off] [--worktree PATH] [--json]
 ```
 
@@ -24,7 +25,11 @@ read `result.json`'s typed `reason`:
 
 Off by default. Keys: `enabled`, `backend` (default `claude`), `max_parallel`
 (default 2), `timeout_seconds`, `network` (default `off`), `prep`,
-`test_command`, `models.{claude,codex}`, `codex.sandbox`, `retry`.
+`test_command`, `models.{claude,codex}`, `codex.sandbox`,
+`codex.reasoning_effort` (default `medium`), `retry`. Reasoning effort is passed
+to `codex exec` explicitly and may be overridden per run. See
+`model-routing-codex.md` for economical role defaults; do not set `max` or
+`ultra` globally.
 
 ## Auth
 

@@ -1,12 +1,11 @@
 ---
 name: factory-ship
 description: Use when a factory item is at stage ship - merges per policy and closes the loop on the brain
-context: fork
 ---
 
-Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.py" --repo .`. Item paths like `items/<id>/...` live under `.factory/` — the full path is `.factory/items/<id>/...`.
+First read the capabilities skill's `references/host-adapter.md` and resolve the plugin root for this host. Below, `factory` means `python3 "${FACTORY_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/factory/factory.py" --repo .`. Item paths like `items/<id>/...` live under `.factory/` — the full path is `.factory/items/<id>/...`.
 
-This skill runs in a forked context (`context: fork`): nothing from the invoking session is visible here. The item id arrives as the skill argument; everything else is read from disk — `factory status --json`, `.factory/items/<id>/...`, and the brain surfaces this skill names below. Your final message is the report the dispatcher acts on: state the outcome (the stage advanced to, or the failure/pause reason, verbatim where a gate refused), name the key artifact paths written, and keep it to a few lines — never paste file contents into it.
+Run this skill in a fresh context using the capabilities skill's `references/host-adapter.md`; nothing from the invoking session may be treated as input. The item id arrives as the skill argument; everything else is read from disk — `factory status --json`, `.factory/items/<id>/...`, and the brain surfaces this skill names below. Your final message is the report the dispatcher acts on: state the outcome (the stage advanced to, or the failure/pause reason, verbatim where a gate refused), name the key artifact paths written, and keep it to a few lines — never paste file contents into it.
 
 ## Contract
 
@@ -34,7 +33,7 @@ Read `merge` from `.factory/config.json` (`auto`, `queue`, or `tiered`):
 
 ## Claude Design mirror (optional)
 
-When the shipping session has any `mcp__claude-design__*` tool present (probe per the `capabilities` skill's `references/designsync.md`; interactive sessions only) and `.factory/config.json` sets `designsync_project`, optionally push the item's built UI output to the linked Claude Design project via `mcp__claude-design__write_files` as a convenience mirror, after `ship.merged` is logged. Strictly best-effort and non-blocking: a push failure is never grounds for `ship.failed`, never delays `factory advance ITEM done`, and logs its own spend event — `factory log ITEM spend --data '{"provenance":"proxy","stage":"ship","source":"factory-ship","note":"claude-design push round-trip"}'`. The repo's merged output stays canonical; the linked project is never a second source of truth. Headless ship runs skip it entirely.
+On the `claude-design` route (or for a legacy config), when the shipping session has any `mcp__claude-design__*` tool present (probe per the `capabilities` skill's `references/designsync.md`; interactive sessions only) and `.factory/config.json` sets `designsync_project`, optionally push the item's built UI output to the linked Claude Design project via `mcp__claude-design__write_files` as a convenience mirror, after `ship.merged` is logged. The `codex` route never probes or pushes Claude Design. Strictly best-effort and non-blocking: a push failure is never grounds for `ship.failed`, never delays `factory advance ITEM done`, and logs its own spend event — `factory log ITEM spend --data '{"provenance":"proxy","stage":"ship","source":"factory-ship","note":"claude-design push round-trip"}'`. The repo's merged output stays canonical; the linked project is never a second source of truth. Headless ship runs skip it entirely.
 
 ## On failure
 

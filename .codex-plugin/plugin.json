@@ -1,0 +1,24 @@
+{
+  "name": "factory",
+  "version": "0.15.0",
+  "description": "Autonomous software factory with native Codex and Claude workflows, product context, staged delivery, review, and assurance.",
+  "author": {
+    "name": "Steve Coulson"
+  },
+  "license": "MIT",
+  "keywords": ["software-delivery", "workflow", "review", "assurance", "codex"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Factory",
+    "shortDescription": "Plan, build, review, and assure software work",
+    "longDescription": "Run Factory's durable software-delivery pipeline from Codex, including intake, bug triage, design, implementation, review, verification, and assurance.",
+    "developerName": "Steve Coulson",
+    "category": "Developer Tools",
+    "capabilities": ["Interactive", "Read", "Write"],
+    "defaultPrompt": [
+      "Initialize Factory in this repository",
+      "Run the next Factory item",
+      "Report Factory status"
+    ]
+  }
+}

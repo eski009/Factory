@@ -3,7 +3,7 @@ name: council-memory-health
 description: Use when a factory loop run ends or /factory:status is invoked - checks memory health and recommends pruning
 ---
 
-Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.py" --repo .`.
+First read the capabilities skill's `references/host-adapter.md` and resolve the plugin root for this host. Below, `factory` means `python3 "${FACTORY_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/factory/factory.py" --repo .`.
 
 ## What this checks
 

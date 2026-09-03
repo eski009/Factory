@@ -6,8 +6,8 @@ your attention. Every command below is real — copy-paste it.
 
 ## 1. Install
 
-Factory is a Claude Code plugin. Add a marketplace pointed at this repo's git
-URL, then install the plugin:
+Factory has native plugin surfaces for Claude Code and Codex. For Claude Code,
+add a marketplace pointed at this repo's git URL, then install the plugin:
 
 ```
 /plugin marketplace add <git-url-for-this-repo>
@@ -21,12 +21,21 @@ checkout directly:
 claude --plugin-dir /path/to/Factory
 ```
 
+For Codex, put this checkout at the `factory` source path referenced by a
+personal/local Codex marketplace, then run `codex plugin add
+factory@<marketplace>`. The repository's `.codex-plugin/plugin.json` exposes one
+host-neutral skill set for every canonical Factory stage plus native init, run,
+status, and routing entry points.
+
 **Superpowers is a required companion plugin.** Factory's stage skills invoke
 Superpowers skills — `test-driven-development`, `systematic-debugging`,
 `verification-before-completion`, `using-git-worktrees`,
 `finishing-a-development-branch` — for execution discipline rather than
 vendoring that logic itself. Install Superpowers alongside Factory before
 running anything.
+
+In Codex, install the companion from the curated marketplace with
+`codex plugin add superpowers@openai-curated`.
 
 ## 2. Initialize a target repo
 
@@ -35,6 +44,14 @@ In the repo you want Factory to work on, run:
 ```
 /factory:init your-product
 ```
+
+Initialization first asks whether design work should use native **Codex** or
+**Claude Design via MCP**. The choice is stored as `design.provider` in
+`.factory/config.json`; re-running init fills a missing choice but never
+overwrites one already recorded. When Claude Design is selected and its MCP is
+available, init also links the selected writable project as
+`designsync_project`; otherwise it reports the missing setup rather than
+silently switching to Codex.
 
 This runs `factory.py init --product your-product` followed by `validate`,
 which scaffolds two trees (only filling gaps — it never overwrites an

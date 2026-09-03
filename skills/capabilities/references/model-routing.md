@@ -1,4 +1,8 @@
-# Model routing (concrete fleet)
+# Model routing (Claude-hosted fleet)
+
+When Factory is hosted by Codex, use `model-routing-codex.md` instead. The map
+below is retained for Claude-hosted sessions and their external Codex coding
+worker; it is not a Codex-native routing recommendation.
 
 `references/model-tiering.md` defines three **abstract** tiers (cheapest / mid /
 most-capable) and never names a model — that is deliberate, so the factory runs on any

@@ -33,6 +33,15 @@ class CliTest(unittest.TestCase):
         code, _, _ = self.run_cli("validate")
         self.assertEqual(code, 0)
 
+    def test_init_accepts_design_provider(self):
+        code, _, _ = self.run_cli("init", "--design-provider", "claude-design",
+                                  "--designsync-project", "project-123")
+        self.assertEqual(code, 0)
+        config = json.loads(Path(
+            self.repo, ".factory/config.json").read_text(encoding="utf-8"))
+        self.assertEqual(config["design"]["provider"], "claude-design")
+        self.assertEqual(config["designsync_project"], "project-123")
+
     def test_validate_without_init_fails(self):
         code, _, err = self.run_cli("validate")
         self.assertEqual(code, 2)

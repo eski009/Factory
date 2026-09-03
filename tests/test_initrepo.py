@@ -30,6 +30,34 @@ class InitTest(unittest.TestCase):
         self.assertEqual(config["product"], "demo")
         self.assertEqual(created, sorted(created))
 
+    def test_init_records_selected_design_provider(self):
+        initrepo.init(self.repo, design_provider="codex")
+        config = json.loads((self.repo / ".factory/config.json").read_text())
+        self.assertEqual(config["design"]["provider"], "codex")
+        self.assertEqual(initrepo.validate_tree(self.repo), [])
+
+    def test_reinit_fills_missing_design_provider_without_clobbering(self):
+        initrepo.init(self.repo)
+        created = initrepo.init(self.repo, design_provider="claude-design")
+        config = json.loads((self.repo / ".factory/config.json").read_text())
+        self.assertEqual(config["design"]["provider"], "claude-design")
+        self.assertIn(".factory/config.json (updated design.provider)", created)
+
+        self.assertEqual(initrepo.init(self.repo, design_provider="codex"), [])
+        config = json.loads((self.repo / ".factory/config.json").read_text())
+        self.assertEqual(config["design"]["provider"], "claude-design")
+
+    def test_init_records_designsync_project_without_clobbering(self):
+        initrepo.init(self.repo, design_provider="claude-design",
+                      designsync_project="project-123")
+        config = json.loads((self.repo / ".factory/config.json").read_text())
+        self.assertEqual(config["designsync_project"], "project-123")
+
+        self.assertEqual(
+            initrepo.init(self.repo, designsync_project="project-456"), [])
+        config = json.loads((self.repo / ".factory/config.json").read_text())
+        self.assertEqual(config["designsync_project"], "project-123")
+
     def test_init_creates_escapes_ledger(self):
         initrepo.init(self.repo)
         self.assertTrue((self.repo / ".factory" / "ledgers" / "escapes.jsonl").exists())

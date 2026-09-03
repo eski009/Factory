@@ -14,7 +14,8 @@ import time
 
 from . import dispatch, initrepo, items, machine, paths, pool, tiers, work
 
-REPORT_KEYS = ("tree_valid", "design_system_present", "designsync_project",
+REPORT_KEYS = ("tree_valid", "design_system_present", "design_provider",
+               "designsync_project",
                "schedule_configured", "merge_policy", "gates",
                "open_items", "pending_human")
 _PLACEHOLDER = "_Not yet written."
@@ -55,6 +56,8 @@ def worker_readiness(repo):
         "anthropic_key": bool(os.environ.get("ANTHROPIC_API_KEY")),
         "openai_key": bool(os.environ.get("OPENAI_API_KEY")),
         "codex_auth": (cfg.get("codex") or {}).get("auth", "key"),
+        "codex_reasoning_effort": (
+            cfg.get("codex") or {}).get("reasoning_effort", "medium"),
         "codex_login": _codex_login_ttl(),
     }
 
@@ -71,6 +74,7 @@ def report(repo):
     return {
         "tree_valid": initrepo.validate_tree(repo) == [],
         "design_system_present": ds_present,
+        "design_provider": (config.get("design") or {}).get("provider"),
         "designsync_project": config.get("designsync_project"),
         "schedule_configured": bool(config.get("autopilot", {}).get("schedule")),
         "merge_policy": config.get("merge", "auto"),

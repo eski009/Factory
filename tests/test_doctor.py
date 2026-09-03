@@ -34,6 +34,7 @@ class TestDoctor(unittest.TestCase):
         self.assertTrue(r["tree_valid"])
         self.assertFalse(r["design_system_present"])   # still placeholder
         self.assertIsNone(r["designsync_project"])
+        self.assertIsNone(r["design_provider"])
         self.assertFalse(r["schedule_configured"])
         self.assertEqual(r["merge_policy"], "auto")
         self.assertEqual(r["gates"], ["design"])
@@ -49,9 +50,11 @@ class TestDoctor(unittest.TestCase):
         cfg = json.loads(paths.config_path(self.repo).read_text())
         cfg["designsync_project"] = "proj-123"
         cfg["autopilot"] = {"schedule": "0 * * * *"}
+        cfg["design"] = {"provider": "claude-design"}
         paths.config_path(self.repo).write_text(json.dumps(cfg, sort_keys=True, indent=2) + "\n")
         r = doctor.report(self.repo)
         self.assertEqual(r["designsync_project"], "proj-123")
+        self.assertEqual(r["design_provider"], "claude-design")
         self.assertTrue(r["schedule_configured"])
         self.assertEqual(initrepo.validate_tree(self.repo), [])   # still schema-valid
 
@@ -88,6 +91,7 @@ class TestDoctor(unittest.TestCase):
         self.assertIn("retry", workers)
         self.assertEqual(workers["max_parallel"], 2)
         self.assertEqual(workers["retry"]["max_attempts"], 3)
+        self.assertEqual(workers["codex_reasoning_effort"], "medium")
 
     def test_reports_tier_profiles(self):
         r = doctor.report(self.repo)

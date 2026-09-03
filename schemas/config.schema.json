@@ -10,6 +10,14 @@
     "gates": {"type": "array", "items": {"type": "string", "enum": ["design", "spec", "merge", "assure", "cost"]}},
     "product": {"type": "string", "minLength": 1},
     "designsync_project": {"type": "string", "minLength": 1},
+    "design": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider"],
+      "properties": {
+        "provider": {"type": "string", "enum": ["codex", "claude-design"]}
+      }
+    },
     "autopilot": {
       "type": "object",
       "additionalProperties": false,
@@ -90,7 +98,9 @@
           "properties": {
             "sandbox": {"type": "string",
                         "enum": ["workspace-write", "danger-full-access"]},
-            "auth": {"type": "string", "enum": ["key", "chatgpt"]}
+            "auth": {"type": "string", "enum": ["key", "chatgpt"]},
+            "reasoning_effort": {"type": "string",
+                                 "enum": ["low", "medium", "high", "xhigh", "max", "ultra"]}
           }
         },
         "retry": {

@@ -66,6 +66,11 @@ class ClaudeBackendTest(unittest.TestCase):
 
 
 class CodexBackendTest(unittest.TestCase):
+    def test_reasoning_effort_is_explicit(self):
+        argv = work._codex_argv("do it", "/wt", "gpt-5.6-sol", "off",
+                                "workspace-write", "high")
+        self.assertIn('model_reasoning_effort="high"', argv)
+
     def test_argv_workspace_write_when_network_off(self):
         argv = work._codex_argv("do it", "/wt", "gpt-x", "off",
                                 "workspace-write")

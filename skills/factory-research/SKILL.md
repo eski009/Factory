@@ -3,7 +3,7 @@ name: factory-research
 description: Use when researching the product, market, and user at project initiation to seed a cited persona - runs the council outward, evidence only, behind the hard gate
 ---
 
-Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.py" --repo .`.
+First read the capabilities skill's `references/host-adapter.md` and resolve the plugin root for this host. Below, `factory` means `python3 "${FACTORY_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/factory/factory.py" --repo .`.
 
 ## Purpose
 

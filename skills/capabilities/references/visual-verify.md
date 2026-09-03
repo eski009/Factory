@@ -32,7 +32,7 @@ executable command):
 This branch requires the **App visual capture** capability (see the capabilities skill:
 a screenshot-capable driver for the target app is present — e.g. `mcp__maestro__*` for an
 iOS sim, a browser-automation tool for web, Playwright). Probe by checking the tool list;
-in a forked context, attempt to load a candidate driver via ToolSearch before concluding
+in a fresh subagent context, attempt to load a candidate driver via tool search before concluding
 absence.
 
 - **Capability absent** → verify cannot obtain a fresh independent observation. Do **not**

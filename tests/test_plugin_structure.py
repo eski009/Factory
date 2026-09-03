@@ -8,6 +8,46 @@ FRONTMATTER = re.compile(r"^---\n.*?\n---\n", re.DOTALL)
 
 
 class TestPluginStructure(unittest.TestCase):
+    def test_codex_plugin_manifest_and_native_entry_skills(self):
+        data = json.loads((ROOT / ".codex-plugin/plugin.json").read_text())
+        self.assertEqual(data["name"], "factory")
+        self.assertEqual(data["skills"], "./skills/")
+        for name in ("factory", "factory-init", "factory-run", "factory-bug"):
+            path = ROOT / "skills" / name / "SKILL.md"
+            self.assertTrue(path.exists(), name)
+            text = path.read_text()
+            self.assertRegex(text, FRONTMATTER, str(path))
+            self.assertNotIn("context: fork", text)
+
+    def test_shared_skills_have_no_claude_only_context_frontmatter(self):
+        for path in (ROOT / "skills").glob("*/SKILL.md"):
+            frontmatter = FRONTMATTER.match(path.read_text()).group(0)
+            self.assertNotIn("context: fork", frontmatter, str(path))
+
+    def test_codex_host_adapter_maps_factory_root_and_native_tools(self):
+        text = (ROOT / "skills/capabilities/references/host-adapter.md").read_text()
+        self.assertIn("FACTORY_PLUGIN_ROOT", text)
+        self.assertIn("request_user_input", text)
+        self.assertIn("Codex subagent", text)
+        self.assertIn("There is no bare `factory` executable", text)
+
+    def test_codex_status_wrapper_forbids_bare_factory_command(self):
+        text = (ROOT / "skills/factory-status/SKILL.md").read_text()
+        self.assertIn("Never invoke a bare `factory` executable",
+                      " ".join(text.split()))
+
+    def test_init_asks_for_design_provider(self):
+        for rel in ("commands/init.md", "skills/factory-init/SKILL.md"):
+            text = (ROOT / rel).read_text()
+            self.assertIn("codex", text.lower(), rel)
+            self.assertIn("claude-design", text.lower(), rel)
+            self.assertIn("--design-provider", text, rel)
+
+    def test_codex_model_routing_names_models_and_effort(self):
+        text = (ROOT / "skills/capabilities/references/model-routing-codex.md").read_text()
+        for value in ("gpt-5.6-sol", "gpt-5.6-terra", "medium", "high", "xhigh"):
+            self.assertIn(value, text)
+
     def test_plugin_json_valid(self):
         data = json.loads((ROOT / ".claude-plugin/plugin.json").read_text())
         self.assertEqual(data["name"], "factory")
@@ -293,9 +333,8 @@ class TestPluginStructure(unittest.TestCase):
         self.assertIn("never a second source of truth", text)
         self.assertIn("items/<id>/design/", text)
         self.assertIn("## Interactive-only", text)
-        self.assertIn(
-            "the degraded path is the tested contract, not an error state",
-            text)
+        self.assertIn("explicit `claude-design` selection", text)
+        self.assertIn("parks the design item", text)
         # pull + firewall mirror mechanics (AC 6)
         self.assertIn("items/<id>/design/claude-design-pull.md", text)
         self.assertIn("bid targeting `brain/design-system.md`", text)
@@ -311,20 +350,20 @@ class TestPluginStructure(unittest.TestCase):
         self.assertIn('"provenance":"proxy"', text)
         self.assertIn("no `tokens` key", text)
         self.assertIn("Never estimate", text)
-        # linking = reuse of designsync_project, no new surface (AC 10)
+        # linking is engine-owned, fill-gaps-only init state
         self.assertIn("designsync_project", text)
-        self.assertIn("no new key, no new command, and no schema diff",
-                      text)
-        self.assertIn("open-questions.md", text)
+        self.assertIn("--designsync-project PROJECT_ID", text)
+        self.assertIn("never overwrites an existing link", text)
 
     def test_designsync_capability_row_names_tool_family(self):
         text = (ROOT / "skills/capabilities/SKILL.md").read_text()
-        self.assertIn(
-            "| DesignSync | any `mcp__claude-design__*` tool present "
-            "in tool list, or the built-in `DesignSync` tool |", text)
+        self.assertIn("| DesignSync |", text)
+        self.assertIn("`mcp__claude-design__*` tool present", text)
+        self.assertIn("built-in `DesignSync` tool", text)
+        self.assertIn("design.provider: claude-design", text)
         self.assertIn("references/designsync.md", text)
-        self.assertIn("Never let a missing optional tool fail a stage",
-                      text)
+        self.assertIn("Never let a missing optional tool fail a stage unless",
+                      " ".join(text.split()))
 
     def test_designsync_surfaces_never_say_single_source_of_truth(self):
         for rel in ("skills/capabilities/SKILL.md",
@@ -349,10 +388,11 @@ class TestPluginStructure(unittest.TestCase):
         # spend convention (AC 9)
         self.assertIn('"provenance":"proxy"', text)
         self.assertIn("no `tokens` key", text)
-        # degraded contract survives verbatim (AC 2)
-        self.assertIn("never block or fail when it's absent", text)
-        self.assertIn("the design-system.md fallback is the contract",
-                      text)
+        # Legacy repos keep the degraded fallback, while an explicit provider
+        # choice fails visibly instead of silently switching providers.
+        self.assertIn("Only a legacy repository falls back silently", text)
+        self.assertIn("do not silently switch providers",
+                      " ".join(text.split()))
         self.assertIn("This skill never writes `design/choice.md`", text)
 
     def test_factory_ship_claude_design_push_is_non_blocking(self):

@@ -22,7 +22,10 @@ def _require_factory_repo(repo):
 
 
 def cmd_init(args):
-    for path in initrepo.init(args.repo, product=args.product):
+    for path in initrepo.init(
+            args.repo, product=args.product,
+            design_provider=args.design_provider,
+            designsync_project=args.designsync_project):
         print(path)
     return 0
 
@@ -136,7 +139,8 @@ def cmd_work(args):
         return 2
     code, result = work.run_work(
         args.repo, args.item, backend=args.backend, model=args.model,
-        timeout=args.timeout, network=args.network, worktree=args.worktree)
+        timeout=args.timeout, network=args.network, worktree=args.worktree,
+        reasoning_effort=args.reasoning_effort)
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True))
     elif code == 0:
@@ -487,6 +491,8 @@ def main(argv=None):
 
     p = sub.add_parser("init", help="scaffold .factory/ and docs/factory/")
     p.add_argument("--product")
+    p.add_argument("--design-provider", choices=["codex", "claude-design"])
+    p.add_argument("--designsync-project")
     p.set_defaults(func=cmd_init)
 
     p = sub.add_parser("validate", help="check the whole state tree")
@@ -568,6 +574,8 @@ def main(argv=None):
     p.add_argument("item")
     p.add_argument("--backend", choices=["claude", "codex", "stub"])
     p.add_argument("--model")
+    p.add_argument("--reasoning-effort",
+                   choices=["low", "medium", "high", "xhigh", "max", "ultra"])
     p.add_argument("--timeout", type=int)
     p.add_argument("--network", choices=["on", "off"])
     p.add_argument("--worktree")

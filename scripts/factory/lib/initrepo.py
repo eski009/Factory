@@ -49,7 +49,7 @@ def spend_event_errors(data, path):
     return errors
 
 
-def init(repo, product=None):
+def init(repo, product=None, design_provider=None, designsync_project=None):
     repo = Path(repo)
     created = []
     for d in (paths.items_dir(repo), paths.ledgers_dir(repo),
@@ -63,9 +63,36 @@ def init(repo, product=None):
         config = dict(DEFAULT_CONFIG)
         if product:
             config["product"] = product
+        if design_provider:
+            config["design"] = {"provider": design_provider}
+        if designsync_project:
+            config["designsync_project"] = designsync_project
         config_path.write_text(json.dumps(config, indent=2, sort_keys=True) + "\n",
                                encoding="utf-8")
         created.append(str(config_path.relative_to(repo)))
+    elif design_provider or designsync_project:
+        # Fill gaps in an older config, but never replace recorded choices.
+        try:
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            config = None
+        updated = []
+        design = config.get("design") if isinstance(config, dict) else None
+        if (design_provider and isinstance(config, dict)
+                and (design is None or (isinstance(design, dict)
+                                        and "provider" not in design))):
+            config.setdefault("design", {})["provider"] = design_provider
+            updated.append("design.provider")
+        if (designsync_project and isinstance(config, dict)
+                and "designsync_project" not in config):
+            config["designsync_project"] = designsync_project
+            updated.append("designsync_project")
+        if updated:
+            config_path.write_text(
+                json.dumps(config, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8")
+            created.append(
+                f"{config_path.relative_to(repo)} (updated {', '.join(updated)})")
     for name in LEDGERS:
         ledger = paths.ledgers_dir(repo) / f"{name}.jsonl"
         if not ledger.exists():

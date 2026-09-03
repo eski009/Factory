@@ -3,7 +3,7 @@ name: factory-intake
 description: Use when initializing a factory target or refreshing the product brain - seeds brain surfaces from real sources, evidence only
 ---
 
-Below, `factory` means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/factory/factory.py" --repo .`.
+First read the capabilities skill's `references/host-adapter.md` and resolve the plugin root for this host. Below, `factory` means `python3 "${FACTORY_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/factory/factory.py" --repo .`.
 
 ## Purpose
 
