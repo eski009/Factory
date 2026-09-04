@@ -2,9 +2,11 @@ import io
 import json
 import os
 import tempfile
+import threading
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 from scripts.factory import factory
 from scripts.factory.lib import initrepo, items, logs, machine, paths
@@ -451,3 +453,196 @@ class TestApproachRecordValidation(ConvergenceCase):
                                attempts=(self.attempt(1),))
         findings["attempts"][0]["findings"] = []
         self.assert_invalid(findings, "has no cited findings")
+
+
+class TestApproachRecordWriter(ConvergenceCase):
+    def setUp(self):
+        super().setUp()
+        self.configure(True)
+        self.make_plan_item()
+
+    def test_context_cli_exposes_only_engine_derived_values(self):
+        code, out, err = self.run_cli("approach-context", ITEM, "--json")
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(json.loads(out), self.context())
+
+    def test_record_cli_writes_canonical_json_and_single_writer_event(self):
+        record = self.record()
+        code, out, err = self.run_cli(
+            "approach-judgement", ITEM, "--data", json.dumps(record))
+        self.assertEqual((code, err), (0, ""))
+        path = self.repo / out.strip()
+        self.assertEqual(json.loads(path.read_text(encoding="utf-8")), record)
+        self.assertTrue(path.read_text(encoding="utf-8").endswith("\n"))
+        event = logs.read_events(self.repo, ITEM)[-1]
+        self.assertEqual(event["event"], "approach.judgement.recorded")
+        self.assertEqual(event["data"]["attempts"], 0)
+        self.assertEqual(event["data"]["signals"], [])
+
+    def test_disabled_recording_is_unsolicited_and_refused(self):
+        self.configure(False)
+        code, _out, err = self.run_cli(
+            "approach-judgement", ITEM, "--data", json.dumps(self.record()))
+        self.assertEqual(code, 2)
+        self.assertIn("unsolicited approach judgement", err)
+        self.assertFalse((paths.item_dir(self.repo, ITEM) /
+                          "approach-judgements").exists())
+
+    def test_invalid_json_is_usage_error_and_writes_nothing(self):
+        code, _out, err = self.run_cli(
+            "approach-judgement", ITEM, "--data", "{oops")
+        self.assertEqual(code, 1)
+        self.assertIn("--data is not valid JSON", err)
+
+    def test_initial_record_cannot_skip_the_persisted_first_attempt(self):
+        record = self.record(
+            signals=(SIGNALS[0],),
+            attempts=(self.attempt(1, verdict="uncertain"), self.attempt(2)),
+            final_verdict="pass")
+        code, _out, err = self.run_cli(
+            "approach-judgement", ITEM, "--data", json.dumps(record))
+        self.assertEqual(code, 2)
+        self.assertIn("initial write may contain at most one reviewer attempt", err)
+
+    def test_escalation_update_appends_one_fresh_attempt(self):
+        from scripts.factory.lib import convergence
+        first = self.record(
+            signals=(SIGNALS[0],),
+            attempts=(self.attempt(1, verdict="uncertain"),),
+            final_verdict="uncertain", disposition="escalate")
+        path = convergence.record_judgement(self.repo, ITEM, first)
+        second = self.record(
+            signals=(SIGNALS[0],),
+            attempts=(self.attempt(1, verdict="uncertain"), self.attempt(2)),
+            final_verdict="pass", disposition="advance")
+        self.assertEqual(convergence.record_judgement(
+            self.repo, ITEM, second), path)
+        self.assertEqual(json.loads(path.read_text(encoding="utf-8")), second)
+        self.assertEqual(logs.count_events(
+            self.repo, ITEM, "approach.judgement.recorded"), 2)
+
+    def test_idempotent_retry_writes_no_duplicate_event(self):
+        from scripts.factory.lib import convergence
+        record = self.record()
+        path = convergence.record_judgement(self.repo, ITEM, record)
+        self.assertEqual(convergence.record_judgement(
+            self.repo, ITEM, record), path)
+        self.assertEqual(logs.count_events(
+            self.repo, ITEM, "approach.judgement.recorded"), 1)
+
+    def test_retry_after_event_interruption_reconciles_exactly_one_event(self):
+        from scripts.factory.lib import convergence
+        record = self.record()
+        path = self.repo / self.context()["record"]
+        original_append = logs.append_event
+        calls = 0
+
+        def interrupted_append(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise OSError("injected interruption after replace")
+            return original_append(*args, **kwargs)
+
+        with mock.patch.object(convergence.logs, "append_event",
+                               side_effect=interrupted_append):
+            with self.assertRaisesRegex(OSError, "injected interruption"):
+                convergence.record_judgement(self.repo, ITEM, record)
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8")), record)
+            self.assertEqual(convergence.record_judgement(
+                self.repo, ITEM, record), path)
+
+        expected = {
+            "path": self.context()["record"],
+            "planning_round": record["planning_round"],
+            "plan_sha256": record["plan_sha256"],
+            "signals": [],
+            "attempts": 0,
+            "final_verdict": "not-triggered",
+            "disposition": "advance",
+        }
+        events = logs.read_events(self.repo, ITEM)
+        matching = [event for event in events
+                    if event.get("event") == "approach.judgement.recorded"
+                    and event.get("data") == expected]
+        self.assertEqual(len(matching), 1)
+        self.assertEqual(logs.count_events(
+            self.repo, ITEM, "approach.judgement.recorded"), 1)
+
+    def test_concurrent_incompatible_writers_serialize_without_temp_collision(self):
+        from scripts.factory.lib import convergence
+        first = self.record()
+        second = self.record(signals=(SIGNALS[0],),
+                             attempts=(self.attempt(1),))
+        path = self.repo / self.context()["record"]
+        start = threading.Barrier(3)
+        replace = threading.Barrier(2)
+        original_replace = Path.replace
+        outcomes = []
+        errors = []
+
+        def synchronized_fixed_temp_replace(source, target):
+            if source.name.endswith(".json.tmp"):
+                replace.wait(timeout=5)
+            return original_replace(source, target)
+
+        def writer(record):
+            start.wait(timeout=5)
+            try:
+                outcomes.append((record, convergence.record_judgement(
+                    self.repo, ITEM, record)))
+            except Exception as exc:
+                errors.append(exc)
+
+        with mock.patch.object(Path, "replace",
+                               new=synchronized_fixed_temp_replace):
+            threads = [threading.Thread(target=writer, args=(record,))
+                       for record in (first, second)]
+            for thread in threads:
+                thread.start()
+            start.wait(timeout=5)
+            for thread in threads:
+                thread.join(timeout=5)
+
+        self.assertTrue(all(not thread.is_alive() for thread in threads))
+        self.assertEqual(len(outcomes), 1)
+        self.assertEqual(len(errors), 1)
+        self.assertIsInstance(errors[0], convergence.ConvergenceError)
+        self.assertNotIsInstance(errors[0], FileNotFoundError)
+        persisted, persisted_path = outcomes[0]
+        self.assertEqual(persisted_path, path)
+        self.assertEqual(json.loads(path.read_text(encoding="utf-8")), persisted)
+        self.assertFalse(list(path.parent.glob("*.tmp")))
+        events = [event for event in logs.read_events(self.repo, ITEM)
+                  if event.get("event") == "approach.judgement.recorded"]
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["data"]["path"], self.context()["record"])
+        self.assertEqual(events[0]["data"]["plan_sha256"],
+                         persisted["plan_sha256"])
+        self.assertEqual(events[0]["data"]["signals"],
+                         [signal["id"] for signal in persisted["signals"]])
+
+    def test_existing_final_record_and_changed_screen_are_append_only(self):
+        from scripts.factory.lib import convergence
+        convergence.record_judgement(self.repo, ITEM, self.record())
+        changed = self.record(signals=(SIGNALS[0],),
+                              attempts=(self.attempt(1),))
+        with self.assertRaises(convergence.ConvergenceError) as ctx:
+            convergence.record_judgement(self.repo, ITEM, changed)
+        self.assertIn("immutable judgement fields changed", str(ctx.exception))
+
+    def test_plan_edit_keeps_old_record_and_writes_new_hash_path(self):
+        from scripts.factory.lib import convergence
+        old = convergence.record_judgement(self.repo, ITEM, self.record())
+        plan = paths.item_dir(self.repo, ITEM) / "plan.md"
+        plan.write_text("- [ ] changed bytes\n", encoding="utf-8")
+        new = convergence.record_judgement(self.repo, ITEM, self.record())
+        self.assertNotEqual(old, new)
+        self.assertTrue(old.exists())
+        self.assertTrue(new.exists())
+
+    def test_generic_log_cannot_forge_recorded_event(self):
+        code, _out, err = self.run_cli(
+            "log", ITEM, "approach.judgement.recorded")
+        self.assertEqual(code, 1)
+        self.assertIn("written only by factory approach-judgement", err)

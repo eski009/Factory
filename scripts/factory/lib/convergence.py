@@ -5,8 +5,11 @@ the closed envelope, exact plan bytes, engine-derived planning round, bounded
 citations, independent invocation identities, and coherent disposition.
 """
 
+import fcntl
 import hashlib
 import json
+import tempfile
+from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 
 from . import initrepo, items, logs, paths
@@ -262,3 +265,109 @@ def validate_current(repo, meta, record):
             f"{expected_verdict} + {expected_disposition}, got "
             f"{record['final_verdict']} + {record['disposition']}")
     return record
+
+
+def _load_record(path):
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ConvergenceError(
+            f"approach judgement unreadable: {path.name}") from exc
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ConvergenceError(
+            f"approach judgement malformed JSON: {path.name} ({exc})") from exc
+    return value
+
+
+@contextmanager
+def _record_lock(path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = path.with_name(path.name + ".lock")
+    with lock_path.open("a", encoding="utf-8") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+
+def _event_data(repo, path, record):
+    return {
+        "path": _repo_relative(repo, path),
+        "planning_round": record["planning_round"],
+        "plan_sha256": record["plan_sha256"],
+        "signals": [signal["id"] for signal in record["signals"]],
+        "attempts": len(record["attempts"]),
+        "final_verdict": record["final_verdict"],
+        "disposition": record["disposition"],
+    }
+
+
+def _append_recorded_event_if_missing(repo, item_id, data):
+    if any(event.get("event") == "approach.judgement.recorded"
+           and event.get("data") == data
+           for event in logs.read_events(repo, item_id)):
+        return
+    logs.append_event(repo, item_id, "approach.judgement.recorded", data)
+
+
+def _write_record(path, record):
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=path.parent,
+                prefix=f".{path.name}.", suffix=".tmp", delete=False) as f:
+            temporary = Path(f.name)
+            f.write(json.dumps(record, indent=2, sort_keys=True) + "\n")
+        temporary.replace(path)
+    finally:
+        if temporary is not None:
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
+
+
+def record_judgement(repo, item_id, record):
+    meta, _body = items.load_item(repo, item_id)
+    if not enabled(repo):
+        raise ConvergenceError(
+            "unsolicited approach judgement: approach_convergence.enabled "
+            "is not true")
+    context = current_context(repo, item_id)
+    path = Path(repo) / context["record"]
+    with _record_lock(path):
+        attempts = record.get("attempts") if isinstance(record, dict) else None
+        if (not path.exists() and isinstance(attempts, list)
+                and len(attempts) > 1):
+            raise ConvergenceError(
+                "approach judgement initial write may contain at most one "
+                "reviewer attempt")
+        validate_current(repo, meta, record)
+        data = _event_data(repo, path, record)
+        if path.exists():
+            existing = _load_record(path)
+            validate_current(repo, meta, existing)
+            if existing == record:
+                _append_recorded_event_if_missing(repo, item_id, data)
+                return path
+            changed = [key for key in IMMUTABLE_FIELDS
+                       if existing.get(key) != record.get(key)]
+            if changed:
+                raise ConvergenceError(
+                    "approach judgement immutable judgement fields changed: "
+                    + ", ".join(changed))
+            if existing["disposition"] != "escalate":
+                raise ConvergenceError(
+                    "approach judgement is final; only an escalate record may "
+                    "append a reviewer attempt")
+            if (len(record["attempts"]) != len(existing["attempts"]) + 1
+                    or record["attempts"][:-1] != existing["attempts"]):
+                raise ConvergenceError(
+                    "approach judgement update must append exactly one reviewer "
+                    "attempt and preserve prior attempts byte-for-byte")
+        _write_record(path, record)
+        _append_recorded_event_if_missing(repo, item_id, data)
+        return path
