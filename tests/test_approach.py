@@ -130,7 +130,7 @@ class TestApproachEdge(ApproachTest):
 
     def test_constants_declared_once_in_machine(self):
         self.assertEqual(machine.APPROACH_FROM,
-                         frozenset({"review", "verify", "assure"}))
+                         frozenset({"plan", "review", "verify", "assure"}))
         self.assertEqual(machine.APPROACH_TO, "spec")
         self.assertEqual(machine.MAX_APPROACH_REJECTIONS, 1)
         # aliased, not re-declared (import graph: cost imports machine)
@@ -199,12 +199,18 @@ class TestApproachEdge(ApproachTest):
         events = logs.read_events(self.repo, ITEM)
         self.assertEqual(machine._approach_edges(events)[0], 1)
 
-    def test_outside_firing_set_to_spec_stays_illegal(self):
+    def test_plan_origin_uses_the_shared_artifact_gate(self):
         self.make_item()
         self.walk_to("plan")
         with self.assertRaises(machine.GateError) as ctx:
-            machine.advance(self.repo, ITEM, "spec")
-        self.assertIn("illegal transition", str(ctx.exception))
+            machine.advance(self.repo, ITEM, "spec",
+                            reason="approach.rejected: plan failed")
+        self.assertIn("approaches/forbidden.md", str(ctx.exception))
+        self.forbid("plan")
+        meta, _ = machine.advance(
+            self.repo, ITEM, "spec",
+            reason="approach.rejected: plan failed")
+        self.assertEqual(meta["stage"], "spec")
 
     def test_cap_counts_engine_edges_only(self):
         # AC2, the parameterized invariance: (a) edges only and

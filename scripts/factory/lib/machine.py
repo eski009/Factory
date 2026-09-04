@@ -45,7 +45,7 @@ MAX_ASSURE_REJECTIONS = 2
 # from in APPROACH_FROM and to == APPROACH_TO - never by reason text
 # (bid-0086). The cap is LIFETIME-scoped: no transition, resume, or
 # redesign resets or re-scopes it.
-APPROACH_FROM = frozenset({"review", "verify", "assure"})
+APPROACH_FROM = frozenset({"plan", "review", "verify", "assure"})
 APPROACH_TO = "spec"
 MAX_APPROACH_REJECTIONS = 1
 
