@@ -1,0 +1,100 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "approach-judgement",
+  "type": "object",
+  "required": [
+    "version", "item", "planning_round", "plan_sha256", "configuration",
+    "tier", "planner_invocation", "signals", "attempts", "final_verdict",
+    "disposition", "escalation_count", "escalation_bound"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "version": {"type": "integer", "enum": [1]},
+    "item": {"type": "string", "pattern": "^[0-9]{4}-[a-z0-9-]+$"},
+    "planning_round": {"type": "string", "pattern": "^plan-[0-9]{4}$"},
+    "plan_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "configuration": {
+      "type": "object",
+      "required": ["enabled"],
+      "additionalProperties": false,
+      "properties": {"enabled": {"type": "boolean", "enum": [true]}}
+    },
+    "tier": {"type": "string", "enum": ["epic", "feature", "bug"]},
+    "planner_invocation": {"type": "string", "minLength": 1},
+    "signals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "evidence"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "natural-language-rule-tail",
+              "input-variety-task-growth",
+              "unconstrained-output-postprocess"
+            ]
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["path", "start_line", "end_line"],
+              "additionalProperties": false,
+              "properties": {
+                "path": {"type": "string", "minLength": 1},
+                "start_line": {"type": "integer", "minimum": 1},
+                "end_line": {"type": "integer", "minimum": 1}
+              }
+            }
+          }
+        }
+      }
+    },
+    "attempts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "attempt", "invocation", "timestamp", "verdict",
+          "evidence_conflict", "findings"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "attempt": {"type": "integer", "minimum": 1},
+          "invocation": {"type": "string", "minLength": 1},
+          "timestamp": {"type": "string", "minLength": 1},
+          "verdict": {
+            "type": "string", "enum": ["pass", "reject", "uncertain"]
+          },
+          "evidence_conflict": {"type": "boolean"},
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["claim", "path", "start_line", "end_line"],
+              "additionalProperties": false,
+              "properties": {
+                "claim": {"type": "string", "minLength": 1},
+                "path": {"type": "string", "minLength": 1},
+                "start_line": {"type": "integer", "minimum": 1},
+                "end_line": {"type": "integer", "minimum": 1}
+              }
+            }
+          }
+        }
+      }
+    },
+    "final_verdict": {
+      "type": "string",
+      "enum": ["not-triggered", "pass", "reject", "uncertain"]
+    },
+    "disposition": {
+      "type": "string",
+      "enum": ["advance", "escalate", "approach.rejected"]
+    },
+    "escalation_count": {"type": "integer", "minimum": 0},
+    "escalation_bound": {"type": "integer", "minimum": 0}
+  }
+}

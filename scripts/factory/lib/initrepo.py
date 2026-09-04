@@ -19,7 +19,8 @@ LEDGER_SCHEMAS = {"bids": "escalation-bid", "judgements": "orchestrator-judgemen
                   "reputation": "reputation-event", "escapes": "escape"}
 DEFAULT_CONFIG = {"version": 1, "merge": "auto", "gates": ["design"],
                   "research": {"depth": "web"},
-                  "assure": {"attribution": False}}
+                  "assure": {"attribution": False},
+                  "approach_convergence": {"enabled": False}}
 
 
 def load_schema(name):
