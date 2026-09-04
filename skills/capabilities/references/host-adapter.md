@@ -18,6 +18,13 @@ Resolve the plugin root first and use the Python command above, including when
 a downstream command contract uses `factory` as shorthand. Never assume
 `CLAUDE_PLUGIN_ROOT` exists in Codex.
 
+## Model routing
+
+Before selecting a lead or dispatching a stage, read `model-routing.md` for
+Claude-hosted sessions or `model-routing-codex.md` for Codex-hosted sessions
+(both beside this file). Apply only the current host's map. Model selection
+does not change a stage's fresh-context or independent-review requirements.
+
 ## Host translations
 
 - A fresh/forked-context instruction means a Claude task with an isolated

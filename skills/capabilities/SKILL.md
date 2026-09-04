@@ -29,9 +29,10 @@ absence; a tool that cannot be loaded is absent, take the documented branch.
 
 **Process patterns** (not capability-gated — these apply regardless of which
 tools or model are available): see references/orchestration-patterns.md for the
-seven patterns that make outcomes reproducible, references/model-tiering.md for
-the abstract model tiers, and `references/model-routing-codex.md` for current
-Codex model and effort recommendations.
+seven patterns that make outcomes reproducible and references/model-tiering.md
+for the abstract model tiers. Before choosing the lead or dispatching work, read
+`references/model-routing.md` for Claude-hosted model roles or
+`references/model-routing-codex.md` for Codex model and effort recommendations.
 
 Apply this row by row: check the tool list once per capability you need, take
 the matching branch, and move on. Don't ask the user whether a tool is
