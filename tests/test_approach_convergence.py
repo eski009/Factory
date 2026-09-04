@@ -55,6 +55,57 @@ class ConvergenceCase(unittest.TestCase):
         (item_dir / "plan.md").write_text(plan, encoding="utf-8")
         return item_dir
 
+    def context(self):
+        from scripts.factory.lib import convergence
+        return convergence.current_context(self.repo, ITEM)
+
+    def record(self, signals=(), attempts=(), final_verdict=None,
+               disposition=None, tier=None):
+        context = self.context()
+        signal_rows = [{
+            "id": signal,
+            "evidence": [{
+                "path": f".factory/items/{ITEM}/plan.md",
+                "start_line": 1,
+                "end_line": 1,
+            }],
+        } for signal in signals]
+        if final_verdict is None:
+            final_verdict = "not-triggered" if not signals else "pass"
+        if disposition is None:
+            disposition = "advance"
+        return {
+            "version": 1,
+            "item": ITEM,
+            "planning_round": context["planning_round"],
+            "plan_sha256": context["plan_sha256"],
+            "configuration": {"enabled": True},
+            "tier": tier or context["tier"],
+            "planner_invocation": "planner-001",
+            "signals": signal_rows,
+            "attempts": list(attempts),
+            "final_verdict": final_verdict,
+            "disposition": disposition,
+            "escalation_count": max(0, len(attempts) - 1),
+            "escalation_bound": context["escalation_bound"],
+        }
+
+    def attempt(self, number, verdict="pass", invocation=None,
+                conflict=False, path=None, start=1, end=1):
+        return {
+            "attempt": number,
+            "invocation": invocation or f"reviewer-{number:03d}",
+            "timestamp": "2026-09-04T12:00:00Z",
+            "verdict": verdict,
+            "evidence_conflict": conflict,
+            "findings": [{
+                "claim": f"attempt {number} evidence",
+                "path": path or f".factory/items/{ITEM}/plan.md",
+                "start_line": start,
+                "end_line": end,
+            }],
+        }
+
     def run_cli(self, *argv):
         out, err = io.StringIO(), io.StringIO()
         with redirect_stdout(out), redirect_stderr(err):
@@ -211,3 +262,192 @@ class TestApproachContext(ConvergenceCase):
                               {"from": origin, "to": "plan"})
         self.assertEqual(convergence.planning_round(self.repo, ITEM),
                          "plan-0003")
+
+
+class TestApproachRecordValidation(ConvergenceCase):
+    def setUp(self):
+        super().setUp()
+        self.configure(True)
+        self.make_plan_item(plan="- [ ] bounded task\n")
+
+    def assert_invalid(self, record, fragment):
+        from scripts.factory.lib import convergence
+        meta, _ = items.load_item(self.repo, ITEM)
+        with self.assertRaises(convergence.ConvergenceError) as ctx:
+            convergence.validate_current(self.repo, meta, record)
+        self.assertIn(fragment, str(ctx.exception))
+
+    def test_no_signal_and_one_pass_shapes_validate(self):
+        from scripts.factory.lib import convergence
+        meta, _ = items.load_item(self.repo, ITEM)
+        no_signal = self.record()
+        self.assertIs(convergence.validate_current(
+            self.repo, meta, no_signal), no_signal)
+        passed = self.record(
+            signals=(SIGNALS[0],), attempts=(self.attempt(1),))
+        self.assertIs(convergence.validate_current(
+            self.repo, meta, passed), passed)
+
+    def test_schema_is_closed_and_unknown_enums_are_distinct(self):
+        extra = self.record()
+        extra["surprise"] = True
+        self.assert_invalid(extra, "judgement.surprise: unexpected property")
+        signal = self.record(signals=(SIGNALS[0],),
+                             attempts=(self.attempt(1),))
+        signal["signals"][0]["id"] = "free-form-smell"
+        self.assert_invalid(signal, "not one of")
+
+    def test_wrong_item_round_hash_tier_and_bound_are_distinct(self):
+        cases = (
+            ("item", "0002-other", "wrong item"),
+            ("planning_round", "plan-9999", "stale planning round"),
+            ("plan_sha256", "0" * 64, "stale plan hash"),
+            ("tier", "bug", "tier context stale"),
+            ("escalation_bound", 0, "escalation bound stale"),
+        )
+        for key, value, fragment in cases:
+            with self.subTest(key=key):
+                record = self.record()
+                record[key] = value
+                self.assert_invalid(record, fragment)
+
+    def test_signal_citation_must_name_current_plan(self):
+        record = self.record(signals=(SIGNALS[0],),
+                             attempts=(self.attempt(1),))
+        record["signals"][0]["evidence"][0]["path"] = "README.md"
+        self.assert_invalid(record, "must cite the current plan")
+
+    def test_citation_missing_empty_escape_and_range_errors_are_distinct(self):
+        cases = []
+        missing = self.record(signals=(SIGNALS[0],),
+                              attempts=(self.attempt(1),))
+        missing["attempts"][0]["findings"][0]["path"] = "missing.md"
+        cases.append((missing, "citation path missing"))
+        empty_path = paths.item_dir(self.repo, ITEM) / "empty.md"
+        empty_path.write_text("   \n", encoding="utf-8")
+        empty = self.record(signals=(SIGNALS[0],), attempts=(
+            self.attempt(1, path=f".factory/items/{ITEM}/empty.md"),))
+        cases.append((empty, "citation range is empty"))
+        escaped = self.record(signals=(SIGNALS[0],), attempts=(
+            self.attempt(1, path="../outside.md"),))
+        cases.append((escaped, "citation escapes the repository"))
+        ranged = self.record(signals=(SIGNALS[0],), attempts=(
+            self.attempt(1, end=9),))
+        cases.append((ranged, "citation range out of range"))
+        reversed_range = self.record(signals=(SIGNALS[0],), attempts=(
+            self.attempt(1, start=2, end=1),))
+        cases.append((reversed_range, "citation start exceeds end"))
+        for record, fragment in cases:
+            with self.subTest(fragment=fragment):
+                self.assert_invalid(record, fragment)
+
+    def test_citation_symlink_targets_must_remain_within_repository(self):
+        from scripts.factory.lib import convergence
+        meta, _ = items.load_item(self.repo, ITEM)
+        inside = self.repo / "inside.md"
+        inside.write_text("inside\n", encoding="utf-8")
+        (self.repo / "in-repo-link.md").symlink_to("inside.md")
+        valid = self.record(signals=(SIGNALS[0],), attempts=(
+            self.attempt(1, path="in-repo-link.md"),))
+        self.assertIs(convergence.validate_current(self.repo, meta, valid), valid)
+        with tempfile.TemporaryDirectory() as outside_root:
+            outside = Path(outside_root)
+            (outside / "outside.md").write_text("outside\n", encoding="utf-8")
+            (self.repo / "file-link.md").symlink_to(outside / "outside.md")
+            (outside / "directory").mkdir()
+            (outside / "directory" / "nested.md").write_text(
+                "outside nested\n", encoding="utf-8")
+            (self.repo / "directory-link").symlink_to(
+                outside / "directory", target_is_directory=True)
+            cases = (
+                ("file-link.md", "direct file symlink"),
+                ("directory-link/nested.md", "directory symlink"),
+            )
+            for path, label in cases:
+                with self.subTest(label=label):
+                    escaped = self.record(signals=(SIGNALS[0],), attempts=(
+                        self.attempt(1, path=path),))
+                    self.assert_invalid(escaped, "citation escapes the repository")
+
+    def test_producer_and_reviewer_invocations_must_be_fresh(self):
+        same = self.record(signals=(SIGNALS[0],), attempts=(
+            self.attempt(1, invocation="planner-001"),))
+        self.assert_invalid(same, "matches planner invocation")
+        reused = self.record(
+            signals=(SIGNALS[0],),
+            attempts=(self.attempt(1, verdict="uncertain"),
+                      self.attempt(2, invocation="reviewer-001")),
+            final_verdict="pass")
+        self.assert_invalid(reused, "reviewer invocation reused")
+
+    def test_attempt_numbers_counts_and_bounds_are_enforced(self):
+        numbered = self.record(signals=(SIGNALS[0],), attempts=(
+            self.attempt(2),))
+        self.assert_invalid(numbered, "attempt numbers must be [1]")
+        over = self.record(signals=(SIGNALS[0],), attempts=(
+            self.attempt(1, verdict="uncertain"), self.attempt(2),
+            self.attempt(3)), final_verdict="pass")
+        self.assert_invalid(over, "attempt count 3 exceeds resolved maximum 2")
+        count = self.record(signals=(SIGNALS[0],), attempts=(self.attempt(1),))
+        count["escalation_count"] = 1
+        self.assert_invalid(count, "escalation_count 1 does not match 0")
+
+    def test_only_uncertainty_or_conflict_can_open_second_attempt(self):
+        record = self.record(
+            signals=(SIGNALS[0],),
+            attempts=(self.attempt(1), self.attempt(2)),
+            final_verdict="pass")
+        self.assert_invalid(record, "first attempt did not authorize escalation")
+
+    def test_disposition_matrix_is_exact(self):
+        rows = (
+            ((self.attempt(1, verdict="uncertain"),),
+             "uncertain", "escalate", None),
+            ((self.attempt(1, verdict="pass", conflict=True),),
+             "uncertain", "escalate", None),
+            ((self.attempt(1, verdict="reject"),),
+             "reject", "approach.rejected", None),
+            ((self.attempt(1, verdict="uncertain"), self.attempt(2)),
+             "pass", "advance", None),
+            ((self.attempt(1, verdict="uncertain"),
+              self.attempt(2, verdict="reject")),
+             "reject", "approach.rejected", None),
+            ((self.attempt(1, verdict="uncertain"),
+              self.attempt(2, verdict="uncertain")),
+             "uncertain", "approach.rejected", None),
+        )
+        from scripts.factory.lib import convergence
+        meta, _ = items.load_item(self.repo, ITEM)
+        for attempts, verdict, disposition, _ in rows:
+            with self.subTest(verdict=verdict, disposition=disposition):
+                record = self.record(signals=(SIGNALS[0],), attempts=attempts,
+                                     final_verdict=verdict,
+                                     disposition=disposition)
+                self.assertIs(convergence.validate_current(
+                    self.repo, meta, record), record)
+
+    def test_bug_uncertainty_exhausts_without_second_attempt(self):
+        from scripts.factory.lib import convergence
+        self.tmp.cleanup()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        initrepo.init(self.repo)
+        self.configure(True)
+        self.make_plan_item(tier="bug")
+        meta, _ = items.load_item(self.repo, ITEM)
+        record = self.record(
+            signals=(SIGNALS[0],),
+            attempts=(self.attempt(1, verdict="uncertain"),),
+            final_verdict="uncertain", disposition="approach.rejected")
+        self.assertIs(convergence.validate_current(
+            self.repo, meta, record), record)
+
+    def test_empty_signal_evidence_and_empty_findings_are_refused(self):
+        signal = self.record(signals=(SIGNALS[0],),
+                             attempts=(self.attempt(1),))
+        signal["signals"][0]["evidence"] = []
+        self.assert_invalid(signal, "has no plan citations")
+        findings = self.record(signals=(SIGNALS[0],),
+                               attempts=(self.attempt(1),))
+        findings["attempts"][0]["findings"] = []
+        self.assert_invalid(findings, "has no cited findings")
