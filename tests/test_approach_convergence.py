@@ -781,6 +781,30 @@ class TestApproachAdvanceGate(ConvergenceCase):
         (self.item_dir / "plan.md").write_text("No executable tasks yet.\n")
         self.assert_advance_refused("plan.md with at least one '- [ ]' task required")
 
+    def test_checkbox_must_exist_in_the_exact_authorized_plan(self):
+        from scripts.factory.lib import convergence
+        plan = self.item_dir / "plan.md"
+        judged_bytes = b"No executable tasks yet.\n"
+        plan.write_bytes(judged_bytes)
+        convergence.record_judgement(self.repo, ITEM, self.record())
+        original_item = (self.item_dir / "item.md").read_bytes()
+        plan.write_text("- [ ] temporary unchecked task\n")
+        validate_record = convergence.require_authoritative
+        calls = []
+
+        def restore_judged_plan_then_validate(*args, **kwargs):
+            calls.append("restore")
+            plan.write_bytes(judged_bytes)
+            return validate_record(*args, **kwargs)
+
+        with mock.patch.object(convergence, "require_authoritative",
+                               side_effect=restore_judged_plan_then_validate):
+            self.assert_advance_refused(
+                "plan.md with at least one '- [ ]' task required")
+        self.assertEqual(calls, ["restore"])
+        self.assertEqual(plan.read_bytes(), judged_bytes)
+        self.assertEqual((self.item_dir / "item.md").read_bytes(), original_item)
+
     def test_plan_replacement_during_edge_persistence_refuses_without_mutation(self):
         from scripts.factory.lib import convergence
         cases = [(boundary, moment, edit)

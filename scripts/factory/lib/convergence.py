@@ -190,6 +190,15 @@ def authorized_edge(repo, item_id, record):
         snapshots = []
         try:
             content, version = _read_plan(directory_fd)
+            # The early machine check preserves checkbox-first diagnostics;
+            # repeat it on the exact snapshot whose hash admits this edge.
+            try:
+                plan_text = content.decode("utf-8")
+            except UnicodeDecodeError as exc:
+                raise ConvergenceError(str(exc)) from exc
+            if "- [ ]" not in plan_text:
+                raise ConvergenceError(
+                    "plan.md with at least one '- [ ]' task required")
             if hashlib.sha256(content).hexdigest() != record["plan_sha256"]:
                 raise ConvergenceError("plan.md changed after approach validation")
             for name in ("item.md", "log.jsonl"):
