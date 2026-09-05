@@ -348,6 +348,29 @@ def _is_prior_tier_context(existing, record):
     return existing["escalation_bound"] == escalation_bound(existing["tier"])
 
 
+def _validate_prior_tier_replacement(existing, record):
+    changed = [key for key in IMMUTABLE_FIELDS
+               if key not in ("tier", "escalation_bound")
+               and existing[key] != record[key]]
+    problems = []
+    if changed:
+        problems.append(
+            "immutable judgement fields changed: " + ", ".join(changed))
+    if existing["attempts"] != record["attempts"]:
+        problems.append("prior attempts changed")
+    expected_count = max(0, len(existing["attempts"]) - 1)
+    if existing["escalation_count"] != expected_count:
+        problems.append(
+            "existing escalation_count does not match prior attempts")
+    elif record["escalation_count"] != existing["escalation_count"]:
+        problems.append(
+            "escalation_count changed despite identical prior attempts")
+    if problems:
+        raise ConvergenceError(
+            "approach judgement tier-context replacement refused: "
+            + "; ".join(problems))
+
+
 def record_judgement(repo, item_id, record):
     meta, _body = items.load_item(repo, item_id)
     if not enabled(repo):
@@ -374,12 +397,9 @@ def record_judgement(repo, item_id, record):
                 # canonical round/hash path. Reconcile the accepted historical
                 # state before replacing it with the freshly validated current
                 # tier, so an interruption cannot erase its audit event.
+                _validate_prior_tier_replacement(existing, record)
                 _append_recorded_event_if_missing(
                     repo, item_id, existing_data)
-                if isinstance(attempts, list) and len(attempts) > 1:
-                    raise ConvergenceError(
-                        "approach judgement fresh tier context initial write "
-                        "may contain at most one reviewer attempt")
                 _write_record(path, record)
                 _append_recorded_event_if_missing(repo, item_id, data)
                 return path

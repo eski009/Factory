@@ -607,7 +607,10 @@ class TestApproachRecordWriter(ConvergenceCase):
 
     def test_stale_tier_record_reconciles_then_replaces_same_canonical_path(self):
         from scripts.factory.lib import convergence
-        feature = self.record()
+        feature = self.record(
+            signals=(SIGNALS[0],),
+            attempts=(self.attempt(1, verdict="uncertain"),),
+            final_verdict="uncertain", disposition="escalate")
         path = self.repo / self.context()["record"]
 
         with mock.patch.object(
@@ -617,7 +620,10 @@ class TestApproachRecordWriter(ConvergenceCase):
                 convergence.record_judgement(self.repo, ITEM, feature)
 
         items.set_tier(self.repo, ITEM, "bug")
-        bug = self.record()
+        bug = self.record(
+            signals=(SIGNALS[0],),
+            attempts=(self.attempt(1, verdict="uncertain"),),
+            final_verdict="uncertain", disposition="approach.rejected")
         self.assertEqual(bug["tier"], "bug")
         self.assertEqual(bug["escalation_bound"], 0)
         self.assertEqual(self.repo / self.context()["record"], path)
@@ -631,11 +637,38 @@ class TestApproachRecordWriter(ConvergenceCase):
         events = [event["data"] for event in logs.read_events(self.repo, ITEM)
                   if event.get("event") == "approach.judgement.recorded"]
         self.assertEqual(
-            [(event["tier"], event["escalation_bound"], event["attempts"])
+            [(event["tier"], event["escalation_bound"], event["attempts"],
+              event["final_verdict"], event["disposition"])
              for event in events],
-            [("feature", 1, 0), ("bug", 0, 0)])
+            [("feature", 1, 1, "uncertain", "escalate"),
+             ("bug", 0, 1, "uncertain", "approach.rejected")])
         self.assertTrue(all(event["path"] == self.context()["record"]
                             for event in events))
+
+    def test_stale_tier_recovery_refuses_changed_screen_and_attempt_history(self):
+        from scripts.factory.lib import convergence
+        feature = self.record(
+            signals=(SIGNALS[0],), attempts=(self.attempt(1),))
+        path = convergence.record_judgement(self.repo, ITEM, feature)
+        original_bytes = path.read_bytes()
+
+        items.set_tier(self.repo, ITEM, "bug")
+        changed = self.record(
+            signals=(SIGNALS[1],),
+            attempts=(self.attempt(1, invocation="replacement-reviewer"),))
+        changed["planner_invocation"] = "replacement-planner"
+
+        with self.assertRaises(convergence.ConvergenceError) as ctx:
+            convergence.record_judgement(self.repo, ITEM, changed)
+
+        message = str(ctx.exception)
+        self.assertIn("tier-context replacement", message)
+        self.assertIn("planner_invocation", message)
+        self.assertIn("signals", message)
+        self.assertIn("prior attempts", message)
+        self.assertEqual(path.read_bytes(), original_bytes)
+        self.assertEqual(logs.count_events(
+            self.repo, ITEM, "approach.judgement.recorded"), 1)
 
     def test_concurrent_incompatible_writers_serialize_without_temp_collision(self):
         from scripts.factory.lib import convergence
