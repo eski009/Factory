@@ -10,8 +10,8 @@ import fcntl
 import hashlib
 import json
 import os
+import secrets
 import stat
-import tempfile
 from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 
@@ -585,15 +585,58 @@ def _load_authoritative_record(repo, relative):
 
 
 @contextmanager
-def _record_lock(path):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    lock_path = path.with_name(path.name + ".lock")
-    with lock_path.open("a", encoding="utf-8") as lock:
-        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+def _record_lock(repo, path):
+    """Anchor all writer mutations to no-follow repository descriptors."""
+    descriptors, links = [], []
+    lock_fd = log_fd = None
+    try:
         try:
-            yield
-        finally:
-            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+            flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+            components = (os.path.abspath(os.fspath(repo)),
+                          *path.parent.relative_to(repo).parts)
+            for index, component in enumerate(components):
+                parent = descriptors[-1] if descriptors else None
+                # Only the judgement directory may need creation. Its parent
+                # has already been opened without following any symlinks.
+                if index == len(components) - 1:
+                    try:
+                        os.mkdir(component, dir_fd=parent)
+                    except FileExistsError:
+                        pass
+                fd = os.open(component, flags, dir_fd=parent)
+                descriptors.append(fd)
+                links.append((parent, component, _identity(os.fstat(fd))))
+
+            def verify():
+                for parent, component, identity in links:
+                    info = os.stat(component, dir_fd=parent,
+                                   follow_symlinks=False)
+                    if (not stat.S_ISDIR(info.st_mode)
+                            or _identity(info) != identity):
+                        raise ConvergenceError(
+                            "approach judgement untrusted symlink or replaced path")
+
+            verify()
+            directory_fd = descriptors[-1]
+            log_fd = _open_regular(descriptors[-2], "log.jsonl", writable=True)
+            lock_fd = os.open(path.name + ".lock",
+                              os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW
+                              | os.O_NONBLOCK, 0o600, dir_fd=directory_fd)
+            if not stat.S_ISREG(os.fstat(lock_fd).st_mode):
+                raise ConvergenceError("approach judgement lock must be regular")
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            verify()
+        except (OSError, AttributeError) as exc:
+            raise ConvergenceError(
+                "approach judgement untrusted symlink or unreadable writer path") from exc
+        yield directory_fd, log_fd, verify
+    finally:
+        if lock_fd is not None:
+            os.close(lock_fd)
+        if log_fd is not None:
+            os.close(log_fd)
+        for fd in reversed(descriptors):
+            os.close(fd)
 
 
 def _event_data(repo, path, record):
@@ -610,27 +653,38 @@ def _event_data(repo, path, record):
     }
 
 
-def _append_recorded_event_if_missing(repo, item_id, data):
+def _append_recorded_event_if_missing(repo, item_id, data, log_fd, verify):
     if any(event.get("event") == "approach.judgement.recorded"
            and event.get("data") == data
            for event in logs.read_events(repo, item_id)):
         return
-    logs.append_event(repo, item_id, "approach.judgement.recorded", data)
+    verify()
+    logs.append_event(repo, item_id, "approach.judgement.recorded", data,
+                      file_fd=log_fd)
 
 
-def _write_record(path, record):
+def _write_record(path, record, directory_fd, verify):
     temporary = None
     try:
-        with tempfile.NamedTemporaryFile(
-                mode="w", encoding="utf-8", dir=path.parent,
-                prefix=f".{path.name}.", suffix=".tmp", delete=False) as f:
-            temporary = Path(f.name)
+        verify()
+        while True:
+            name = f".{path.name}.{secrets.token_hex(16)}.tmp"
+            try:
+                fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                             | os.O_NOFOLLOW, 0o600, dir_fd=directory_fd)
+                break
+            except FileExistsError:
+                continue
+        temporary = name
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(json.dumps(record, indent=2, sort_keys=True) + "\n")
-        temporary.replace(path)
+        verify()
+        os.replace(temporary, path.name, src_dir_fd=directory_fd,
+                   dst_dir_fd=directory_fd)
     finally:
         if temporary is not None:
             try:
-                temporary.unlink()
+                os.unlink(temporary, dir_fd=directory_fd)
             except FileNotFoundError:
                 pass
 
@@ -682,7 +736,7 @@ def record_judgement(repo, item_id, record):
             "is not true")
     context = current_context(repo, item_id)
     path = Path(repo) / context["record"]
-    with _record_lock(path):
+    with _record_lock(repo, path) as (directory_fd, log_fd, verify):
         attempts = record.get("attempts") if isinstance(record, dict) else None
         if (not path.exists() and isinstance(attempts, list)
                 and len(attempts) > 1):
@@ -692,7 +746,7 @@ def record_judgement(repo, item_id, record):
         validate_current(repo, meta, record)
         data = _event_data(repo, path, record)
         if path.exists():
-            existing = _load_record(path)
+            existing = _load_authoritative_record(repo, context["record"])
             _validate_existing_structure(existing)
             existing_data = _event_data(repo, path, existing)
             if _is_prior_tier_context(existing, record):
@@ -702,12 +756,14 @@ def record_judgement(repo, item_id, record):
                 # tier, so an interruption cannot erase its audit event.
                 _validate_prior_tier_replacement(existing, record)
                 _append_recorded_event_if_missing(
-                    repo, item_id, existing_data)
-                _write_record(path, record)
-                _append_recorded_event_if_missing(repo, item_id, data)
+                    repo, item_id, existing_data, log_fd, verify)
+                _write_record(path, record, directory_fd, verify)
+                _append_recorded_event_if_missing(
+                    repo, item_id, data, log_fd, verify)
                 return path
             validate_current(repo, meta, existing)
-            _append_recorded_event_if_missing(repo, item_id, existing_data)
+            _append_recorded_event_if_missing(
+                repo, item_id, existing_data, log_fd, verify)
             if existing == record:
                 return path
             changed = [key for key in IMMUTABLE_FIELDS
@@ -725,6 +781,7 @@ def record_judgement(repo, item_id, record):
                 raise ConvergenceError(
                     "approach judgement update must append exactly one reviewer "
                     "attempt and preserve prior attempts byte-for-byte")
-        _write_record(path, record)
-        _append_recorded_event_if_missing(repo, item_id, data)
+        _write_record(path, record, directory_fd, verify)
+        _append_recorded_event_if_missing(
+            repo, item_id, data, log_fd, verify)
         return path

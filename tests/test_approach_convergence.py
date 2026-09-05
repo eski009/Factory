@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import shutil
 import tempfile
 import threading
 import unittest
@@ -460,6 +461,71 @@ class TestApproachRecordWriter(ConvergenceCase):
         super().setUp()
         self.configure(True)
         self.make_plan_item()
+
+    def assert_directory_symlinks_refused(self, after_context=False):
+        from scripts.factory.lib import convergence
+        record = self.record()
+        canonical = self.repo / self.context()["record"]
+        for directory in (canonical.parent, canonical.parent.parent,
+                          self.repo / ".factory/items", self.repo / ".factory"):
+            with self.subTest(directory=directory.relative_to(self.repo)), \
+                    tempfile.TemporaryDirectory() as tmp:
+                external = Path(tmp) / "external"
+                if directory.exists():
+                    shutil.copytree(directory, external)
+                else:
+                    external.mkdir()
+                before = {p.relative_to(external): p.read_bytes()
+                          for p in external.rglob("*") if p.is_file()}
+                original_log = paths.item_dir(self.repo, ITEM) / "log.jsonl"
+                log_bytes = original_log.read_bytes()
+                backup = directory.with_name(directory.name + ".saved")
+                moved = directory.exists()
+                swapped = False
+
+                def swap():
+                    nonlocal swapped
+                    if moved:
+                        directory.rename(backup)
+                    directory.symlink_to(external, target_is_directory=True)
+                    swapped = True
+
+                original_context = convergence.current_context
+
+                def context_then_swap(*args, **kwargs):
+                    context = original_context(*args, **kwargs)
+                    if not swapped:
+                        swap()
+                    return context
+
+                try:
+                    if not after_context:
+                        swap()
+                    with mock.patch.object(
+                            convergence, "current_context",
+                            side_effect=context_then_swap if after_context
+                            else original_context):
+                        code, _out, err = self.run_cli(
+                            "approach-judgement", ITEM,
+                            "--data", json.dumps(record))
+                    after = {p.relative_to(external): p.read_bytes()
+                             for p in external.rglob("*") if p.is_file()}
+                    self.assertEqual(after, before,
+                                     "writer mutated external files through symlink")
+                    self.assertEqual(original_log.read_bytes(), log_bytes)
+                    self.assertEqual(code, 2, err)
+                    self.assertIn("symlink", err)
+                finally:
+                    if swapped:
+                        directory.unlink()
+                    if moved and backup.exists():
+                        backup.rename(directory)
+
+    def test_directory_symlinks_refused_without_external_mutation(self):
+        self.assert_directory_symlinks_refused()
+
+    def test_parent_symlinks_after_context_refused_without_external_mutation(self):
+        self.assert_directory_symlinks_refused(after_context=True)
 
     def test_context_cli_exposes_only_engine_derived_values(self):
         code, out, err = self.run_cli("approach-context", ITEM, "--json")
