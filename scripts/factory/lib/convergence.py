@@ -128,9 +128,11 @@ def _anchored_item(repo, item_id):
             os.close(fd)
 
 
-def _open_regular(directory_fd, name, writable=False):
+def _open_regular(directory_fd, name, writable=False, append=False):
     flags = (os.O_RDWR if writable else os.O_RDONLY)
     flags |= os.O_NOFOLLOW | os.O_NONBLOCK
+    if append:
+        flags |= os.O_APPEND
     try:
         fd = os.open(name, flags, dir_fd=directory_fd)
     except OSError as exc:
@@ -589,6 +591,7 @@ def _record_lock(repo, path):
     """Anchor all writer mutations to no-follow repository descriptors."""
     descriptors, links = [], []
     lock_fd = log_fd = None
+    log_identity = None
     try:
         try:
             flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
@@ -608,17 +611,31 @@ def _record_lock(repo, path):
                 links.append((parent, component, _identity(os.fstat(fd))))
 
             def verify():
-                for parent, component, identity in links:
-                    info = os.stat(component, dir_fd=parent,
-                                   follow_symlinks=False)
-                    if (not stat.S_ISDIR(info.st_mode)
-                            or _identity(info) != identity):
-                        raise ConvergenceError(
-                            "approach judgement untrusted symlink or replaced path")
+                try:
+                    for parent, component, identity in links:
+                        info = os.stat(component, dir_fd=parent,
+                                       follow_symlinks=False)
+                        if (not stat.S_ISDIR(info.st_mode)
+                                or _identity(info) != identity):
+                            raise ConvergenceError(
+                                "approach judgement untrusted symlink or replaced path")
+                    if log_identity is not None:
+                        info = os.stat("log.jsonl", dir_fd=descriptors[-2],
+                                       follow_symlinks=False)
+                        if (not stat.S_ISREG(info.st_mode)
+                                or _identity(info) != log_identity):
+                            raise ConvergenceError(
+                                "approach judgement untrusted symlink or replaced log.jsonl")
+                except OSError as exc:
+                    raise ConvergenceError(
+                        "approach judgement unreadable or replaced writer path") from exc
 
             verify()
             directory_fd = descriptors[-1]
-            log_fd = _open_regular(descriptors[-2], "log.jsonl", writable=True)
+            log_fd = _open_regular(descriptors[-2], "log.jsonl",
+                                   writable=True, append=True)
+            log_identity = _identity(os.fstat(log_fd))
+            verify()
             lock_fd = os.open(path.name + ".lock",
                               os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW
                               | os.O_NONBLOCK, 0o600, dir_fd=directory_fd)
@@ -630,6 +647,7 @@ def _record_lock(repo, path):
             raise ConvergenceError(
                 "approach judgement untrusted symlink or unreadable writer path") from exc
         yield directory_fd, log_fd, verify
+        verify()
     finally:
         if lock_fd is not None:
             os.close(lock_fd)
@@ -654,13 +672,28 @@ def _event_data(repo, path, record):
 
 
 def _append_recorded_event_if_missing(repo, item_id, data, log_fd, verify):
-    if any(event.get("event") == "approach.judgement.recorded"
-           and event.get("data") == data
-           for event in logs.read_events(repo, item_id)):
-        return
     verify()
+    # Match logs.read_events' tolerant semantics without reopening a pathname.
+    text = _read_descriptor(log_fd).decode("utf-8", errors="replace")
+    found = False
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if (isinstance(event, dict) and "event" in event and "ts" in event
+                and event["event"] == "approach.judgement.recorded"
+                and event.get("data") == data):
+            found = True
+            break
+    verify()
+    if found:
+        return
     logs.append_event(repo, item_id, "approach.judgement.recorded", data,
                       file_fd=log_fd)
+    verify()
 
 
 def _write_record(path, record, directory_fd, verify):

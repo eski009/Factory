@@ -462,6 +462,114 @@ class TestApproachRecordWriter(ConvergenceCase):
         self.configure(True)
         self.make_plan_item()
 
+    def test_log_concurrent_append_is_preserved(self):
+        from scripts.factory.lib import convergence
+        record = self.record()
+        original_fdopen = os.fdopen
+        injected = False
+
+        class InterleavedAppend:
+            def __init__(self, stream):
+                self.stream = stream
+
+            def __enter__(self):
+                self.stream.__enter__()
+                return self
+
+            def __exit__(self, *args):
+                return self.stream.__exit__(*args)
+
+            def seek(self, *args):
+                nonlocal injected
+                result = self.stream.seek(*args)
+                if not injected:
+                    injected = True
+                    logs.append_event(self_repo, ITEM, "concurrent.sentinel")
+                return result
+
+            def write(self, value):
+                return self.stream.write(value)
+
+        self_repo = self.repo
+
+        def interleaved_fdopen(fd, mode="r", *args, **kwargs):
+            stream = original_fdopen(fd, mode, *args, **kwargs)
+            return InterleavedAppend(stream) if mode == "a" else stream
+
+        with mock.patch.object(os, "fdopen", side_effect=interleaved_fdopen):
+            convergence.record_judgement(self.repo, ITEM, record)
+        self.assertTrue(injected)
+        events = logs.read_events(self.repo, ITEM)
+        self.assertEqual(sum(e["event"] == "concurrent.sentinel" for e in events),
+                         1, "concurrent append was overwritten")
+        self.assertEqual(sum(e["event"] == "approach.judgement.recorded"
+                             for e in events), 1)
+
+    def test_log_leaf_replacement_after_publication_is_refused(self):
+        from scripts.factory.lib import convergence
+        record = self.record()
+        log = paths.item_dir(self.repo, ITEM) / "log.jsonl"
+        before = log.read_bytes()
+        original_replace = os.replace
+        with tempfile.TemporaryDirectory() as tmp:
+            detached = Path(tmp) / "detached.jsonl"
+
+            def replace_then_move_log(*args, **kwargs):
+                original_replace(*args, **kwargs)
+                log.rename(detached)
+                log.write_bytes(before)
+
+            with mock.patch.object(os, "replace", side_effect=replace_then_move_log):
+                code, _out, err = self.run_cli(
+                    "approach-judgement", ITEM, "--data", json.dumps(record))
+            self.assertEqual(detached.read_bytes(), before,
+                             "writer appended to the externally moved log")
+            self.assertEqual(log.read_bytes(), before)
+            self.assertEqual(code, 2, "writer accepted a replaced log: " + err)
+            convergence.record_judgement(self.repo, ITEM, record)
+            convergence.record_judgement(self.repo, ITEM, record)
+            self.assertEqual(logs.count_events(
+                self.repo, ITEM, "approach.judgement.recorded"), 1)
+
+    def test_log_parent_swap_with_forged_dedup_event_is_refused(self):
+        from scripts.factory.lib import convergence
+        record = self.record()
+        path = self.repo / self.context()["record"]
+        directory = paths.item_dir(self.repo, ITEM)
+        backup = directory.with_name(directory.name + ".saved")
+        before = (directory / "log.jsonl").read_bytes()
+        original_replace = os.replace
+        with tempfile.TemporaryDirectory() as tmp:
+            external = Path(tmp) / "external"
+            shutil.copytree(directory, external)
+            forged = {"event": "approach.judgement.recorded", "ts": logs.now_stamp(),
+                      "data": convergence._event_data(self.repo, path, record)}
+            external_log = external / "log.jsonl"
+            external_log.write_text(json.dumps(forged) + "\n", encoding="utf-8")
+            external_before = external_log.read_bytes()
+
+            def replace_then_swap_parent(*args, **kwargs):
+                original_replace(*args, **kwargs)
+                directory.rename(backup)
+                directory.symlink_to(external, target_is_directory=True)
+
+            try:
+                with mock.patch.object(os, "replace",
+                                       side_effect=replace_then_swap_parent):
+                    code, _out, err = self.run_cli(
+                        "approach-judgement", ITEM, "--data", json.dumps(record))
+                self.assertEqual((backup / "log.jsonl").read_bytes(), before)
+                self.assertEqual(external_log.read_bytes(), external_before)
+                self.assertEqual(code, 2,
+                                 "forged external event suppressed internal audit: " + err)
+            finally:
+                if backup.exists():
+                    directory.unlink()
+                    backup.rename(directory)
+            convergence.record_judgement(self.repo, ITEM, record)
+            self.assertEqual(logs.count_events(
+                self.repo, ITEM, "approach.judgement.recorded"), 1)
+
     def assert_directory_symlinks_refused(self, after_context=False):
         from scripts.factory.lib import convergence
         record = self.record()
