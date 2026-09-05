@@ -1,11 +1,15 @@
 # J-003 — Redesign cap decision
 
 _status: draft — drafted at the spec stage of
-`0015-approach-rejected-a-redesign-loop-back-t` (assure profile for tier
+`0015-approach-rejected-a-redesign-loop-back-t` and extended at the spec stage
+of `0014-approach-gate-at-plan-judge-convergence-` to cover `plan` as an
+additional caller of the same edge (assure profile for tier
 `feature` is `affected`, so depth covers the touched nodes and their immediate
 neighbours, not the whole pipeline). Modelled on the ratified J-002 contract —
 this pause is deliberately the same decision shape as the cost breaker's, so a
 divergence between the two packets is a defect unless a bid records why._
+
+The shared firing set is `{plan, review, verify, assure}`. Every origin uses the same lifetime cap and answer watermark; `plan` adds reachability, not a second mechanism.
 
 - **Persona:** The Overnight Operator (`docs/factory/brain/personas.md`) — pays
   the token bill personally, was not watching the run, is skeptical by default.
@@ -67,7 +71,7 @@ design the pipeline has twice failed to converge — or choosing to stop.
 
 | scenario | oracle |
 |---|---|
-| edge admitted | below cap, `factory advance <id> spec` from each firing stage exits 0 and appends a `stage.advance` event with `from` in `{review, verify, assure}` and `to == "spec"` |
+| edge admitted | below cap, `factory advance <id> spec` from each firing stage exits 0 and appends a `stage.advance` event with `from` in `{plan, review, verify, assure}` and `to == "spec"` |
 | artifact-gated | the same advance with `approaches/forbidden.md` missing or empty exits 2 with the path named |
 | cap refusal | at `MAX_APPROACH_REJECTIONS` engine-counted edges with no covering answer, the advance exits 2 and stderr starts `approach cap:` and names `factory approach-answer` |
 | edge substrate | the invariance arm: counts equal with and without skill-logged `approach.rejected`/`review.rejected`/`assure.rejected` events, zero with events but no edges |

@@ -102,6 +102,32 @@
           "tests/test_plugin_coherence.py"
         ]
       }
+    },
+    {
+      "id": "J-005",
+      "slug": "plan-approach-convergence-gate",
+      "title": "Plan approach convergence gate — a risky strategy is judged before implementation spend",
+      "persona": "The Overnight Operator (docs/factory/brain/personas.md)",
+      "trigger": "With approach convergence explicitly enabled, an item attempts to leave plan and its current-round screen carries at least one named convergence-risk signal",
+      "outcome": "The operator can audit why implementation was admitted or refused from one cited current-round artifact while the autonomous run enters implement only on a pass or follows the existing redesign route on rejection",
+      "criticality": "high",
+      "status": "draft",
+      "contract": "contracts/J-005-plan-approach-convergence-gate.md",
+      "links": {
+        "apis": [
+          "scripts/factory/lib/convergence.py::current_context",
+          "scripts/factory/lib/convergence.py::record_judgement",
+          "scripts/factory/lib/convergence.py::require_authoritative",
+          "scripts/factory/lib/machine.py::_gate_implement",
+          "scripts/factory/lib/machine.py::advance",
+          "skills/factory-plan/SKILL.md"
+        ],
+        "tests": [
+          "tests/test_approach_convergence.py",
+          "tests/test_approach.py",
+          "tests/test_plugin_coherence.py"
+        ]
+      }
     }
   ]
 }
