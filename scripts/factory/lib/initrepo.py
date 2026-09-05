@@ -202,6 +202,9 @@ def validate_tree(repo):
                     try:
                         judgement = json.loads(judgement_path.read_text(
                             encoding="utf-8", errors="replace"))
+                    except (OSError, UnicodeDecodeError) as exc:
+                        errors.append(f"{rel}: unreadable ({exc})")
+                        continue
                     except json.JSONDecodeError as exc:
                         errors.append(f"{rel}: invalid JSON ({exc})")
                         continue

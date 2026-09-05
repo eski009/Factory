@@ -556,6 +556,8 @@ class TestApproachRecordWriter(ConvergenceCase):
             "path": self.context()["record"],
             "planning_round": record["planning_round"],
             "plan_sha256": record["plan_sha256"],
+            "tier": record["tier"],
+            "escalation_bound": record["escalation_bound"],
             "signals": [],
             "attempts": 0,
             "final_verdict": "not-triggered",
@@ -568,6 +570,72 @@ class TestApproachRecordWriter(ConvergenceCase):
         self.assertEqual(len(matching), 1)
         self.assertEqual(logs.count_events(
             self.repo, ITEM, "approach.judgement.recorded"), 1)
+
+    def test_final_update_reconciles_interrupted_escalation_event_in_order(self):
+        from scripts.factory.lib import convergence
+        first = self.record(
+            signals=(SIGNALS[0],),
+            attempts=(self.attempt(1, verdict="uncertain"),),
+            final_verdict="uncertain", disposition="escalate")
+        second = self.record(
+            signals=(SIGNALS[0],),
+            attempts=(self.attempt(1, verdict="uncertain"), self.attempt(2)),
+            final_verdict="pass", disposition="advance")
+        path = self.repo / self.context()["record"]
+
+        with mock.patch.object(
+                convergence.logs, "append_event",
+                side_effect=OSError("injected interruption after replace")):
+            with self.assertRaisesRegex(OSError, "injected interruption"):
+                convergence.record_judgement(self.repo, ITEM, first)
+
+        self.assertEqual(json.loads(path.read_text(encoding="utf-8")), first)
+        self.assertEqual(
+            convergence.record_judgement(self.repo, ITEM, second), path)
+        self.assertEqual(
+            convergence.record_judgement(self.repo, ITEM, second), path)
+
+        events = [event["data"] for event in logs.read_events(self.repo, ITEM)
+                  if event.get("event") == "approach.judgement.recorded"]
+        self.assertEqual(len(events), 2, events)
+        self.assertEqual(
+            [(event["tier"], event["escalation_bound"], event["attempts"],
+              event["final_verdict"], event["disposition"])
+             for event in events],
+            [("feature", 1, 1, "uncertain", "escalate"),
+             ("feature", 1, 2, "pass", "advance")])
+
+    def test_stale_tier_record_reconciles_then_replaces_same_canonical_path(self):
+        from scripts.factory.lib import convergence
+        feature = self.record()
+        path = self.repo / self.context()["record"]
+
+        with mock.patch.object(
+                convergence.logs, "append_event",
+                side_effect=OSError("injected interruption after replace")):
+            with self.assertRaisesRegex(OSError, "injected interruption"):
+                convergence.record_judgement(self.repo, ITEM, feature)
+
+        items.set_tier(self.repo, ITEM, "bug")
+        bug = self.record()
+        self.assertEqual(bug["tier"], "bug")
+        self.assertEqual(bug["escalation_bound"], 0)
+        self.assertEqual(self.repo / self.context()["record"], path)
+
+        self.assertEqual(
+            convergence.record_judgement(self.repo, ITEM, bug), path)
+        self.assertEqual(json.loads(path.read_text(encoding="utf-8")), bug)
+        self.assertEqual(
+            convergence.record_judgement(self.repo, ITEM, bug), path)
+
+        events = [event["data"] for event in logs.read_events(self.repo, ITEM)
+                  if event.get("event") == "approach.judgement.recorded"]
+        self.assertEqual(
+            [(event["tier"], event["escalation_bound"], event["attempts"])
+             for event in events],
+            [("feature", 1, 0), ("bug", 0, 0)])
+        self.assertTrue(all(event["path"] == self.context()["record"]
+                            for event in events))
 
     def test_concurrent_incompatible_writers_serialize_without_temp_collision(self):
         from scripts.factory.lib import convergence

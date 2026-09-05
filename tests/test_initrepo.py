@@ -437,6 +437,25 @@ class InitTest(unittest.TestCase):
             "approach-judgements" in error and "unexpected property" in error
             for error in errors), errors)
 
+    def test_validate_reports_unreadable_historical_judgement_and_continues(self):
+        initrepo.init(self.repo)
+        item = paths.item_dir(self.repo, "0001-x")
+        item.mkdir(parents=True, exist_ok=True)
+        records = item / "approach-judgements"
+        records.mkdir()
+        (records / "bad.json").mkdir()
+        (records / "later.json").write_text(
+            '{"version":1,"unexpected":true}\n', encoding="utf-8")
+
+        errors = initrepo.validate_tree(self.repo)
+
+        self.assertTrue(any(
+            "0001-x/approach-judgements/bad.json" in error
+            and "unreadable" in error for error in errors), errors)
+        self.assertTrue(any(
+            "0001-x/approach-judgements/later.json" in error
+            and "unexpected property" in error for error in errors), errors)
+
 
 class SpendValidateTest(unittest.TestCase):
     def setUp(self):

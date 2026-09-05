@@ -298,6 +298,8 @@ def _event_data(repo, path, record):
         "path": _repo_relative(repo, path),
         "planning_round": record["planning_round"],
         "plan_sha256": record["plan_sha256"],
+        "tier": record["tier"],
+        "escalation_bound": record["escalation_bound"],
         "signals": [signal["id"] for signal in record["signals"]],
         "attempts": len(record["attempts"]),
         "final_verdict": record["final_verdict"],
@@ -330,6 +332,22 @@ def _write_record(path, record):
                 pass
 
 
+def _validate_existing_structure(record):
+    errors = _schema_errors(record, "existing approach judgement")
+    if errors:
+        raise ConvergenceError(
+            "existing approach judgement schema invalid: " + "; ".join(errors))
+
+
+def _is_prior_tier_context(existing, record):
+    """True only for a valid old tier at the current round/hash door."""
+    same_door = all(existing[key] == record[key]
+                    for key in ("item", "planning_round", "plan_sha256"))
+    if not same_door or existing["tier"] == record["tier"]:
+        return False
+    return existing["escalation_bound"] == escalation_bound(existing["tier"])
+
+
 def record_judgement(repo, item_id, record):
     meta, _body = items.load_item(repo, item_id)
     if not enabled(repo):
@@ -349,9 +367,25 @@ def record_judgement(repo, item_id, record):
         data = _event_data(repo, path, record)
         if path.exists():
             existing = _load_record(path)
-            validate_current(repo, meta, existing)
-            if existing == record:
+            _validate_existing_structure(existing)
+            existing_data = _event_data(repo, path, existing)
+            if _is_prior_tier_context(existing, record):
+                # Tier/bound are mutable context but do not participate in the
+                # canonical round/hash path. Reconcile the accepted historical
+                # state before replacing it with the freshly validated current
+                # tier, so an interruption cannot erase its audit event.
+                _append_recorded_event_if_missing(
+                    repo, item_id, existing_data)
+                if isinstance(attempts, list) and len(attempts) > 1:
+                    raise ConvergenceError(
+                        "approach judgement fresh tier context initial write "
+                        "may contain at most one reviewer attempt")
+                _write_record(path, record)
                 _append_recorded_event_if_missing(repo, item_id, data)
+                return path
+            validate_current(repo, meta, existing)
+            _append_recorded_event_if_missing(repo, item_id, existing_data)
+            if existing == record:
                 return path
             changed = [key for key in IMMUTABLE_FIELDS
                        if existing.get(key) != record.get(key)]
