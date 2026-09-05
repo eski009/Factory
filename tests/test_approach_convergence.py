@@ -749,6 +749,71 @@ class TestApproachRecordWriter(ConvergenceCase):
         self.assertIn("written only by factory approach-judgement", err)
 
 
+class TestApproachRejectionHandoff(ConvergenceCase):
+    def test_rejecting_judgement_hands_off_to_shared_redesign_edge(self):
+        from scripts.factory.lib import convergence
+        cases = (("feature", "reject", None),
+                 ("bug", "uncertain", None),
+                 ("feature", "uncertain", "reject"),
+                 ("feature", "uncertain", "uncertain"))
+        for index, (tier, first, second) in enumerate(cases):
+            with self.subTest(tier=tier, first=first, second=second):
+                if index:
+                    self.tearDown()
+                    self.setUp()
+                self.configure(True)
+                item_dir = self.make_plan_item(tier=tier)
+                attempts = (self.attempt(1, verdict=first),)
+                record = self.record(
+                    signals=(SIGNALS[0],), attempts=attempts,
+                    final_verdict=first,
+                    disposition="escalate" if second else "approach.rejected")
+                record_path = convergence.record_judgement(self.repo, ITEM,
+                                                            record)
+                if second:
+                    record = self.record(
+                        signals=(SIGNALS[0],),
+                        attempts=attempts + (self.attempt(2, verdict=second),),
+                        final_verdict=second, disposition="approach.rejected")
+                    convergence.record_judgement(self.repo, ITEM, record)
+                before = logs.read_events(self.repo, ITEM)
+                with self.assertRaises(machine.GateError) as ctx:
+                    machine.advance(self.repo, ITEM, "implement")
+                self.assertIn(f"route factory advance {ITEM} spec",
+                              str(ctx.exception))
+                self.assertEqual(items.load_item(self.repo, ITEM)[0]["stage"],
+                                 "plan")
+                self.assertEqual(logs.read_events(self.repo, ITEM), before)
+
+                # The orchestrator appends the cited rejection while the
+                # judgement and plan evidence are fresh, before re-routing.
+                cited_record = record_path.relative_to(self.repo).as_posix()
+                plan_evidence = record["signals"][0]["evidence"][0]
+                citation = (f"{plan_evidence['path']}:"
+                            f"{plan_evidence['start_line']}-"
+                            f"{plan_evidence['end_line']}")
+                forbidden = item_dir / "approaches" / "forbidden.md"
+                forbidden.parent.mkdir(parents=True, exist_ok=True)
+                entry = ("## 2026-09-04T12:00:00Z - rejected at plan (entry 1)\n\n"
+                         "The selected approach has no bounded completion.\n"
+                         f"Evidence: {cited_record}; {citation}\n\n")
+                with forbidden.open("a", encoding="utf-8") as stream:
+                    stream.write(entry)
+                reason = "approach.rejected: selected strategy cannot converge"
+                meta, _ = machine.advance(self.repo, ITEM, "spec", reason=reason)
+                self.assertEqual(meta["stage"], "spec")
+                self.assertEqual(forbidden.read_text(encoding="utf-8"), entry)
+                self.assertEqual(json.loads(record_path.read_text()), record)
+                events = logs.read_events(self.repo, ITEM)
+                self.assertEqual(events[-1]["data"],
+                                 {"from": "plan", "to": "spec", "reason": reason})
+                self.assertEqual(machine._approach_edges(events)[0], 1)
+                self.assertFalse(any(
+                    event["event"] == "stage.advance"
+                    and event["data"]["to"] in {"implement", "blocked"}
+                    for event in events))
+
+
 class TestApproachAdvanceGate(ConvergenceCase):
     def setUp(self):
         super().setUp()
