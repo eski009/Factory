@@ -107,6 +107,71 @@ def current_context(repo, item_id):
     }
 
 
+def _stale_record_reason(repo, context):
+    directory = (Path(repo) / context["record"]).parent
+    same_round = None
+    same_hash = None
+    found_json = False
+    try:
+        candidates = sorted(directory.glob("*.json"))
+    except OSError:
+        return None
+    for path in candidates:
+        try:
+            record = _load_record(path)
+        except ConvergenceError:
+            continue
+        found_json = True
+        if not isinstance(record, dict):
+            continue
+        if (record.get("planning_round") == context["planning_round"]
+                and record.get("plan_sha256") != context["plan_sha256"]):
+            same_round = path
+        elif (record.get("planning_round") != context["planning_round"]
+              and record.get("plan_sha256") == context["plan_sha256"]):
+            same_hash = path
+    if same_round is not None:
+        return (
+            f"stale plan judgement retained at {_repo_relative(repo, same_round)}; "
+            "record the edited plan's current hash")
+    if same_hash is not None:
+        return (
+            "stale planning-round judgement retained at "
+            f"{_repo_relative(repo, same_hash)}; record the current round "
+            f"{context['planning_round']}")
+    if found_json:
+        return (
+            "only stale approach judgements exist; record the current round "
+            f"{context['planning_round']} and plan hash {context['plan_sha256']}")
+    return None
+
+
+def require_authoritative(repo, meta):
+    if not enabled(repo):
+        return None
+    context = current_context(repo, meta["id"])
+    path = Path(repo) / context["record"]
+    if not path.exists():
+        stale = _stale_record_reason(repo, context)
+        if stale:
+            raise ConvergenceError(stale)
+        raise ConvergenceError(
+            "current approach judgement missing: run factory approach-context "
+            f"{meta['id']} --json, then record through factory "
+            "approach-judgement")
+    record = _load_record(path)
+    validate_current(repo, meta, record)
+    if record["disposition"] == "escalate":
+        raise ConvergenceError(
+            "approach judgement requires one fresh escalation reviewer")
+    if record["disposition"] == "approach.rejected":
+        raise ConvergenceError(
+            "approach judgement rejected the current plan; append the cited "
+            "forbidden approach, then route factory advance "
+            f"{meta['id']} spec --reason 'approach.rejected: <one line>'")
+    return record
+
+
 def _schema_errors(record, label="judgement"):
     return validate_schema(
         record, initrepo.load_schema("approach-judgement"), label)

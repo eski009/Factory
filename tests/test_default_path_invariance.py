@@ -86,6 +86,28 @@ def _gate_outcome(repo):
     return "advanced: ship\n"
 
 
+def _plan_exit_events(repo):
+    initrepo.init(repo, product="demo")
+    meta = {
+        "id": ITEM, "title": "Thing", "stage": "idea", "kind": "backend",
+        "tier": "feature", "journeys": "none", "priority": 1,
+        "created": "2026-07-03T10:00:00Z",
+        "updated": "2026-07-03T10:00:00Z",
+    }
+    items.save_item(repo, meta, "# Thing\n")
+    item_dir = paths.item_dir(repo, ITEM)
+    machine.advance(repo, ITEM, "triage")
+    (item_dir / "triage.md").write_text("build\n", encoding="utf-8")
+    machine.advance(repo, ITEM, "spec")
+    (item_dir / "spec.md").write_text(
+        "# Spec\n\n## Journey impact\nnone\n", encoding="utf-8")
+    machine.advance(repo, ITEM, "plan")
+    (item_dir / "plan.md").write_text(
+        "- [ ] implement the bounded change\n", encoding="utf-8")
+    machine.advance(repo, ITEM, "implement")
+    return logs.read_events(repo, ITEM)
+
+
 def capture():
     """Every default-path surface AC1 pins, as normalised text."""
     out = {}
@@ -129,6 +151,24 @@ class TestDefaultPathInvariance(unittest.TestCase):
                 golden.read_text(encoding="utf-8"), text,
                 f"default-path output changed: {name} "
                 "(regenerate only for a deliberate, reviewed change)")
+
+    def test_disabled_approach_gate_preserves_plan_exit_events(self):
+        with tempfile.TemporaryDirectory() as default_tmp, \
+                tempfile.TemporaryDirectory() as disabled_tmp:
+            default_repo = Path(default_tmp)
+            disabled_repo = Path(disabled_tmp)
+            expected = _plan_exit_events(default_repo)
+
+            initrepo.init(disabled_repo, product="demo")
+            config_path = paths.config_path(disabled_repo)
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+            config["approach_convergence"] = {"enabled": False}
+            config_path.write_text(
+                json.dumps(config, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8")
+            actual = _plan_exit_events(disabled_repo)
+
+        self.assertEqual(actual, expected)
 
 
 def _regenerate():

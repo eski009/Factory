@@ -747,3 +747,225 @@ class TestApproachRecordWriter(ConvergenceCase):
             "log", ITEM, "approach.judgement.recorded")
         self.assertEqual(code, 1)
         self.assertIn("written only by factory approach-judgement", err)
+
+
+class TestApproachAdvanceGate(ConvergenceCase):
+    def setUp(self):
+        super().setUp()
+        self.configure(True)
+        self.item_dir = self.make_plan_item(
+            plan="- [ ] bounded change\n\nreview evidence\n")
+
+    def write_record(self, record):
+        path = self.repo / self.context()["record"]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(record, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8")
+        return path
+
+    def assert_advance_refused(self, fragment):
+        log_path = self.item_dir / "log.jsonl"
+        before = log_path.read_bytes()
+        with self.assertRaises(machine.GateError) as ctx:
+            machine.advance(self.repo, ITEM, "implement")
+        self.assertIn(fragment, str(ctx.exception))
+        meta, _body = items.load_item(self.repo, ITEM)
+        self.assertEqual(meta["stage"], "plan")
+        self.assertEqual(log_path.read_bytes(), before)
+
+    def test_missing_current_record_refuses_without_mutation(self):
+        self.assert_advance_refused("current approach judgement missing")
+
+    def test_recorded_zero_signal_screen_advances_once(self):
+        from scripts.factory.lib import convergence
+        convergence.record_judgement(self.repo, ITEM, self.record())
+
+        meta, _verdict = machine.advance(self.repo, ITEM, "implement")
+
+        self.assertEqual(meta["stage"], "implement")
+        events = logs.read_events(self.repo, ITEM)
+        writer = [event for event in events
+                  if event.get("event") == "approach.judgement.recorded"]
+        exits = [event for event in events
+                 if event.get("event") == "stage.advance"
+                 and event.get("data") == {"from": "plan", "to": "implement"}]
+        self.assertEqual(len(writer), 1)
+        self.assertEqual(writer[0]["data"]["attempts"], 0)
+        self.assertEqual(len(exits), 1)
+
+    def test_each_signal_shape_requires_then_admits_current_one_pass_record(self):
+        from scripts.factory.lib import convergence
+        groups = tuple((signal,) for signal in SIGNALS) + (SIGNALS,)
+        for index, signals in enumerate(groups):
+            with self.subTest(signals=signals):
+                if index:
+                    self.tearDown()
+                    self.setUp()
+                self.assert_advance_refused("current approach judgement missing")
+                convergence.record_judgement(
+                    self.repo, ITEM,
+                    self.record(signals=signals, attempts=(self.attempt(1),)))
+                meta, _verdict = machine.advance(self.repo, ITEM, "implement")
+                self.assertEqual(meta["stage"], "implement")
+
+    def test_escalation_and_rejection_refuse_with_actionable_routes(self):
+        from scripts.factory.lib import convergence
+        first_attempt = self.attempt(1, verdict="uncertain")
+        convergence.record_judgement(
+            self.repo, ITEM,
+            self.record(signals=(SIGNALS[0],), attempts=(first_attempt,),
+                        final_verdict="uncertain", disposition="escalate"))
+        self.assert_advance_refused("requires one fresh escalation reviewer")
+
+        convergence.record_judgement(
+            self.repo, ITEM,
+            self.record(
+                signals=(SIGNALS[0],),
+                attempts=(first_attempt, self.attempt(2, verdict="reject")),
+                final_verdict="reject", disposition="approach.rejected"))
+        self.assert_advance_refused("route factory advance")
+
+    def test_direct_malformed_wrong_item_and_unknown_verdict_refuse(self):
+        cases = ("malformed", "wrong-item", "unknown-verdict")
+        for index, label in enumerate(cases):
+            with self.subTest(label=label):
+                if index:
+                    self.tearDown()
+                    self.setUp()
+                if label == "malformed":
+                    path = self.repo / self.context()["record"]
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text("{oops\n", encoding="utf-8")
+                    fragment = "malformed JSON"
+                elif label == "wrong-item":
+                    record = self.record()
+                    record["item"] = "0002-other"
+                    self.write_record(record)
+                    fragment = "wrong item"
+                else:
+                    record = self.record(
+                        signals=(SIGNALS[0],), attempts=(self.attempt(1),))
+                    record["attempts"][0]["verdict"] = "maybe"
+                    self.write_record(record)
+                    fragment = "not one of"
+                self.assert_advance_refused(fragment)
+
+    def test_direct_validator_failures_refuse_without_log_mutation(self):
+        cases = (
+            "missing-citation", "empty-citation", "out-of-range",
+            "same-invocation", "reused-reviewer", "over-bound",
+            "incoherent-resolution",
+        )
+        for index, label in enumerate(cases):
+            with self.subTest(label=label):
+                if index:
+                    self.tearDown()
+                    self.setUp()
+                if label == "missing-citation":
+                    record = self.record(
+                        signals=(SIGNALS[0],),
+                        attempts=(self.attempt(1, path="missing.md"),))
+                    fragment = "citation path missing"
+                elif label == "empty-citation":
+                    empty = self.item_dir / "empty.md"
+                    empty.write_text("   \n", encoding="utf-8")
+                    record = self.record(
+                        signals=(SIGNALS[0],),
+                        attempts=(self.attempt(
+                            1, path=f".factory/items/{ITEM}/empty.md"),))
+                    fragment = "citation range is empty"
+                elif label == "out-of-range":
+                    record = self.record(
+                        signals=(SIGNALS[0],),
+                        attempts=(self.attempt(1, end=99),))
+                    fragment = "citation range out of range"
+                elif label == "same-invocation":
+                    record = self.record(
+                        signals=(SIGNALS[0],),
+                        attempts=(self.attempt(
+                            1, invocation="planner-001"),))
+                    fragment = "matches planner invocation"
+                elif label == "reused-reviewer":
+                    record = self.record(
+                        signals=(SIGNALS[0],),
+                        attempts=(
+                            self.attempt(1, verdict="uncertain"),
+                            self.attempt(2, invocation="reviewer-001"),
+                        ),
+                        final_verdict="pass")
+                    fragment = "reviewer invocation reused"
+                elif label == "over-bound":
+                    record = self.record(
+                        signals=(SIGNALS[0],),
+                        attempts=(
+                            self.attempt(1, verdict="uncertain"),
+                            self.attempt(2, verdict="uncertain"),
+                            self.attempt(3),
+                        ),
+                        final_verdict="pass")
+                    fragment = "attempt count 3 exceeds resolved maximum 2"
+                else:
+                    record = self.record(
+                        signals=(SIGNALS[0],), attempts=(self.attempt(1),),
+                        final_verdict="reject",
+                        disposition="approach.rejected")
+                    fragment = "incoherent: expected pass + advance"
+                self.write_record(record)
+                self.assert_advance_refused(fragment)
+
+    def test_edited_plan_retains_old_record_and_refuses_as_stale(self):
+        from scripts.factory.lib import convergence
+        old_path = convergence.record_judgement(
+            self.repo, ITEM, self.record())
+        self.item_dir.joinpath("plan.md").write_text(
+            "- [ ] edited bounded change\n", encoding="utf-8")
+
+        self.assert_advance_refused("stale plan judgement retained")
+        self.assertTrue(old_path.exists())
+
+    def test_reentered_plan_and_special_resume_keep_old_round_stale(self):
+        from scripts.factory.lib import convergence
+        old_context = self.context()
+        old_path = convergence.record_judgement(
+            self.repo, ITEM, self.record())
+        forbidden = self.item_dir / "approaches" / "forbidden.md"
+        forbidden.parent.mkdir(parents=True, exist_ok=True)
+        forbidden.write_text(
+            "## Rejected approach\n\n"
+            f"Evidence: .factory/items/{ITEM}/plan.md:1\n",
+            encoding="utf-8")
+        machine.advance(
+            self.repo, ITEM, "spec",
+            reason="approach.rejected: bounded plan did not converge")
+        self.item_dir.joinpath("spec.md").write_text(
+            "# Revised spec\n\n## Journey impact\nJ-005.\n",
+            encoding="utf-8")
+        logs.append_event(self.repo, ITEM, "spec.revised")
+        machine.advance(self.repo, ITEM, "plan")
+
+        current = self.context()
+        self.assertEqual(current["planning_round"], "plan-0002")
+        self.assertEqual(current["plan_sha256"], old_context["plan_sha256"])
+        self.assertTrue(old_path.exists())
+        self.assert_advance_refused("stale planning-round judgement retained")
+
+        machine.advance(self.repo, ITEM, "waiting-human", reason="interrupt")
+        machine.advance(self.repo, ITEM, "plan")
+        self.assertEqual(self.context()["planning_round"], "plan-0002")
+        self.assert_advance_refused("stale planning-round judgement retained")
+
+    def test_explicitly_disabled_gate_ignores_unsolicited_malformed_record(self):
+        self.configure(False)
+        path = self.repo / self.context()["record"]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{unsolicited malformed\n", encoding="utf-8")
+        before = logs.read_events(self.repo, ITEM)
+
+        meta, _verdict = machine.advance(self.repo, ITEM, "implement")
+
+        self.assertEqual(meta["stage"], "implement")
+        self.assertEqual(
+            logs.read_events(self.repo, ITEM)[len(before):],
+            [{"event": "stage.advance", "ts": "2026-09-04T12:00:00Z",
+              "data": {"from": "plan", "to": "implement"}}])

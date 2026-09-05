@@ -556,6 +556,11 @@ def _gate_implement(repo, meta):
     path = _artifact(repo, meta, "plan.md")
     if not path.exists() or "- [ ]" not in _read_text_or_empty(path):
         raise GateError("plan.md with at least one '- [ ]' task required")
+    from . import convergence
+    try:
+        convergence.require_authoritative(repo, meta)
+    except convergence.ConvergenceError as exc:
+        raise GateError(str(exc)) from exc
 
 
 def _gate_review(repo, meta):
