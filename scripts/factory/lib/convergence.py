@@ -5,9 +5,12 @@ the closed envelope, exact plan bytes, engine-derived planning round, bounded
 citations, independent invocation identities, and coherent disposition.
 """
 
+import errno
 import fcntl
 import hashlib
 import json
+import os
+import stat
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
@@ -31,6 +34,10 @@ IMMUTABLE_FIELDS = (
 
 class ConvergenceError(ValueError):
     """A judgement cannot be recorded or cannot authorize advancement."""
+
+
+class _AuthoritativeRecordMissing(ConvergenceError):
+    """The canonical record does not exist under the anchored repository."""
 
 
 def _config(repo):
@@ -150,8 +157,9 @@ def require_authoritative(repo, meta):
     if not enabled(repo):
         return None
     context = current_context(repo, meta["id"])
-    path = Path(repo) / context["record"]
-    if not path.exists():
+    try:
+        record = _load_authoritative_record(repo, context["record"])
+    except _AuthoritativeRecordMissing:
         stale = _stale_record_reason(repo, context)
         if stale:
             raise ConvergenceError(stale)
@@ -159,7 +167,6 @@ def require_authoritative(repo, meta):
             "current approach judgement missing: run factory approach-context "
             f"{meta['id']} --json, then record through factory "
             "approach-judgement")
-    record = _load_record(path)
     validate_current(repo, meta, record)
     if record["disposition"] == "escalate":
         raise ConvergenceError(
@@ -344,6 +351,87 @@ def _load_record(path):
         raise ConvergenceError(
             f"approach judgement malformed JSON: {path.name} ({exc})") from exc
     return value
+
+
+def _load_authoritative_record(repo, relative):
+    """Load canonical bytes without following any path component symlink."""
+    pure = PurePosixPath(relative)
+    if (pure.is_absolute() or not pure.parts
+            or any(part in ("", ".", "..") for part in pure.parts)):
+        raise ConvergenceError(
+            f"approach judgement has an untrusted canonical path: {relative}")
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        raise ConvergenceError(
+            "approach judgement cannot securely inspect canonical artifact "
+            f"{relative}: O_NOFOLLOW is unavailable")
+    flags = os.O_RDONLY | nofollow | getattr(os, "O_CLOEXEC", 0)
+    directory_flags = flags | getattr(os, "O_DIRECTORY", 0)
+    repo_root = Path(os.path.abspath(os.fspath(repo)))
+
+    def is_symlink(component, parent_fd=None):
+        try:
+            if parent_fd is None:
+                info = os.lstat(component)
+            else:
+                info = os.stat(
+                    component, dir_fd=parent_fd, follow_symlinks=False)
+        except OSError:
+            return False
+        return stat.S_ISLNK(info.st_mode)
+
+    def open_component(component, parent_fd=None, directory=False):
+        component_flags = directory_flags if directory else flags
+        try:
+            if parent_fd is None:
+                descriptor = os.open(component, component_flags)
+            else:
+                descriptor = os.open(
+                    component, component_flags, dir_fd=parent_fd)
+        except OSError as exc:
+            if is_symlink(component, parent_fd):
+                raise ConvergenceError(
+                    "approach judgement untrusted symlink in canonical "
+                    f"artifact path {relative}: {component}") from exc
+            if exc.errno == errno.ENOENT:
+                raise _AuthoritativeRecordMissing(relative) from exc
+            raise ConvergenceError(
+                f"approach judgement unreadable: {pure.name}; canonical "
+                f"artifact {relative}: {exc.strerror or exc}") from exc
+        expected = stat.S_ISDIR if directory else stat.S_ISREG
+        if not expected(os.fstat(descriptor).st_mode):
+            os.close(descriptor)
+            kind = "directory" if directory else "regular file"
+            raise ConvergenceError(
+                f"approach judgement unreadable: {pure.name}; canonical "
+                f"artifact {relative} component {component} is not a {kind}")
+        return descriptor
+
+    directory_fd = open_component(repo_root, directory=True)
+    try:
+        for component in pure.parts[:-1]:
+            next_fd = open_component(
+                component, parent_fd=directory_fd, directory=True)
+            os.close(directory_fd)
+            directory_fd = next_fd
+        record_fd = open_component(pure.name, parent_fd=directory_fd)
+        try:
+            with os.fdopen(record_fd, encoding="utf-8") as record_file:
+                record_fd = None
+                text = record_file.read()
+        except (OSError, UnicodeDecodeError) as exc:
+            raise ConvergenceError(
+                f"approach judgement unreadable: {pure.name}") from exc
+        finally:
+            if record_fd is not None:
+                os.close(record_fd)
+    finally:
+        os.close(directory_fd)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ConvergenceError(
+            f"approach judgement malformed JSON: {pure.name} ({exc})") from exc
 
 
 @contextmanager

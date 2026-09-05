@@ -851,6 +851,31 @@ class TestApproachAdvanceGate(ConvergenceCase):
                     fragment = "not one of"
                 self.assert_advance_refused(fragment)
 
+    def test_external_leaf_symlink_cannot_authorize_implement(self):
+        context = self.context()
+        canonical = self.repo / context["record"]
+        canonical.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory() as external_tmp:
+            external = Path(external_tmp) / "external-record.json"
+            external.write_text(
+                json.dumps(self.record(), indent=2, sort_keys=True) + "\n",
+                encoding="utf-8")
+            canonical.symlink_to(external)
+
+            self.assert_advance_refused("untrusted symlink")
+
+    def test_external_parent_symlink_cannot_authorize_implement(self):
+        context = self.context()
+        canonical = self.repo / context["record"]
+        with tempfile.TemporaryDirectory() as external_tmp:
+            external = Path(external_tmp)
+            external.joinpath(canonical.name).write_text(
+                json.dumps(self.record(), indent=2, sort_keys=True) + "\n",
+                encoding="utf-8")
+            canonical.parent.symlink_to(external, target_is_directory=True)
+
+            self.assert_advance_refused("untrusted symlink")
+
     def test_direct_validator_failures_refuse_without_log_mutation(self):
         cases = (
             "missing-citation", "empty-citation", "out-of-range",
