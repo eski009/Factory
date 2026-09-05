@@ -22,10 +22,15 @@ def _log_path(repo, item_id):
     return paths.item_dir(repo, item_id) / "log.jsonl"
 
 
-def append_event(repo, item_id, event, data=None):
+def append_event(repo, item_id, event, data=None, *, file_fd=None):
     entry = {"event": event, "ts": now_stamp()}
     if data is not None:
         entry["data"] = data
+    if file_fd is not None:
+        with os.fdopen(os.dup(file_fd), "a", encoding="utf-8") as stream:
+            stream.seek(0, os.SEEK_END)
+            stream.write(json.dumps(entry, sort_keys=True) + "\n")
+        return entry
     path = _log_path(repo, item_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:

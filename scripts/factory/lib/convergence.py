@@ -87,20 +87,161 @@ def _repo_relative(repo, path):
     return Path(path).relative_to(Path(repo)).as_posix()
 
 
+def _identity(info):
+    return info.st_dev, info.st_ino
+
+
+def _version(info):
+    return (_identity(info), info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
+@contextmanager
+def _anchored_item(repo, item_id):
+    """Pin every repository-relative directory; never follow a symlink."""
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        raise ConvergenceError("plan.md secure read requires O_NOFOLLOW")
+    flags = os.O_RDONLY | os.O_DIRECTORY | nofollow
+    descriptors, links = [], []
+    try:
+        root = os.path.abspath(os.fspath(repo))
+        components = (root, ".factory", "items", item_id)
+        for component in components:
+            parent = descriptors[-1] if descriptors else None
+            fd = os.open(component, flags, dir_fd=parent)
+            descriptors.append(fd)
+            links.append((parent, component, _identity(os.fstat(fd))))
+
+        def verify():
+            for parent, component, identity in links:
+                info = os.stat(component, dir_fd=parent, follow_symlinks=False)
+                if not stat.S_ISDIR(info.st_mode) or _identity(info) != identity:
+                    raise ConvergenceError("plan.md changed: item path replaced")
+
+        verify()
+        yield descriptors[-1], verify
+    except OSError as exc:
+        raise ConvergenceError(
+            "plan.md untrusted symlink or unreadable item path") from exc
+    finally:
+        for fd in reversed(descriptors):
+            os.close(fd)
+
+
+def _open_regular(directory_fd, name, writable=False):
+    flags = (os.O_RDWR if writable else os.O_RDONLY)
+    flags |= os.O_NOFOLLOW | os.O_NONBLOCK
+    try:
+        fd = os.open(name, flags, dir_fd=directory_fd)
+    except OSError as exc:
+        raise ConvergenceError(
+            f"{name} untrusted symlink or missing or unreadable") from exc
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        os.close(fd)
+        raise ConvergenceError(f"{name} must be a regular file")
+    return fd
+
+
+def _read_descriptor(fd):
+    os.lseek(fd, 0, os.SEEK_SET)
+    chunks = []
+    while chunk := os.read(fd, 65536):
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def _read_plan(directory_fd):
+    fd = _open_regular(directory_fd, "plan.md")
+    try:
+        before = os.fstat(fd)
+        content = _read_descriptor(fd)
+        after = os.fstat(fd)
+        live = os.stat("plan.md", dir_fd=directory_fd, follow_symlinks=False)
+        if (_version(before) != _version(after)
+                or _version(after) != _version(live)):
+            raise ConvergenceError("plan.md changed while reading")
+        if not content:
+            raise ConvergenceError("plan.md missing or empty")
+        return content, _version(after)
+    finally:
+        os.close(fd)
+
+
+def plan_bytes(repo, item_id):
+    with _anchored_item(repo, item_id) as (directory_fd, verify):
+        content, _version_key = _read_plan(directory_fd)
+        verify()
+        return content
+
+
+@contextmanager
+def authorized_edge(repo, item_id, record):
+    """Guard both writes and restore their original bytes on interference.
+
+    The directory lock serializes enabled advances. Descriptor writes remain
+    inside the anchored item even if a parent or leaf is replaced. Checks on
+    both sides of each write detect non-cooperating plan editors too. The edge
+    carries the judged hash: POSIX cannot atomically publish two files or stop
+    an arbitrary editor after the final check. This is an in-process rollback
+    boundary, not a crash-atomic filesystem transaction.
+    """
+    with _anchored_item(repo, item_id) as (directory_fd, verify_path):
+        fcntl.flock(directory_fd, fcntl.LOCK_EX)
+        snapshots = []
+        try:
+            content, version = _read_plan(directory_fd)
+            if hashlib.sha256(content).hexdigest() != record["plan_sha256"]:
+                raise ConvergenceError("plan.md changed after approach validation")
+            for name in ("item.md", "log.jsonl"):
+                fd = _open_regular(directory_fd, name, writable=True)
+                snapshots.append((name, fd, _read_descriptor(fd)))
+            # A second advance may have validated before waiting for our
+            # directory lock. Recheck its source and round while holding it.
+            live_meta, _body = items.parse_item(snapshots[0][2].decode("utf-8"))
+            if (live_meta["stage"] != "plan"
+                    or items.item_tier(live_meta) != record["tier"]
+                    or planning_round(repo, item_id) != record["planning_round"]):
+                raise ConvergenceError("plan stage or judgement context changed")
+
+            def verify():
+                verify_path()
+                current, current_version = _read_plan(directory_fd)
+                if current != content or current_version != version:
+                    raise ConvergenceError("plan.md changed during stage persistence")
+                for name, fd, _original in snapshots:
+                    live = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+                    if _identity(live) != _identity(os.fstat(fd)):
+                        raise ConvergenceError(f"plan.md changed: {name} replaced")
+
+            verify()
+            try:
+                yield snapshots[0][1], snapshots[1][1], verify
+                verify()
+            except BaseException:
+                # Restore only the pinned files we wrote, never a replacement
+                # path, and never restore the adversary's edited plan.
+                for _name, fd, original in snapshots:
+                    with os.fdopen(os.dup(fd), "wb") as stream:
+                        stream.seek(0)
+                        stream.write(original)
+                        stream.truncate()
+                raise
+        except OSError as exc:
+            raise ConvergenceError("plan.md changed or became unreadable") from exc
+        finally:
+            for _name, fd, _original in snapshots:
+                os.close(fd)
+            fcntl.flock(directory_fd, fcntl.LOCK_UN)
+
+
 def current_context(repo, item_id):
     meta, _body = items.load_item(repo, item_id)
     if meta.get("stage") != "plan":
         raise ConvergenceError(
             f"approach convergence requires stage 'plan', got {meta.get('stage')!r}")
-    plan = paths.item_dir(repo, item_id) / "plan.md"
-    try:
-        plan_bytes = plan.read_bytes()
-    except OSError as exc:
-        raise ConvergenceError("plan.md missing or unreadable") from exc
-    if not plan_bytes:
-        raise ConvergenceError("plan.md missing or empty")
+    content = plan_bytes(repo, item_id)
     round_key = planning_round(repo, item_id)
-    digest = hashlib.sha256(plan_bytes).hexdigest()
+    digest = hashlib.sha256(content).hexdigest()
     tier = items.item_tier(meta)
     record = judgement_path(repo, item_id, round_key, digest)
     return {

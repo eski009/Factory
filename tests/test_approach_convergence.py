@@ -777,9 +777,169 @@ class TestApproachAdvanceGate(ConvergenceCase):
     def test_missing_current_record_refuses_without_mutation(self):
         self.assert_advance_refused("current approach judgement missing")
 
-    def test_recorded_zero_signal_screen_advances_once(self):
+    def test_checkbox_precondition_precedes_missing_judgement(self):
+        (self.item_dir / "plan.md").write_text("No executable tasks yet.\n")
+        self.assert_advance_refused("plan.md with at least one '- [ ]' task required")
+
+    def test_plan_replacement_during_edge_persistence_refuses_without_mutation(self):
+        from scripts.factory.lib import convergence
+        cases = [(boundary, moment, edit)
+                 for boundary in ("save_item", "append_event")
+                 for moment in ("before", "after")
+                 for edit in ("replace", "in-place")]
+        for index, (boundary, moment, edit) in enumerate(cases):
+            with self.subTest(boundary=boundary, moment=moment, edit=edit):
+                if index:
+                    self.tearDown()
+                    self.setUp()
+                convergence.record_judgement(self.repo, ITEM, self.record())
+                plan = self.item_dir / "plan.md"
+                original_item = (self.item_dir / "item.md").read_bytes()
+                replacement = self.item_dir / "replacement.md"
+                replacement.write_text("- [ ] unjudged replacement\n")
+                module = items if boundary == "save_item" else logs
+                persist = getattr(module, boundary)
+                calls = []
+
+                def replace_then_persist(*args, **kwargs):
+                    calls.append(boundary)
+                    if moment == "after":
+                        result = persist(*args, **kwargs)
+                    if edit == "replace":
+                        replacement.replace(plan)
+                    else:
+                        plan.write_bytes(replacement.read_bytes())
+                    if moment == "before":
+                        result = persist(*args, **kwargs)
+                    return result
+
+                with mock.patch.object(module, boundary,
+                                       side_effect=replace_then_persist):
+                    self.assert_advance_refused("plan.md changed")
+                self.assertEqual(calls, [boundary])
+                self.assertEqual((self.item_dir / "item.md").read_bytes(),
+                                 original_item)
+                self.assertEqual(plan.read_text(), "- [ ] unjudged replacement\n")
+
+    def test_parent_replacement_during_persistence_never_writes_external_files(self):
         from scripts.factory.lib import convergence
         convergence.record_judgement(self.repo, ITEM, self.record())
+        originals = {name: (self.item_dir / name).read_bytes()
+                     for name in ("item.md", "log.jsonl", "plan.md")}
+        pinned = self.item_dir.with_name("detached-item")
+        with tempfile.TemporaryDirectory() as external_tmp:
+            external = Path(external_tmp)
+            for name, content in originals.items():
+                (external / name).write_bytes(content)
+            persist = items.save_item
+
+            def replace_then_save(*args, **kwargs):
+                self.item_dir.rename(pinned)
+                self.item_dir.symlink_to(external, target_is_directory=True)
+                return persist(*args, **kwargs)
+
+            with mock.patch.object(items, "save_item", side_effect=replace_then_save):
+                self.assert_advance_refused("plan.md changed")
+            for name, content in originals.items():
+                self.assertEqual((external / name).read_bytes(), content)
+                self.assertEqual((pinned / name).read_bytes(), content)
+
+    def test_persistence_error_restores_item_and_log_bytes(self):
+        from scripts.factory.lib import convergence
+        for index, boundary in enumerate(("save_item", "append_event")):
+            with self.subTest(boundary=boundary):
+                if index:
+                    self.tearDown()
+                    self.setUp()
+                convergence.record_judgement(self.repo, ITEM, self.record())
+                original_item = (self.item_dir / "item.md").read_bytes()
+                module = items if boundary == "save_item" else logs
+                persist = getattr(module, boundary)
+
+                def persist_then_fail(*args, **kwargs):
+                    persist(*args, **kwargs)
+                    raise OSError("simulated persistence interruption")
+
+                with mock.patch.object(module, boundary, side_effect=persist_then_fail):
+                    self.assert_advance_refused("plan.md changed or became unreadable")
+                self.assertEqual((self.item_dir / "item.md").read_bytes(), original_item)
+
+    def test_concurrent_validated_advances_admit_only_one_edge(self):
+        from scripts.factory.lib import convergence
+        convergence.record_judgement(self.repo, ITEM, self.record())
+        validate_record = convergence.require_authoritative
+        validated = threading.Barrier(2)
+        results, failures = [], []
+
+        def synchronize_validation(*args, **kwargs):
+            record = validate_record(*args, **kwargs)
+            validated.wait(timeout=5)
+            return record
+
+        def advance():
+            try:
+                results.append(machine.advance(self.repo, ITEM, "implement"))
+            except Exception as exc:
+                failures.append(exc)
+
+        with mock.patch.object(convergence, "require_authoritative",
+                               side_effect=synchronize_validation):
+            workers = [threading.Thread(target=advance) for _ in range(2)]
+            for worker in workers:
+                worker.start()
+            for worker in workers:
+                worker.join(timeout=10)
+                self.assertFalse(worker.is_alive())
+        self.assertEqual(len(results), 1)
+        self.assertEqual(len(failures), 1)
+        self.assertIsInstance(failures[0], machine.GateError)
+        exits = [event for event in logs.read_events(self.repo, ITEM)
+                 if event.get("event") == "stage.advance"
+                 and event.get("data", {}).get("to") == "implement"]
+        self.assertEqual(len(exits), 1)
+
+    def test_external_plan_symlink_rejected_before_hash_record_or_advance(self):
+        from scripts.factory.lib import convergence
+        record = self.record()
+        canonical = self.repo / self.context()["record"]
+        plan = self.item_dir / "plan.md"
+        original_item = (self.item_dir / "item.md").read_bytes()
+        original_log = (self.item_dir / "log.jsonl").read_bytes()
+        with tempfile.TemporaryDirectory() as external_tmp:
+            external = Path(external_tmp) / "plan.md"
+            external.write_bytes(plan.read_bytes())
+            plan.unlink()
+            plan.symlink_to(external)
+            with mock.patch.object(convergence.hashlib, "sha256",
+                                   wraps=convergence.hashlib.sha256) as digest:
+                for operation in ("context", "record", "advance"):
+                    with self.subTest(operation=operation):
+                        if operation == "advance":
+                            # A valid no-signal record must not authorize the
+                            # external bytes even when their hash is identical.
+                            canonical.parent.mkdir(parents=True, exist_ok=True)
+                            canonical.write_text(json.dumps(record))
+                            self.assert_advance_refused("untrusted symlink")
+                        else:
+                            with self.assertRaisesRegex(
+                                    convergence.ConvergenceError,
+                                    "untrusted symlink"):
+                                if operation == "context":
+                                    convergence.current_context(self.repo, ITEM)
+                                else:
+                                    convergence.record_judgement(
+                                        self.repo, ITEM, record)
+                            self.assertFalse(canonical.exists())
+                        digest.assert_not_called()
+                        self.assertEqual((self.item_dir / "item.md").read_bytes(),
+                                         original_item)
+                        self.assertEqual((self.item_dir / "log.jsonl").read_bytes(),
+                                         original_log)
+
+    def test_recorded_zero_signal_screen_advances_once(self):
+        from scripts.factory.lib import convergence
+        record = self.record()
+        convergence.record_judgement(self.repo, ITEM, record)
 
         meta, _verdict = machine.advance(self.repo, ITEM, "implement")
 
@@ -789,10 +949,16 @@ class TestApproachAdvanceGate(ConvergenceCase):
                   if event.get("event") == "approach.judgement.recorded"]
         exits = [event for event in events
                  if event.get("event") == "stage.advance"
-                 and event.get("data") == {"from": "plan", "to": "implement"}]
+                 and event.get("data", {}).get("from") == "plan"
+                 and event.get("data", {}).get("to") == "implement"]
         self.assertEqual(len(writer), 1)
         self.assertEqual(writer[0]["data"]["attempts"], 0)
         self.assertEqual(len(exits), 1)
+        self.assertEqual(exits[0]["data"], {
+            "from": "plan", "to": "implement",
+            "approach": {"planning_round": record["planning_round"],
+                         "plan_sha256": record["plan_sha256"]},
+        })
 
     def test_each_signal_shape_requires_then_admits_current_one_pass_record(self):
         from scripts.factory.lib import convergence
