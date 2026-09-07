@@ -61,7 +61,7 @@ The core promise: **we never claim a bug is fixed when it isn't.** The recorded 
 
 7. **Write the intake triage record and enter the pipeline.** Write `items/<id>/triage.md`: decision (build — confirmed replicated bug), the kind rationale from step 2, and priority. Set priority with `factory priority ITEM N` — ask the human while they are present; default 1 (front of queue) if they don't say. Then `factory advance ITEM triage` and `factory advance ITEM spec`. No council runs at intake; the council still reviews the fix at the review stage. From spec onward this is ordinary pipeline work — implement branches per item with TDD, ui/mixed items pass the design gate, ship merges per policy.
 
-8. **Spend.** If replication dispatches subagents, log spend per the dispatch convention: `factory log ITEM spend --data '{"provenance":"measured","stage":"triage","source":"factory-bug","dispatches":<n>,"tokens":{"total":<n>}}'` with harness-reported counts, or `"provenance":"proxy"` and no `tokens` key when the harness reports none. Never estimate; main-loop burn is never logged as measured.
+8. **Spend.** If replication dispatches subagents, log spend per the dispatch convention: `factory log ITEM spend --data '{"provenance":"measured","scope":"leaf","stage":"triage","source":"factory-bug","dispatches":<n>,"tokens":{"total":<n>}}'` with harness-reported counts, or `"provenance":"proxy","scope":"leaf"` and no `tokens` key when the harness reports none. Never estimate; main-loop burn is never logged as measured.
 
 ## Sequencing note
 

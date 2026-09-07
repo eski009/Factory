@@ -20,6 +20,27 @@ def read(p):
 
 
 class TestPluginCoherence(unittest.TestCase):
+    def test_every_spend_emission_instruction_names_origin_scope(self):
+        expected_leaf_skills = {
+            "factory-assure", "factory-bug", "factory-design",
+            "factory-implement", "factory-review", "factory-ship",
+        }
+        for name in expected_leaf_skills:
+            text = read(ROOT / f"skills/{name}/SKILL.md")
+            spend_lines = [line for line in text.splitlines()
+                           if "factory log ITEM spend --data" in line]
+            self.assertTrue(spend_lines, name)
+            for line in spend_lines:
+                self.assertIn('"scope":"leaf"', line, f"{name}: {line}")
+
+        dispatch = read(ROOT / "skills/factory-dispatch/SKILL.md")
+        self.assertIn(
+            '"scope":"leaf","stage":"<stage>","source":"<skill>"',
+            dispatch)
+        self.assertIn(
+            '"scope":"fork","stage":"<stage>",'
+            '"source":"factory-dispatch"', dispatch)
+
     def test_engine_comments_cite_symbols_not_source_lines(self):
         citations = []
         source_line = re.compile(r"[A-Za-z0-9_./-]+\.(?:py|md):\d+")

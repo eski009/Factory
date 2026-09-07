@@ -269,7 +269,11 @@ class RunWorkTest(unittest.TestCase):
         self.assertTrue((self.repo / ".factory/items/0001-thing/worker/"
                          "result.json").exists())
         self.assertIn("implement.completed", self._events())
-        self.assertIn("spend", self._events())
+        spend = [event for event in logs.read_events(self.repo, "0001-thing")
+                 if event["event"] == "spend"]
+        self.assertEqual(len(spend), 1)
+        self.assertEqual(spend[0]["data"]["scope"], "leaf")
+        self.assertEqual(spend[0]["data"]["source"], "factory-work")
         # plan checkbox ticked
         plan = (self.repo / ".factory/items/0001-thing/plan.md").read_text()
         self.assertIn("- [x] Do the thing", plan)
