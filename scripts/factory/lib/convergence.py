@@ -91,6 +91,20 @@ def _identity(info):
     return info.st_dev, info.st_ino
 
 
+def _entry_identity(directory_fd, name):
+    try:
+        return _identity(os.stat(
+            name, dir_fd=directory_fd, follow_symlinks=False))
+    except FileNotFoundError:
+        return None
+
+
+def _unlink_if_identity(directory_fd, name, identity):
+    """Remove only the directory entry created by this writer."""
+    if identity is not None and _entry_identity(directory_fd, name) == identity:
+        os.unlink(name, dir_fd=directory_fd)
+
+
 def _version(info):
     return (_identity(info), info.st_size, info.st_mtime_ns, info.st_ctime_ns)
 
@@ -595,6 +609,10 @@ def _record_lock(repo, path):
     """
     descriptors, links = [], []
     lock_fd = log_fd = None
+    lock_directory_fd = None
+    lock_created = False
+    lock_identity = None
+    integrity_failed = False
     log_identity = None
     append_span = []
     try:
@@ -616,12 +634,14 @@ def _record_lock(repo, path):
                 links.append((parent, component, _identity(os.fstat(fd))))
 
             def verify(*, before_append=False):
+                nonlocal integrity_failed
                 try:
                     for parent, component, identity in links:
                         info = os.stat(component, dir_fd=parent,
                                        follow_symlinks=False)
                         if (not stat.S_ISDIR(info.st_mode)
                                 or _identity(info) != identity):
+                            integrity_failed = True
                             raise ConvergenceError(
                                 "approach judgement untrusted symlink or replaced path")
                     if log_identity is not None:
@@ -629,9 +649,11 @@ def _record_lock(repo, path):
                                        follow_symlinks=False)
                         if (not stat.S_ISREG(info.st_mode)
                                 or _identity(info) != log_identity):
+                            integrity_failed = True
                             raise ConvergenceError(
                                 "approach judgement untrusted symlink or replaced log.jsonl")
                 except OSError as exc:
+                    integrity_failed = True
                     raise ConvergenceError(
                         "approach judgement unreadable or replaced writer path") from exc
 
@@ -647,9 +669,19 @@ def _record_lock(repo, path):
             verify()
             # All judgement transactions for this item share a lock: removing
             # an earlier append must not shift another pending rollback span.
-            lock_fd = os.open(".approach-judgement.lock",
-                              os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW
-                              | os.O_NONBLOCK, 0o600, dir_fd=descriptors[-2])
+            lock_directory_fd = descriptors[-2]
+            lock_flags = os.O_WRONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+            try:
+                lock_fd = os.open(
+                    ".approach-judgement.lock",
+                    lock_flags | os.O_CREAT | os.O_EXCL,
+                    0o600, dir_fd=lock_directory_fd)
+                lock_created = True
+            except FileExistsError:
+                lock_fd = os.open(
+                    ".approach-judgement.lock", lock_flags,
+                    dir_fd=lock_directory_fd)
+            lock_identity = _identity(os.fstat(lock_fd))
             if not stat.S_ISREG(os.fstat(lock_fd).st_mode):
                 raise ConvergenceError("approach judgement lock must be regular")
             fcntl.flock(lock_fd, fcntl.LOCK_EX)
@@ -672,6 +704,9 @@ def _record_lock(repo, path):
     finally:
         if lock_fd is not None:
             os.close(lock_fd)
+        if lock_created and integrity_failed:
+            _unlink_if_identity(
+                lock_directory_fd, ".approach-judgement.lock", lock_identity)
         if log_fd is not None:
             os.close(log_fd)
         for fd in reversed(descriptors):
@@ -721,6 +756,10 @@ def _append_recorded_event_if_missing(repo, item_id, data, log_fd, verify):
 
 def _write_record(path, record, directory_fd, verify):
     temporary = None
+    temporary_identity = None
+    previous = None
+    previous_identity = None
+    published = False
     try:
         verify()
         while True:
@@ -732,17 +771,74 @@ def _write_record(path, record, directory_fd, verify):
             except FileExistsError:
                 continue
         temporary = name
+        temporary_identity = _identity(os.fstat(fd))
+        try:
+            verify()
+        except BaseException:
+            os.close(fd)
+            raise
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(json.dumps(record, indent=2, sort_keys=True) + "\n")
         verify()
-        os.replace(temporary, path.name, src_dir_fd=directory_fd,
-                   dst_dir_fd=directory_fd)
+
+        current_identity = _entry_identity(directory_fd, path.name)
+        if current_identity is not None:
+            current_info = os.stat(
+                path.name, dir_fd=directory_fd, follow_symlinks=False)
+            if not stat.S_ISREG(current_info.st_mode):
+                raise ConvergenceError(
+                    "approach judgement canonical record must be regular")
+            previous_identity = current_identity
+            while True:
+                previous = f".{path.name}.{secrets.token_hex(16)}.previous"
+                try:
+                    os.link(path.name, previous,
+                            src_dir_fd=directory_fd,
+                            dst_dir_fd=directory_fd,
+                            follow_symlinks=False)
+                    break
+                except FileExistsError:
+                    continue
+            if _entry_identity(directory_fd, previous) != previous_identity:
+                raise ConvergenceError(
+                    "approach judgement canonical record changed before publication")
+            verify()
+
+        if _entry_identity(directory_fd, path.name) != current_identity:
+            raise ConvergenceError(
+                "approach judgement canonical record changed before publication")
+        if current_identity is None:
+            # A hard link publishes the completed inode atomically without
+            # overwriting a name introduced during the final verification gap.
+            os.link(temporary, path.name,
+                    src_dir_fd=directory_fd,
+                    dst_dir_fd=directory_fd,
+                    follow_symlinks=False)
+        else:
+            os.replace(temporary, path.name, src_dir_fd=directory_fd,
+                       dst_dir_fd=directory_fd)
+        verify()
+        published = True
     finally:
+        # If publication happened through a directory that verification then
+        # found detached, remove only our inode or restore the exact prior one.
+        if (not published and temporary_identity is not None
+                and _entry_identity(directory_fd, path.name)
+                == temporary_identity):
+            if (previous is not None
+                    and _entry_identity(directory_fd, previous)
+                    == previous_identity):
+                os.replace(previous, path.name,
+                           src_dir_fd=directory_fd,
+                           dst_dir_fd=directory_fd)
+                previous = None
+            else:
+                _unlink_if_identity(
+                    directory_fd, path.name, temporary_identity)
         if temporary is not None:
-            try:
-                os.unlink(temporary, dir_fd=directory_fd)
-            except FileNotFoundError:
-                pass
+            _unlink_if_identity(directory_fd, temporary, temporary_identity)
+        if previous is not None:
+            _unlink_if_identity(directory_fd, previous, previous_identity)
 
 
 def _validate_existing_structure(record):

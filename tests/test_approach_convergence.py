@@ -688,16 +688,16 @@ class TestApproachRecordWriter(ConvergenceCase):
         record = self.record()
         log = paths.item_dir(self.repo, ITEM) / "log.jsonl"
         before = log.read_bytes()
-        original_replace = os.replace
+        original_link = os.link
         with tempfile.TemporaryDirectory() as tmp:
             detached = Path(tmp) / "detached.jsonl"
 
-            def replace_then_move_log(*args, **kwargs):
-                original_replace(*args, **kwargs)
+            def publish_then_move_log(*args, **kwargs):
+                original_link(*args, **kwargs)
                 log.rename(detached)
                 log.write_bytes(before)
 
-            with mock.patch.object(os, "replace", side_effect=replace_then_move_log):
+            with mock.patch.object(os, "link", side_effect=publish_then_move_log):
                 code, _out, err = self.run_cli(
                     "approach-judgement", ITEM, "--data", json.dumps(record))
             self.assertEqual(detached.read_bytes(), before,
@@ -716,7 +716,7 @@ class TestApproachRecordWriter(ConvergenceCase):
         directory = paths.item_dir(self.repo, ITEM)
         backup = directory.with_name(directory.name + ".saved")
         before = (directory / "log.jsonl").read_bytes()
-        original_replace = os.replace
+        original_link = os.link
         with tempfile.TemporaryDirectory() as tmp:
             external = Path(tmp) / "external"
             shutil.copytree(directory, external)
@@ -726,14 +726,14 @@ class TestApproachRecordWriter(ConvergenceCase):
             external_log.write_text(json.dumps(forged) + "\n", encoding="utf-8")
             external_before = external_log.read_bytes()
 
-            def replace_then_swap_parent(*args, **kwargs):
-                original_replace(*args, **kwargs)
+            def publish_then_swap_parent(*args, **kwargs):
+                original_link(*args, **kwargs)
                 directory.rename(backup)
                 directory.symlink_to(external, target_is_directory=True)
 
             try:
-                with mock.patch.object(os, "replace",
-                                       side_effect=replace_then_swap_parent):
+                with mock.patch.object(os, "link",
+                                       side_effect=publish_then_swap_parent):
                     code, _out, err = self.run_cli(
                         "approach-judgement", ITEM, "--data", json.dumps(record))
                 self.assertEqual((backup / "log.jsonl").read_bytes(), before)
@@ -812,6 +812,94 @@ class TestApproachRecordWriter(ConvergenceCase):
 
     def test_parent_symlinks_after_context_refused_without_external_mutation(self):
         self.assert_directory_symlinks_refused(after_context=True)
+
+    def test_detached_item_before_lock_creation_leaves_no_external_mutation(self):
+        from scripts.factory.lib import convergence
+        record = self.record()
+        item_dir = paths.item_dir(self.repo, ITEM)
+        canonical = self.repo / self.context()["record"]
+        canonical.parent.mkdir(parents=True, exist_ok=True)
+        (canonical.parent / "unrelated.bin").write_bytes(b"external state\xff")
+        before = {path.relative_to(item_dir): path.read_bytes()
+                  for path in item_dir.rglob("*") if path.is_file()}
+        original_open = os.open
+        detached = False
+
+        with tempfile.TemporaryDirectory() as tmp:
+            external = Path(tmp) / "detached-item"
+
+            def detach_before_lock(name, flags, *args, **kwargs):
+                nonlocal detached
+                if name == ".approach-judgement.lock" and not detached:
+                    item_dir.rename(external)
+                    detached = True
+                return original_open(name, flags, *args, **kwargs)
+
+            try:
+                with mock.patch.object(os, "open", side_effect=detach_before_lock):
+                    with self.assertRaises(convergence.ConvergenceError):
+                        convergence.record_judgement(self.repo, ITEM, record)
+                after = {path.relative_to(external): path.read_bytes()
+                         for path in external.rglob("*") if path.is_file()}
+                self.assertEqual(after, before)
+                self.assertFalse((external / ".approach-judgement.lock").exists())
+                self.assertFalse(
+                    (external / canonical.relative_to(item_dir)).exists())
+                self.assertFalse(list(external.rglob("*.tmp")))
+            finally:
+                if detached:
+                    external.rename(item_dir)
+
+    def test_detached_judgement_at_publication_removes_only_created_record(self):
+        from scripts.factory.lib import convergence
+        record = self.record()
+        item_dir = paths.item_dir(self.repo, ITEM)
+        log = item_dir / "log.jsonl"
+        log_before = log.read_bytes()
+        canonical = self.repo / self.context()["record"]
+        canonical.parent.mkdir(parents=True, exist_ok=True)
+        unrelated = canonical.parent / "unrelated.bin"
+        unrelated.write_bytes(b"external state\xff")
+        original_replace = os.replace
+        original_link = os.link
+        detached = False
+
+        with tempfile.TemporaryDirectory() as tmp:
+            external = Path(tmp) / "detached-judgements"
+
+            def detach_before_publication(source, target, *args, **kwargs):
+                nonlocal detached
+                if target == canonical.name and not detached:
+                    canonical.parent.rename(external)
+                    detached = True
+                return original_replace(source, target, *args, **kwargs)
+
+            def detach_before_initial_publication(
+                    source, target, *args, **kwargs):
+                nonlocal detached
+                if target == canonical.name and not detached:
+                    canonical.parent.rename(external)
+                    detached = True
+                return original_link(source, target, *args, **kwargs)
+
+            try:
+                with mock.patch.object(
+                        os, "replace", side_effect=detach_before_publication), \
+                        mock.patch.object(
+                            os, "link",
+                            side_effect=detach_before_initial_publication):
+                    with self.assertRaises(convergence.ConvergenceError):
+                        convergence.record_judgement(self.repo, ITEM, record)
+                self.assertEqual(
+                    {path.relative_to(external): path.read_bytes()
+                     for path in external.rglob("*") if path.is_file()},
+                    {Path("unrelated.bin"): b"external state\xff"})
+                self.assertFalse((external / canonical.name).exists())
+                self.assertFalse(list(external.glob("*.tmp")))
+                self.assertEqual(log.read_bytes(), log_before)
+            finally:
+                if detached:
+                    external.rename(canonical.parent)
 
     def test_context_cli_exposes_only_engine_derived_values(self):
         code, out, err = self.run_cli("approach-context", ITEM, "--json")
