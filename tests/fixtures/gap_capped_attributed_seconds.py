@@ -61,7 +61,7 @@ def stage_entries(records):
 
 def entry_gaps(entry):
     timestamps = entry["timestamps"]
-    return [int((right - left).total_seconds())
+    return [(right - left).total_seconds()
             for left, right in zip(timestamps, timestamps[1:])]
 
 

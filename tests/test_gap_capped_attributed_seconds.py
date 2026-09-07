@@ -77,6 +77,15 @@ class StageEntryMetricTest(unittest.TestCase):
         self.assertEqual(replay.entry_score(first, 6), 12)
         self.assertEqual(replay.entry_score(first, 99), 25)
 
+    def test_fractional_positive_gaps_are_not_truncated(self):
+        entry = {"timestamps": [
+            replay.parse_timestamp("2026-01-01T00:00:00Z"),
+            replay.parse_timestamp("2026-01-01T00:00:00.8Z"),
+            replay.parse_timestamp("2026-01-01T00:00:01.3Z"),
+        ]}
+        self.assertEqual(replay.entry_gaps(entry), [0.8, 0.5])
+        self.assertEqual(replay.entry_score(entry, 6), 1.3)
+
     def test_one_event_entry_scores_zero(self):
         entries = replay.stage_entries(self.records())
         self.assertEqual(entries[-1]["stage"], "done")
