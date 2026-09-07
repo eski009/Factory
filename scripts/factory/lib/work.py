@@ -19,7 +19,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import initrepo, items, logs, paths, validate
+from . import initrepo, items, logs, paths, validate, worker_attempts
 
 
 class WorkError(Exception):
@@ -267,20 +267,15 @@ def _claude_parse(raw):
 
 
 def _claude_run(brief, worktree, model, timeout, network, sandbox, env,
-                reasoning_effort=None):
+                reasoning_effort=None, attempt=None):
     return _real_run(_claude_argv(brief, worktree, model, network),
-                     worktree, timeout, env)
+                     worktree, timeout, env, attempt)
 
 
-def _real_run(argv, worktree, timeout, env):
-    try:
-        proc = subprocess.run(argv, cwd=worktree, capture_output=True,
-                              text=True, timeout=timeout, env=env)
-        return {"exit_code": proc.returncode, "stdout": proc.stdout,
-                "stderr": proc.stderr, "timed_out": False}
-    except subprocess.TimeoutExpired as exc:
-        return {"exit_code": 124, "stdout": exc.stdout or "",
-                "stderr": exc.stderr or "", "timed_out": True}
+def _real_run(argv, worktree, timeout, env, attempt):
+    if attempt is None:
+        raise WorkError("real worker backend requires a durable attempt")
+    return worker_attempts.run_process(attempt, argv, cwd=worktree, env=env)
 
 
 BACKENDS["claude"] = _claude_run
@@ -341,10 +336,10 @@ def _codex_parse(raw):
 
 
 def _codex_run(brief, worktree, model, timeout, network, sandbox, env,
-               reasoning_effort=None):
+               reasoning_effort=None, attempt=None):
     return _real_run(_codex_argv(brief, worktree, model, network, sandbox,
                                  reasoning_effort),
-                     worktree, timeout, env)
+                     worktree, timeout, env, attempt)
 
 
 BACKENDS["codex"] = _codex_run
@@ -477,10 +472,6 @@ def run_work(repo, item_id, backend=None, model=None, timeout=None,
     if backend in ("claude", "codex") and shutil.which(backend) is None:
         return 1, {"error": f"backend CLI not found on PATH: {backend}"}
 
-    worker_dir = paths.item_dir(repo, item_id) / "worker"
-    worker_dir.mkdir(parents=True, exist_ok=True)
-    (worker_dir / "brief.md").write_text(brief, encoding="utf-8")
-
     env = _worker_env(cfg, backend)
     model = model or (cfg.get("models") or {}).get(backend)
     sandbox = (cfg.get("codex") or {}).get("sandbox", "workspace-write")
@@ -489,9 +480,30 @@ def run_work(repo, item_id, backend=None, model=None, timeout=None,
                             or (cfg.get("codex") or {}).get(
                                 "reasoning_effort", "medium"))
     base_sha = git_head(work_tree)
-    started = time.monotonic()
-    raw = BACKENDS[backend](brief, work_tree, model, timeout, network,
-                            sandbox, env, reasoning_effort)
+    attempt = None
+    if backend in ("claude", "codex"):
+        try:
+            attempt = worker_attempts.create_attempt(
+                repo, item_id, work_tree, base_sha, timeout, backend, brief)
+        except worker_attempts.AttemptError as exc:
+            return 1, {"error": str(exc)}
+
+    try:
+        worker_dir = paths.item_dir(repo, item_id) / "worker"
+        worker_dir.mkdir(parents=True, exist_ok=True)
+        (worker_dir / "brief.md").write_text(brief, encoding="utf-8")
+
+        started = time.monotonic()
+        if attempt is None:
+            raw = BACKENDS[backend](brief, work_tree, model, timeout, network,
+                                    sandbox, env, reasoning_effort)
+        else:
+            raw = BACKENDS[backend](brief, work_tree, model, timeout, network,
+                                    sandbox, env, reasoning_effort,
+                                    attempt=attempt)
+    finally:
+        if attempt is not None:
+            attempt.close()
     duration_s = int(time.monotonic() - started)
     (worker_dir / "worker.log").write_text(raw.get("stderr") or "",
                                            encoding="utf-8")

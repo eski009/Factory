@@ -1,11 +1,14 @@
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
-from scripts.factory.lib import initrepo, items, logs, validate, work
+from scripts.factory.lib import (initrepo, items, logs, validate, work,
+                                 worker_attempts)
 
 
 def _init_repo():
@@ -321,6 +324,81 @@ class RunWorkTest(unittest.TestCase):
         self.assertEqual(result["reason"], "auth")
         self.assertIn("implement.failed", self._events())
         self.assertNotIn("implement.completed", self._events())
+
+    def test_real_backend_attempt_keeps_compatibility_artifacts(self):
+        stdout = b'{"subtype":"success","result":"ran","usage":{}}'
+        stderr = b"backend diagnostic\n"
+        script = (
+            "import os\n"
+            f"os.write(1, {stdout!r})\n"
+            f"os.write(2, {stderr!r})\n"
+        )
+        real_run = worker_attempts.run_process
+
+        def run_after_manifest(attempt, argv, cwd, env):
+            self.assertTrue(attempt.manifest_path.is_file())
+            return real_run(attempt, argv, cwd, env)
+
+        with (mock.patch.object(work.shutil, "which",
+                                return_value=sys.executable),
+              mock.patch.object(work, "_claude_argv",
+                                return_value=[sys.executable, "-c", script]),
+              mock.patch.object(worker_attempts, "run_process",
+                                side_effect=run_after_manifest)):
+            code, result = work.run_work(
+                self.repo, "0001-thing", backend="claude",
+                worktree=str(self.repo))
+
+        self.assertEqual(code, 3)  # successful transport, but no commit
+        self.assertEqual(result["reason"], "no_changes")
+        rows = worker_attempts.inspect_attempts(self.repo, "0001-thing")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["transport"], "exited")
+        attempt_dir = (self.repo / ".factory/items/0001-thing/worker/attempts" /
+                       rows[0]["attempt_id"])
+        self.assertEqual((attempt_dir / "stdout.bin").read_bytes(), stdout)
+        self.assertEqual((attempt_dir / "stderr.bin").read_bytes(), stderr)
+        worker_dir = self.repo / ".factory/items/0001-thing/worker"
+        self.assertEqual((worker_dir / "worker.log").read_text(),
+                         stderr.decode())
+        self.assertEqual(json.loads((worker_dir / "result.json").read_text()),
+                         result)
+
+    def test_attempt_closes_if_compatibility_brief_write_fails(self):
+        compatibility_brief = (self.repo / ".factory/items/0001-thing/worker" /
+                               "brief.md")
+        real_create_attempt = worker_attempts.create_attempt
+        real_write_text = Path.write_text
+        created = {}
+
+        def create_attempt(*args, **kwargs):
+            attempt = real_create_attempt(*args, **kwargs)
+            created["attempt"] = attempt
+            created["fds"] = [handle.fd
+                              for handle in attempt._directory_chain]
+            attempt.close = mock.Mock(wraps=attempt.close)
+            return attempt
+
+        def write_text(path, *args, **kwargs):
+            if path == compatibility_brief:
+                raise OSError("compatibility brief write failed")
+            return real_write_text(path, *args, **kwargs)
+
+        with (mock.patch.object(work.shutil, "which",
+                                return_value=sys.executable),
+              mock.patch.object(worker_attempts, "create_attempt",
+                                side_effect=create_attempt),
+              mock.patch.object(Path, "write_text", autospec=True,
+                                side_effect=write_text)):
+            with self.assertRaisesRegex(
+                    OSError, "compatibility brief write failed"):
+                work.run_work(self.repo, "0001-thing", backend="claude",
+                              worktree=str(self.repo))
+
+        created["attempt"].close.assert_called_once_with()
+        for fd in created["fds"]:
+            with self.assertRaises(OSError):
+                os.fstat(fd)
 
 
 class ChangeEnumTest(unittest.TestCase):

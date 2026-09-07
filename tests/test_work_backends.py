@@ -1,4 +1,5 @@
 import unittest
+from unittest import mock
 
 from scripts.factory.lib import work
 
@@ -202,6 +203,35 @@ class AuthReasonTest(unittest.TestCase):
         raw = {"exit_code": 1, "timed_out": False,
                "stderr": "building tokenizer", "stdout": ""}
         self.assertEqual(work._codex_parse(raw)["reason"], "crash")
+
+
+class DurableBackendRunnerTest(unittest.TestCase):
+    def test_real_runners_preserve_raw_contract_from_attempt_runner(self):
+        raw = {"exit_code": 7, "stdout": "out", "stderr": "err",
+               "timed_out": False}
+        attempt = object()
+        env = {"WORKER_TEST": "1"}
+        with mock.patch.object(work.worker_attempts, "run_process",
+                               return_value=raw) as run_process:
+            claude = work._claude_run(
+                "brief", "/wt", "claude-model", 12, "off",
+                "workspace-write", env, attempt=attempt)
+            self.assertIs(claude, raw)
+            run_process.assert_called_once_with(
+                attempt,
+                work._claude_argv("brief", "/wt", "claude-model", "off"),
+                cwd="/wt", env=env)
+
+            run_process.reset_mock()
+            codex = work._codex_run(
+                "brief", "/wt", "codex-model", 12, "off",
+                "workspace-write", env, "high", attempt=attempt)
+            self.assertIs(codex, raw)
+            run_process.assert_called_once_with(
+                attempt,
+                work._codex_argv("brief", "/wt", "codex-model", "off",
+                                 "workspace-write", "high"),
+                cwd="/wt", env=env)
 
 
 if __name__ == "__main__":
