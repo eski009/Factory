@@ -7,10 +7,19 @@ frozen for tests via the FACTORY_NOW environment variable.
 import fcntl
 import json
 import os
-from contextlib import contextmanager
+import threading
+from contextlib import contextmanager, nullcontext
 from datetime import datetime, timezone
 
 from . import paths
+
+
+# flock is attached to an open-file description, so it does not serialize two
+# threads passed the same descriptor (or duplicates of it). Keep supplied-fd
+# flag changes and recovery process-local as well as inode-locked. A single
+# lock deliberately avoids retaining fd- or inode-keyed entries that can alias
+# after descriptor reuse; ordinary path-based appends do not take this lock.
+_SUPPLIED_DESCRIPTOR_LOCK = threading.RLock()
 
 
 def now_stamp():
@@ -53,27 +62,29 @@ def append_event(repo, item_id, event, data=None, *, file_fd=None,
         path = _log_path(repo, item_id)
         path.parent.mkdir(parents=True, exist_ok=True)
         file_fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o666)
-    flags = None
-    try:
-        # Append independently of the caller's current descriptor offset.
-        flags = fcntl.fcntl(file_fd, fcntl.F_GETFL)
-        if not flags & os.O_APPEND:
-            fcntl.fcntl(file_fd, fcntl.F_SETFL, flags | os.O_APPEND)
-        with append_lock(file_fd):
-            start = os.fstat(file_fd).st_size
-            try:
-                _write_all(file_fd, payload)
-            finally:
-                # Capture partial writes too, before another public writer can
-                # append. The caller may later remove only this byte interval.
-                if append_span is not None:
-                    append_span[:] = [start, os.fstat(file_fd).st_size]
-    finally:
-        if owned_fd:
-            os.close(file_fd)
-        elif flags is not None and not flags & os.O_APPEND:
-            # The caller may subsequently use this descriptor for recovery.
-            fcntl.fcntl(file_fd, fcntl.F_SETFL, flags)
+    local_lock = nullcontext() if owned_fd else _SUPPLIED_DESCRIPTOR_LOCK
+    with local_lock:
+        flags = None
+        try:
+            # Append independently of the caller's current descriptor offset.
+            flags = fcntl.fcntl(file_fd, fcntl.F_GETFL)
+            if not flags & os.O_APPEND:
+                fcntl.fcntl(file_fd, fcntl.F_SETFL, flags | os.O_APPEND)
+            with append_lock(file_fd):
+                start = os.fstat(file_fd).st_size
+                try:
+                    _write_all(file_fd, payload)
+                finally:
+                    # Capture partial writes too, before another public writer
+                    # can append. Recovery removes only this byte interval.
+                    if append_span is not None:
+                        append_span[:] = [start, os.fstat(file_fd).st_size]
+        finally:
+            if owned_fd:
+                os.close(file_fd)
+            elif flags is not None and not flags & os.O_APPEND:
+                # The caller may subsequently use this descriptor for recovery.
+                fcntl.fcntl(file_fd, fcntl.F_SETFL, flags)
     return entry
 
 
@@ -83,17 +94,18 @@ def rollback_append(file_fd, span):
     Cooperating writers hold the same inode lock. No pathname is reopened.
     This is in-process recovery, not crash-atomic log compaction.
     """
-    with append_lock(file_fd):
-        start, end = span
-        chunks = []
-        offset = end
-        while chunk := os.pread(file_fd, 65536, offset):
-            chunks.append(chunk)
-            offset += len(chunk)
-        os.ftruncate(file_fd, start)
-        for chunk in chunks:
-            _write_all(file_fd, chunk)
-        os.fsync(file_fd)
+    with _SUPPLIED_DESCRIPTOR_LOCK:
+        with append_lock(file_fd):
+            start, end = span
+            chunks = []
+            offset = end
+            while chunk := os.pread(file_fd, 65536, offset):
+                chunks.append(chunk)
+                offset += len(chunk)
+            os.ftruncate(file_fd, start)
+            for chunk in chunks:
+                _write_all(file_fd, chunk)
+            os.fsync(file_fd)
 
 
 def read_events_with_stats(repo, item_id):

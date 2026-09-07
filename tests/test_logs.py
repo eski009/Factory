@@ -1,8 +1,12 @@
+import fcntl
 import json
 import os
 import tempfile
+import threading
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
+from unittest import mock
 
 from scripts.factory.lib import logs
 
@@ -36,6 +40,87 @@ class TestLogs(unittest.TestCase):
         self.assertTrue(path.read_bytes().startswith(before))
         self.assertEqual([e["event"] for e in logs.read_events(self.repo, "0001-x")],
                          ["item.created", "sentinel"])
+
+    def test_shared_supplied_descriptor_preserves_intervening_append(self):
+        logs.append_event(self.repo, "0001-x", "preexisting")
+        path = self.repo / ".factory/items/0001-x/log.jsonl"
+        hostile = b"\xff preexisting bytes\n"
+        path.write_bytes(path.read_bytes() + hostile)
+        before = path.read_bytes()
+
+        original_append_lock = logs.append_lock
+        a_at_lock = threading.Event()
+        b_at_lock = threading.Event()
+        resume_b = threading.Event()
+        b_observed_append = []
+        errors = []
+
+        @contextmanager
+        def coordinated_append_lock(file_fd):
+            name = threading.current_thread().name
+            if name == "shared-a":
+                # On the vulnerable path B can reach this point while A owns
+                # the same open-file-description flock. With synchronization,
+                # A proceeds after the bounded wait and B follows it.
+                a_at_lock.set()
+                b_at_lock.wait(0.5)
+            elif name == "shared-b":
+                b_at_lock.set()
+                if not resume_b.wait(5):
+                    raise AssertionError("timed out waiting to resume B")
+                b_observed_append.append(bool(
+                    fcntl.fcntl(file_fd, fcntl.F_GETFL) & os.O_APPEND))
+            with original_append_lock(file_fd):
+                yield
+
+        def append_in_thread(event, file_fd):
+            try:
+                logs.append_event(self.repo, "0001-x", event, file_fd=file_fd)
+            except BaseException as exc:
+                errors.append(exc)
+
+        with path.open("r+b") as shared:
+            original_flags = fcntl.fcntl(shared.fileno(), fcntl.F_GETFL)
+            with mock.patch.object(logs, "append_lock",
+                                   side_effect=coordinated_append_lock):
+                thread_a = threading.Thread(
+                    target=append_in_thread, args=("a", shared.fileno()),
+                    name="shared-a")
+                thread_b = threading.Thread(
+                    target=append_in_thread, args=("b", shared.fileno()),
+                    name="shared-b")
+                thread_a.start()
+                self.assertTrue(a_at_lock.wait(2), "A did not reach append lock")
+                thread_b.start()
+                thread_a.join(2)
+                self.assertFalse(thread_a.is_alive(), "A deadlocked")
+                self.assertTrue(b_at_lock.wait(2), "B did not reach append lock")
+                try:
+                    logs.append_event(self.repo, "0001-x", "c")
+                finally:
+                    resume_b.set()
+                thread_b.join(2)
+                self.assertFalse(thread_b.is_alive(), "B deadlocked")
+            restored_flags = fcntl.fcntl(shared.fileno(), fcntl.F_GETFL)
+
+        self.assertEqual(errors, [])
+        self.assertEqual(b_observed_append, [True])
+        # Darwin exposes private flock bookkeeping in F_GETFL after the first
+        # lock operation. Compare every caller-controllable status flag.
+        restorable_flags = (os.O_ACCMODE | os.O_APPEND | os.O_NONBLOCK
+                            | os.O_ASYNC)
+        self.assertEqual(restored_flags & restorable_flags,
+                         original_flags & restorable_flags)
+        event_bytes = lambda event: (json.dumps({
+            "event": event,
+            "ts": "2026-07-03T12:00:00Z",
+        }, sort_keys=True) + "\n").encode("utf-8")
+        self.assertEqual(
+            path.read_bytes(),
+            before + event_bytes("a") + event_bytes("c") + event_bytes("b"))
+        self.assertEqual(
+            [entry["event"] for entry in logs.read_events(self.repo, "0001-x")],
+            ["preexisting", "a", "c", "b"])
 
     def test_lines_have_sorted_keys(self):
         logs.append_event(self.repo, "0001-x", "e", {"b": 1, "a": 2})
