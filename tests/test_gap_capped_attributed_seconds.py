@@ -114,3 +114,88 @@ class StageEntryMetricTest(unittest.TestCase):
         with self.assertRaisesRegex(replay.EvidenceError,
                                     "exactly one item.created"):
             replay.stage_entries([event("2026-01-01T00:00:00Z")])
+
+
+class SourceBoundaryTest(unittest.TestCase):
+    def test_manifests_are_exact_immutable_tuples(self):
+        self.assertEqual(replay.PRIMARY_IDS, (
+            "0001-focus-group-research-structured-intervie",
+            "0002-claude-design-mcp-as-the-single-source-o",
+            "0003-interactive-decision-pages-clickable-cho",
+            "0004-per-item-cost-meter-measure-and-report-t",
+            "0007-tolerant-log-reading-corrupt-log-jsonl-l",
+            "0008-design-mirror-refinements-pull-bid-diver",
+            "0009-finish-the-never-bricks-promise-crash-pr",
+            "0010-factory-bug-command-understand-replicate",
+            "0012-adapt-the-design-options-decision-block-",
+            "0013-assure-attribution-gate-only-on-regressi",
+            "0015-approach-rejected-a-redesign-loop-back-t",
+            "0016-cost-circuit-breaker-on-engine-authorita",
+            "0025-round-scope-all-rework-gates-implement-c",
+        ))
+        self.assertEqual(replay.SECONDARY_IDS,
+                         replay.PRIMARY_IDS + (
+                             "0027-packet-respond-falls-through-to-factory-",
+                             "0031-the-cost-packet-s-decision-copy-is-churn",
+                             "0033-bugs-run-less-pipeline-make-stage-member",
+                         ))
+        self.assertEqual(len(replay.PRIMARY_IDS), 13)
+        self.assertEqual(len(replay.SECONDARY_IDS), 16)
+
+    def test_reader_counts_every_exclusion_class_without_inventing_time(self):
+        with tempfile.TemporaryDirectory() as td:
+            item_dir = Path(td) / "x"
+            item_dir.mkdir()
+            (item_dir / "log.jsonl").write_text(
+                '\n'.join([
+                    json.dumps(event("2026-01-01T00:00:00Z", "item.created")),
+                    "",
+                    "{broken",
+                    json.dumps({"event": "spend"}),
+                    json.dumps({"event": "spend", "ts": "yesterday"}),
+                    json.dumps(event("2026-01-01T00:00:01Z")),
+                    json.dumps(event("2026-01-01T00:00:02Z", "stage.advance",
+                                     {"from": "idea", "to": "done"})),
+                ]) + "\n", encoding="utf-8")
+            frozen = replay.read_source_item(Path(td), "x")
+        self.assertEqual([row["event"] for row in frozen["records"]],
+                         ["item.created", "spend", "stage.advance"])
+        self.assertEqual(frozen["disclosure"], {
+            "present": True,
+            "parseable_timestamped_records": 3,
+            "blank_lines": 1,
+            "corrupt_json_lines": 1,
+            "missing_timestamps": 1,
+            "unparseable_timestamps": 1,
+        })
+
+    def test_missing_log_is_disclosed_and_refused(self):
+        with tempfile.TemporaryDirectory() as td:
+            with self.assertRaisesRegex(replay.EvidenceError,
+                                        "missing declared log: x"):
+                replay.read_source_item(Path(td), "x")
+
+    def test_missing_created_or_done_record_is_refused(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            for item_id, rows, message in (
+                ("no-created", [event("2026-01-01T00:00:01Z")],
+                 "exactly one item.created"),
+                ("no-done", [event("2026-01-01T00:00:00Z", "item.created")],
+                 "stage.advance to done"),
+            ):
+                path = root / item_id
+                path.mkdir()
+                (path / "log.jsonl").write_text(
+                    "\n".join(json.dumps(row) for row in rows) + "\n",
+                    encoding="utf-8")
+                with self.subTest(item_id=item_id):
+                    with self.assertRaisesRegex(replay.EvidenceError, message):
+                        replay.read_source_item(root, item_id)
+
+    def test_record_digest_detects_removed_frozen_record(self):
+        rows = [event("2026-01-01T00:00:00Z", "item.created"),
+                event("2026-01-01T00:00:01Z", "stage.advance",
+                      {"from": "idea", "to": "done"})]
+        digest = replay.records_digest(rows)
+        self.assertNotEqual(digest, replay.records_digest(rows[:-1]))
