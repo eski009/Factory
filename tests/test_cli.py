@@ -186,7 +186,9 @@ class CliTest(unittest.TestCase):
         code, out, _ = self.run_cli("cost", "0001-thing")
         self.assertEqual(code, 0)
         self.assertIn("[proxy] stage idea:", out)
-        self.assertIn("[measured] tokens: none logged", out)
+        self.assertIn(
+            "[unmeasured] tokens: UNMEASURED — PARTIAL — measured leaf "
+            "events only; coverage incomplete", out)
         self.assertIn(
             "[unmeasured] UNMEASURED: orchestrator main-loop tokens", out)
 
@@ -222,7 +224,9 @@ class CliTest(unittest.TestCase):
         code, out, _ = self.run_cli("cost", "--all", "--json")
         self.assertEqual(code, 0)
         payload = json.loads(out)
-        self.assertEqual(set(payload), {"items", "coverage"})
+        self.assertEqual(set(payload), {"items", "coverage", "measured",
+                                        "measured_scope", "coverage_complete",
+                                        "scope_counts"})
         self.assertEqual(len(payload["items"]), 1)
 
     def test_cost_with_neither_item_nor_all_is_refused(self):
@@ -255,6 +259,11 @@ class CliTest(unittest.TestCase):
         self.assertIn("spend", rows[0])
         self.assertNotIn("stages", rows[0]["spend"])
         self.assertEqual(rows[0]["spend"]["item"], "0001-thing")
+        self.assertEqual(rows[0]["spend"]["measured_scope"], "leaf")
+        self.assertFalse(rows[0]["spend"]["coverage_complete"])
+        self.assertEqual(rows[0]["spend"]["scope_counts"],
+                         {"leaf": 0, "fork": 0, "unclassified": 0})
+        self.assertIsNone(rows[0]["spend"]["measured"])
 
     def test_status_table_shows_tier_and_kind(self):
         self.run_cli("init")
