@@ -4,6 +4,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from scripts.factory.lib import initrepo, items, logs, ownership
 
@@ -48,6 +49,43 @@ class OwnershipFixture(unittest.TestCase):
 
 
 class OwnershipPrimitiveTest(OwnershipFixture):
+    def test_repeated_short_writes_persist_exact_canonical_record(self):
+        real_write = ownership.os.write
+        write_sizes = []
+
+        def write_seven_bytes(fd, buffer):
+            written = real_write(fd, memoryview(buffer)[:7])
+            write_sizes.append(written)
+            return written
+
+        with mock.patch.object(ownership.os, "write",
+                               side_effect=write_seven_bytes), \
+                mock.patch.object(ownership.os, "fsync",
+                                  wraps=ownership.os.fsync) as fsync:
+            claim = ownership.acquire(self.repo, self.item)
+        try:
+            expected = (json.dumps(
+                ownership._record(self.item, claim.checkout, claim.token),
+                sort_keys=True) + "\n").encode("utf-8")
+            self.assertGreater(len(write_sizes), 1)
+            self.assertEqual(sum(write_sizes), len(expected))
+            self.assertEqual(self.state_path.read_bytes(), expected)
+            fsync.assert_called_once()
+        finally:
+            claim.release()
+
+    def test_zero_byte_write_retains_fail_closed_owner_state(self):
+        with mock.patch.object(ownership.os, "write", return_value=0), \
+                mock.patch.object(ownership.os, "fsync",
+                                  wraps=ownership.os.fsync) as fsync:
+            with self.assertRaisesRegex(OSError, "short write"):
+                ownership.acquire(self.repo, self.item)
+        self.assertEqual(self.state_path.read_bytes(), b"")
+        fsync.assert_not_called()
+        with self.assertRaises(ownership.OwnershipRefusal):
+            ownership.acquire(self.repo, self.item)
+        self.assertEqual(self.state_path.read_bytes(), b"")
+
     def test_two_distinct_owners_have_one_atomic_winner(self):
         gate = threading.Barrier(2)
         outcomes = []

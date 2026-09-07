@@ -100,7 +100,12 @@ def _create_exclusive(state, record, item_id, checkout):
         _read_valid_record(state, item_id, checkout)
         raise _contended(item_id, checkout)
     try:
-        os.write(fd, payload)
+        remaining = memoryview(payload)
+        while remaining:
+            written = os.write(fd, remaining)
+            if written <= 0:
+                raise OSError("short write while creating ownership state")
+            remaining = remaining[written:]
         os.fsync(fd)
     finally:
         os.close(fd)
