@@ -16,6 +16,30 @@ from . import initrepo, items, logs, machine
 UNMEASURED_NOTE = "orchestrator main-loop tokens"
 WAITING_STAGES = frozenset(machine.SPECIAL)
 TOKEN_KEYS = ("input", "output", "total")
+SPEND_SCOPES = ("leaf", "fork")
+UNCLASSIFIED_SCOPE = "unclassified"
+MEASURED_SCOPE = "leaf"
+PARTIAL_QUALIFIER = "PARTIAL — measured leaf events only; coverage incomplete"
+
+
+def _scope_key(data):
+    if isinstance(data, dict) and data.get("scope") in SPEND_SCOPES:
+        return data["scope"]
+    return UNCLASSIFIED_SCOPE
+
+
+def _empty_scope_counts():
+    return {"leaf": 0, "fork": 0, UNCLASSIFIED_SCOPE: 0}
+
+
+def _merge_measured(target, measured):
+    if measured is None:
+        return target
+    if target is None:
+        target = {"events": 0, "input": 0, "output": 0, "total": 0}
+    for key in ("events",) + TOKEN_KEYS:
+        target[key] += measured[key]
+    return target
 
 # The rework substrate: a backward stage.advance edge into implement.
 # Engine-written (machine.advance appends every stage.advance itself), so
@@ -150,19 +174,34 @@ def summarize(repo, item_id):
     dispatches = 0
     invalid = 0
     measured = None
+    scope_counts = _empty_scope_counts()
     for event in events:
         if not isinstance(event, dict) or event.get("event") != "spend":
             continue
         data = event.get("data")
-        if initrepo.spend_event_errors(data, "spend"):
+        scope = _scope_key(data)
+        scope_counts[scope] += 1
+        if not isinstance(data, dict):
             invalid += 1
             continue
+
+        # Validate every field except the scope axis first. This preserves
+        # auditable proxy/unmeasured evidence when only scope is invalid,
+        # while malformed provenance/token payloads remain fail-closed.
+        base_data = dict(data)
+        base_data["scope"] = "leaf"
+        if initrepo.spend_event_errors(base_data, "spend"):
+            invalid += 1
+            continue
+        if scope == UNCLASSIFIED_SCOPE and "scope" in data:
+            invalid += 1
+
         count = data.get("dispatches", 0)
         dispatches += count
         stage = data.get("stage")
         if stage is not None and count:
             _bucket(stages, stage)["dispatches"] += count
-        if data["provenance"] == "measured":
+        if data["provenance"] == "measured" and scope == MEASURED_SCOPE:
             if measured is None:
                 measured = {"events": 0, "input": 0, "output": 0, "total": 0}
             _add_tokens(measured, data["tokens"])
@@ -172,7 +211,7 @@ def summarize(repo, item_id):
                     bucket["measured"] = {"events": 0, "input": 0,
                                           "output": 0, "total": 0}
                 _add_tokens(bucket["measured"], data["tokens"])
-        elif stage is not None:
+        elif data["provenance"] != "measured" and stage is not None:
             _bucket(stages, stage)["proxy_events"] += 1
 
     active = sum(b["active_seconds"] for b in stages.values())
@@ -191,6 +230,9 @@ def summarize(repo, item_id):
         "dispatches": dispatches,
         "stages": stages,
         "measured": measured,
+        "measured_scope": MEASURED_SCOPE,
+        "coverage_complete": False,
+        "scope_counts": scope_counts,
         "unmeasured": UNMEASURED_NOTE,
         "invalid_spend_events": invalid,
         "corrupt_log_lines": corrupt,
@@ -345,23 +387,23 @@ def _coverage_scan(repo, item_id):
 
 
 def summarize_all(repo):
-    """Backlog-wide aggregate (item spec 0016 §2). Reports exactly three
-    things — per-item measured lower bounds, per-item proxy blocks, one
-    coverage line — plus the mandatory [unmeasured] line. It never sums,
-    averages, or compares token figures across items: the inner and outer
-    spend-event classes measure different quantities (bid-0063), so a
-    cross-item total has no provenance class and would be a constraint
-    violation rather than an inaccuracy."""
+    """Backlog-wide aggregate of valid measured leaf spend and coverage."""
     metas, errors = items.list_items_safe(repo)
     metas = sorted(metas, key=lambda m: m["id"])
     rows = []
+    measured = None
+    scope_counts = _empty_scope_counts()
     items_with_spend = 0
     advances_total = 0
     advances_with_spend = 0
     done_items = 0
     done_with_tier = 0
     for meta in metas:
-        rows.append(summarize(repo, meta["id"]))
+        row = summarize(repo, meta["id"])
+        rows.append(row)
+        measured = _merge_measured(measured, row["measured"])
+        for scope in (*SPEND_SCOPES, UNCLASSIFIED_SCOPE):
+            scope_counts[scope] += row["scope_counts"][scope]
         scan = _coverage_scan(repo, meta["id"])
         advances_total += scan["advances"]
         advances_with_spend += scan["carried"]
@@ -373,6 +415,10 @@ def summarize_all(repo):
                 done_with_tier += 1
     return {
         "items": rows,
+        "measured": measured,
+        "measured_scope": MEASURED_SCOPE,
+        "coverage_complete": False,
+        "scope_counts": scope_counts,
         "coverage": {
             "items_with_spend": items_with_spend,
             "items_total": len(rows),

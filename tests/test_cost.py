@@ -35,6 +35,9 @@ class CostTestCase(unittest.TestCase):
 
     def log_at(self, ts, event, data=None):
         os.environ["FACTORY_NOW"] = ts
+        if event == "spend" and isinstance(data, dict):
+            data = dict(data)
+            data.setdefault("scope", "leaf")
         logs.append_event(self.repo, ITEM, event, data)
 
     def advance_at(self, ts, frm, to):
@@ -122,12 +125,16 @@ class SummarizeTimelineTest(CostTestCase):
         summary = cost.summarize(self.repo, ITEM)
         expected = {"item", "window", "elapsed_seconds", "active_seconds",
                     "waiting_seconds", "advances", "rework_edges",
-                    "dispatches",
-                    "stages", "measured", "unmeasured", "invalid_spend_events",
-                    "corrupt_log_lines"}
+                    "dispatches", "stages", "measured", "unmeasured",
+                    "measured_scope", "coverage_complete", "scope_counts",
+                    "invalid_spend_events", "corrupt_log_lines"}
         self.assertEqual(set(summary), expected)
         self.assertIsNone(summary["measured"])
         self.assertEqual(summary["unmeasured"], "orchestrator main-loop tokens")
+        self.assertEqual(summary["measured_scope"], "leaf")
+        self.assertFalse(summary["coverage_complete"])
+        self.assertEqual(summary["scope_counts"],
+                         {"leaf": 0, "fork": 0, "unclassified": 0})
         json.dumps(summary, indent=2, sort_keys=True)
 
     def test_unknown_item_raises_item_error(self):
@@ -292,6 +299,77 @@ class SpendRollupTest(CostTestCase):
         self.assertEqual(summary["dispatches"], 5)
         self.assertEqual(
             sum(b["dispatches"] for b in summary["stages"].values()), 0)
+
+
+class SpendScopeAggregationTest(CostTestCase):
+    def append_raw(self, data):
+        path = paths.item_dir(self.repo, ITEM) / "log.jsonl"
+        event = {"event": "spend", "ts": "2026-07-03T10:00:00Z",
+                 "data": data}
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(event, sort_keys=True) + "\n")
+
+    def test_nested_measured_leaf_and_fork_sum_only_leaf(self):
+        self.log_at(
+            "2026-07-03T10:00:00Z", "spend",
+            {"provenance": "measured", "scope": "leaf", "stage": "spec",
+             "dispatches": 1, "tokens": {"total": 119266}})
+        self.log_at(
+            "2026-07-03T10:01:00Z", "spend",
+            {"provenance": "measured", "scope": "fork", "stage": "spec",
+             "dispatches": 1, "tokens": {"total": 98841}})
+        summary = cost.summarize(self.repo, ITEM)
+        self.assertEqual(summary["measured"],
+                         {"events": 1, "input": 0, "output": 0,
+                          "total": 119266})
+        self.assertEqual(summary["scope_counts"],
+                         {"leaf": 1, "fork": 1, "unclassified": 0})
+        self.assertEqual(summary["measured_scope"], "leaf")
+        self.assertFalse(summary["coverage_complete"])
+
+    def test_scope_and_provenance_are_independent_axes(self):
+        fixtures = (
+            ("measured", "leaf", 11),
+            ("proxy", "leaf", None),
+            ("unmeasured", "leaf", None),
+            ("measured", "fork", 23),
+            ("proxy", "fork", None),
+            ("unmeasured", "fork", None),
+        )
+        for index, (provenance, scope, total) in enumerate(fixtures):
+            data = {"provenance": provenance, "scope": scope,
+                    "stage": "implement", "dispatches": 1}
+            if total is not None:
+                data["tokens"] = {"total": total}
+            self.log_at(f"2026-07-03T10:0{index}:00Z", "spend", data)
+        summary = cost.summarize(self.repo, ITEM)
+        self.assertEqual(summary["measured"]["total"], 11)
+        self.assertEqual(summary["scope_counts"],
+                         {"leaf": 3, "fork": 3, "unclassified": 0})
+        self.assertEqual(summary["dispatches"], 6)
+
+    def test_missing_and_invalid_scope_are_unclassified_and_not_summed(self):
+        self.append_raw({"provenance": "measured", "stage": "implement",
+                         "dispatches": 1, "tokens": {"total": 40}})
+        self.append_raw({"provenance": "measured", "scope": "branch",
+                         "stage": "implement", "dispatches": 1,
+                         "tokens": {"total": 50}})
+        summary = cost.summarize(self.repo, ITEM)
+        self.assertIsNone(summary["measured"])
+        self.assertEqual(summary["scope_counts"],
+                         {"leaf": 0, "fork": 0, "unclassified": 2})
+        self.assertEqual(summary["invalid_spend_events"], 1)
+        self.assertEqual(summary["dispatches"], 2)
+
+    def test_invalid_payload_keeps_known_scope_but_is_excluded(self):
+        self.append_raw({"provenance": "proxy", "scope": "fork",
+                         "dispatches": 2, "tokens": {"total": 9}})
+        summary = cost.summarize(self.repo, ITEM)
+        self.assertEqual(summary["scope_counts"],
+                         {"leaf": 0, "fork": 1, "unclassified": 0})
+        self.assertEqual(summary["invalid_spend_events"], 1)
+        self.assertEqual(summary["dispatches"], 0)
+        self.assertIsNone(summary["measured"])
 
 
 class PerStageAttributionTest(CostTestCase):
@@ -588,6 +666,9 @@ class AggregateModeTest(unittest.TestCase):
 
     def log_at(self, item_id, ts, event, data=None):
         os.environ["FACTORY_NOW"] = ts
+        if event == "spend" and isinstance(data, dict):
+            data = dict(data)
+            data.setdefault("scope", "leaf")
         logs.append_event(self.repo, item_id, event, data)
 
     def seed(self):
@@ -614,14 +695,19 @@ class AggregateModeTest(unittest.TestCase):
         os.environ["FACTORY_NOW"] = "2026-07-03T02:00:00Z"
         return cost.summarize_all(self.repo)
 
-    def test_top_level_keys_are_exactly_items_and_coverage(self):
+    def test_top_level_exposes_leaf_aggregate_and_scope_metadata(self):
         summary = self.seed()
-        self.assertEqual(set(summary), {"items", "coverage"})
         self.assertEqual(
-            set(summary["coverage"]),
-            {"items_with_spend", "items_total", "advances_with_spend",
-             "advances_total", "done_items", "done_with_tier",
-             "unreadable_items"})
+            set(summary),
+            {"items", "coverage", "measured", "measured_scope",
+             "coverage_complete", "scope_counts"})
+        self.assertEqual(summary["measured"],
+                         {"events": 1, "input": 0, "output": 0,
+                          "total": 100})
+        self.assertEqual(summary["measured_scope"], "leaf")
+        self.assertFalse(summary["coverage_complete"])
+        self.assertEqual(summary["scope_counts"],
+                         {"leaf": 2, "fork": 0, "unclassified": 0})
 
     def test_coverage_figures_are_scanned_not_hardcoded(self):
         """AC8: seeded counts differ from this repo's 9/17."""
@@ -696,9 +782,9 @@ class AggregateModeTest(unittest.TestCase):
                       "tokens; per-tier medians (1 of 2 done items carry a "
                       "tier)", text)
 
-    def test_no_cross_item_aggregate_in_text_or_json(self):
+    def test_no_cross_item_aggregate_in_text(self):
         """AC6: the median clause is discharged as UNMEASURED, never as a
-        number, and nothing sums or averages across items."""
+        number, and text does not yet sum or average across items."""
         summary = self.seed()
         text = cost.render_all_text(summary)
         # 0001-a is the only item with measured tokens (100). Neither a
@@ -712,7 +798,10 @@ class AggregateModeTest(unittest.TestCase):
             self.assertNotIn("across all items", lowered)
         payload = json.dumps(summary, sort_keys=True)
         json.loads(payload)
-        self.assertEqual(set(json.loads(payload)), {"items", "coverage"})
+        self.assertEqual(
+            set(json.loads(payload)),
+            {"items", "coverage", "measured", "measured_scope",
+             "coverage_complete", "scope_counts"})
 
     def test_every_figure_line_carries_one_tag(self):
         text = cost.render_all_text(self.seed())
