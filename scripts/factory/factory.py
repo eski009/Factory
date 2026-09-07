@@ -227,6 +227,12 @@ def cmd_log(args):
               "factory approach-answer)",
               file=sys.stderr)
         return 1
+    if args.event == "spend":
+        errors = initrepo.spend_write_errors(data, "spend")
+        if errors:
+            for error in errors:
+                print(f"refused: {error}", file=sys.stderr)
+            return 2
     try:
         items.load_item(args.repo, args.item)
     except items.ItemError as exc:

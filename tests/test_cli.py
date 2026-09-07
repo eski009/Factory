@@ -264,26 +264,48 @@ class CliTest(unittest.TestCase):
         expected = f"{'0001-thing':<40} {'idea':<14} p{'-':<4} feature/mixed\n"
         self.assertEqual(out, expected)
 
-    def test_validate_exits_2_on_bad_spend_event(self):
+    def test_log_spend_missing_scope_refuses_before_append(self):
         self.run_cli("init")
         self.run_cli("add", "Thing")
-        self.run_cli("log", "0001-thing", "spend", "--data",
-                     '{"stage": "implement", "dispatches": 2}')
-        code, _, err = self.run_cli("validate")
-        self.assertEqual(code, 2)
-        self.assertIn("0001-thing/log.jsonl:2", err)
-        self.assertIn("provenance", err)
-
-    def test_log_spend_uses_unmodified_write_path(self):
-        self.run_cli("init")
-        self.run_cli("add", "Thing")
-        code, _, _ = self.run_cli(
+        log = Path(self.repo, ".factory/items/0001-thing/log.jsonl")
+        before = log.read_bytes()
+        code, _, err = self.run_cli(
             "log", "0001-thing", "spend", "--data",
             '{"provenance":"proxy","stage":"implement","dispatches":2}')
-        self.assertEqual(code, 0)
+        self.assertEqual(code, 2)
+        self.assertEqual(log.read_bytes(), before)
+        self.assertIn(
+            "refused: spend: new spend event requires scope 'leaf' or 'fork'",
+            err)
+
+    def test_log_spend_invalid_scope_refuses_before_append(self):
+        self.run_cli("init")
+        self.run_cli("add", "Thing")
+        log = Path(self.repo, ".factory/items/0001-thing/log.jsonl")
+        before = log.read_bytes()
+        code, _, err = self.run_cli(
+            "log", "0001-thing", "spend", "--data",
+            '{"provenance":"proxy","scope":"branch",'
+            '"stage":"implement","dispatches":2}')
+        self.assertEqual(code, 2)
+        self.assertEqual(log.read_bytes(), before)
+        self.assertIn(
+            "refused: spend.scope: 'branch' not one of ['leaf', 'fork']",
+            err)
+
+    def test_log_spend_accepts_leaf_and_fork(self):
+        self.run_cli("init")
+        self.run_cli("add", "Thing")
+        for scope in ("leaf", "fork"):
+            code, _, err = self.run_cli(
+                "log", "0001-thing", "spend", "--data",
+                json.dumps({"provenance": "proxy", "scope": scope,
+                            "stage": "implement", "dispatches": 1}))
+            self.assertEqual((code, err), (0, ""))
         log = Path(self.repo,
                    ".factory/items/0001-thing/log.jsonl").read_text()
-        self.assertIn('"event": "spend"', log)
+        self.assertIn('"scope": "leaf"', log)
+        self.assertIn('"scope": "fork"', log)
         code, _, _ = self.run_cli("validate")
         self.assertEqual(code, 0)
 
