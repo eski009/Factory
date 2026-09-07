@@ -505,6 +505,135 @@ class TestApproachRecordWriter(ConvergenceCase):
         self.assertEqual(sum(e["event"] == "approach.judgement.recorded"
                              for e in events), 1)
 
+    def test_log_replacement_inside_append_restores_pinned_inode(self):
+        record = self.record()
+        log = paths.item_dir(self.repo, ITEM) / "log.jsonl"
+        # Retain malformed and non-UTF8 bytes too: rollback is byte-exact.
+        with log.open("ab") as stream:
+            stream.write(b"\xff sentinel\n")
+        before = log.read_bytes()
+        original_append = logs.append_event
+        for operation in ("rename", "unlink"):
+            with self.subTest(operation=operation), tempfile.TemporaryDirectory() as tmp:
+                detached = Path(tmp) / "detached.jsonl"
+                with log.open("rb") as pinned:
+                    def moved_append(*args, **kwargs):
+                        if operation == "rename":
+                            log.rename(detached)
+                        else:
+                            log.unlink()
+                        log.write_bytes(before)
+                        result = original_append(*args, **kwargs)
+                        observed = os.pread(pinned.fileno(), 100000, 0)
+                        self.assertEqual(observed[:len(before)], before)
+                        appended = json.loads(observed[len(before):])
+                        self.assertEqual(appended["event"], "approach.judgement.recorded")
+                        return result
+
+                    with mock.patch.object(logs, "append_event", side_effect=moved_append):
+                        code, _out, err = self.run_cli(
+                            "approach-judgement", ITEM, "--data", json.dumps(record))
+                    self.assertEqual(code, 2, err)
+                    self.assertIn("replaced log.jsonl", err)
+                    self.assertEqual(log.read_bytes(), before)
+                    self.assertEqual(os.fstat(pinned.fileno()).st_size, len(before))
+                    self.assertEqual(pinned.read(), before)
+                    if operation == "rename":
+                        self.assertEqual(detached.read_bytes(), before)
+        for _ in range(2):
+            code, _out, err = self.run_cli(
+                "approach-judgement", ITEM, "--data", json.dumps(record))
+            self.assertEqual(code, 0, err)
+        self.assertEqual(logs.count_events(
+            self.repo, ITEM, "approach.judgement.recorded"), 1)
+
+    def test_append_io_failure_restores_bytes_and_retry(self):
+        record = self.record()
+        log = paths.item_dir(self.repo, ITEM) / "log.jsonl"
+        before = log.read_bytes()
+
+        def partial_append(*args, **kwargs):
+            os.write(kwargs["file_fd"], b'{"partial":')
+            raise OSError("injected append failure")
+
+        with mock.patch.object(logs, "append_event", side_effect=partial_append):
+            with self.assertRaisesRegex(OSError, "injected append failure"):
+                self.run_cli("approach-judgement", ITEM, "--data", json.dumps(record))
+        self.assertEqual(log.read_bytes(), before)
+        code, _out, err = self.run_cli(
+            "approach-judgement", ITEM, "--data", json.dumps(record))
+        self.assertEqual(code, 0, err)
+        self.assertEqual(logs.count_events(
+            self.repo, ITEM, "approach.judgement.recorded"), 1)
+
+    def test_append_sync_failure_rolls_back_and_reports_failed_recovery(self):
+        record = self.record()
+        log = paths.item_dir(self.repo, ITEM) / "log.jsonl"
+        before = log.read_bytes()
+        with mock.patch.object(os, "fsync", side_effect=OSError("sync failed")):
+            code, _out, err = self.run_cli(
+                "approach-judgement", ITEM, "--data", json.dumps(record))
+        self.assertEqual(code, 2, err)
+        self.assertIn("audit log rollback failed", err)
+        self.assertEqual(log.read_bytes(), before)
+
+    def test_truncate_failure_reports_unrestored_inode(self):
+        record = self.record()
+        log = paths.item_dir(self.repo, ITEM) / "log.jsonl"
+        before = log.read_bytes()
+        original_append = logs.append_event
+
+        def failed_append(*args, **kwargs):
+            original_append(*args, **kwargs)
+            raise OSError("append failed after flush")
+
+        with mock.patch.object(logs, "append_event", side_effect=failed_append), \
+                mock.patch.object(os, "ftruncate", side_effect=OSError("truncate failed")):
+            code, _out, err = self.run_cli(
+                "approach-judgement", ITEM, "--data", json.dumps(record))
+        self.assertEqual(code, 2, err)
+        self.assertIn("audit log rollback failed", err)
+        self.assertIn("truncate failed", err)
+        self.assertIn("append failed after flush", err)
+        self.assertGreater(log.stat().st_size, len(before))
+
+    def test_log_swap_at_final_verification_rolls_back(self):
+        record = self.record()
+        log = paths.item_dir(self.repo, ITEM) / "log.jsonl"
+        before = log.read_bytes()
+        original_stat = os.stat
+        original_append = logs.append_event
+        appended = False
+        checks = 0
+        with tempfile.TemporaryDirectory() as tmp:
+            detached = Path(tmp) / "detached.jsonl"
+
+            def appended_event(*args, **kwargs):
+                nonlocal appended
+                result = original_append(*args, **kwargs)
+                appended = True
+                return result
+
+            def swap_on_final_check(path, *args, **kwargs):
+                nonlocal checks
+                if appended and path == "log.jsonl":
+                    checks += 1
+                    if checks == 2:
+                        log.rename(detached)
+                        log.write_bytes(before)
+                        logs.append_event(self.repo, ITEM, "concurrent.sentinel")
+                return original_stat(path, *args, **kwargs)
+
+            with mock.patch.object(logs, "append_event", side_effect=appended_event), \
+                    mock.patch.object(os, "stat", side_effect=swap_on_final_check):
+                code, _out, err = self.run_cli(
+                    "approach-judgement", ITEM, "--data", json.dumps(record))
+            self.assertEqual(code, 2, err)
+            self.assertEqual(detached.read_bytes(), before)
+            self.assertEqual(logs.count_events(self.repo, ITEM, "concurrent.sentinel"), 1)
+            self.assertEqual(logs.count_events(
+                self.repo, ITEM, "approach.judgement.recorded"), 0)
+
     def test_log_leaf_replacement_after_publication_is_refused(self):
         from scripts.factory.lib import convergence
         record = self.record()
