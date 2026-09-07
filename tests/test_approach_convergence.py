@@ -465,6 +465,152 @@ class TestApproachRecordWriter(ConvergenceCase):
         self.configure(True)
         self.make_plan_item()
 
+    def test_created_judgement_directory_swap_preserves_replacement(self):
+        from scripts.factory.lib import convergence
+        record = self.record()
+        record["unexpected"] = True
+        item_dir = paths.item_dir(self.repo, ITEM)
+        canonical = item_dir / "approach-judgements"
+        detached = item_dir / "writer-created-detached"
+        original_open = os.open
+        swapped = False
+
+        def swap_created_directory(name, flags, *args, **kwargs):
+            nonlocal swapped
+            if name == "approach-judgements" and not swapped:
+                canonical.rename(detached)
+                canonical.mkdir()
+                swapped = True
+            return original_open(name, flags, *args, **kwargs)
+
+        with mock.patch.object(os, "open", side_effect=swap_created_directory):
+            with self.assertRaises(convergence.ConvergenceError):
+                convergence.record_judgement(self.repo, ITEM, record)
+
+        self.assertTrue(swapped)
+        self.assertTrue(
+            canonical.exists(), "cleanup deleted the unrelated replacement")
+        self.assertFalse(
+            detached.exists(), "cleanup retained the writer-created directory")
+        self.assertEqual(logs.count_events(
+            self.repo, ITEM, "approach.judgement.recorded"), 0)
+        with self.assertRaisesRegex(machine.GateError, "judgement missing"):
+            machine.advance(self.repo, ITEM, "implement")
+
+    def test_initial_temp_cleanup_failure_rolls_back_record_and_audit(self):
+        from scripts.factory.lib import convergence
+        record = self.record()
+        canonical = self.repo / self.context()["record"]
+        original_unlink = os.unlink
+        injected = False
+
+        def fail_first_temp_cleanup(name, *args, **kwargs):
+            nonlocal injected
+            if str(name).endswith(".tmp") and not injected:
+                injected = True
+                raise OSError("injected temp cleanup failure")
+            return original_unlink(name, *args, **kwargs)
+
+        with mock.patch.object(os, "unlink", side_effect=fail_first_temp_cleanup):
+            with self.assertRaisesRegex(OSError, "temp cleanup failure"):
+                convergence.record_judgement(self.repo, ITEM, record)
+
+        self.assertTrue(injected)
+        self.assertFalse(canonical.exists())
+        self.assertFalse(list(canonical.parent.glob("*.tmp")))
+        self.assertEqual(logs.count_events(
+            self.repo, ITEM, "approach.judgement.recorded"), 0)
+        with self.assertRaisesRegex(machine.GateError, "judgement missing"):
+            machine.advance(self.repo, ITEM, "implement")
+
+    def test_update_backup_cleanup_failure_restores_prior_record_and_audit(self):
+        from scripts.factory.lib import convergence
+        first = self.record(
+            signals=(SIGNALS[0],),
+            attempts=(self.attempt(1, verdict="uncertain"),),
+            final_verdict="uncertain", disposition="escalate")
+        canonical = convergence.record_judgement(self.repo, ITEM, first)
+        before = canonical.read_bytes()
+        second = self.record(
+            signals=(SIGNALS[0],),
+            attempts=(self.attempt(1, verdict="uncertain"), self.attempt(2)),
+            final_verdict="pass", disposition="advance")
+        original_unlink = os.unlink
+        injected = False
+
+        def fail_first_backup_cleanup(name, *args, **kwargs):
+            nonlocal injected
+            if str(name).endswith(".previous") and not injected:
+                injected = True
+                raise OSError("injected backup cleanup failure")
+            return original_unlink(name, *args, **kwargs)
+
+        with mock.patch.object(os, "unlink", side_effect=fail_first_backup_cleanup):
+            with self.assertRaisesRegex(OSError, "backup cleanup failure"):
+                convergence.record_judgement(self.repo, ITEM, second)
+
+        self.assertTrue(injected)
+        self.assertEqual(canonical.read_bytes(), before)
+        self.assertFalse(list(canonical.parent.glob("*.previous")))
+        self.assertEqual(logs.count_events(
+            self.repo, ITEM, "approach.judgement.recorded"), 1)
+
+    def test_interrupt_after_initial_link_rolls_back_uncommitted_record(self):
+        from scripts.factory.lib import convergence
+        record = self.record()
+        canonical = self.repo / self.context()["record"]
+        original_link = os.link
+
+        def link_then_interrupt(source, target, *args, **kwargs):
+            result = original_link(source, target, *args, **kwargs)
+            if target == canonical.name:
+                raise KeyboardInterrupt("injected after initial link")
+            return result
+
+        with mock.patch.object(os, "link", side_effect=link_then_interrupt):
+            with self.assertRaisesRegex(KeyboardInterrupt, "initial link"):
+                convergence.record_judgement(self.repo, ITEM, record)
+
+        self.assertFalse(canonical.exists())
+        self.assertFalse(list(canonical.parent.glob("*.tmp")))
+        self.assertEqual(logs.count_events(
+            self.repo, ITEM, "approach.judgement.recorded"), 0)
+        with self.assertRaisesRegex(machine.GateError, "judgement missing"):
+            machine.advance(self.repo, ITEM, "implement")
+
+    def test_interrupt_after_update_replace_restores_prior_record(self):
+        from scripts.factory.lib import convergence
+        first = self.record(
+            signals=(SIGNALS[0],),
+            attempts=(self.attempt(1, verdict="uncertain"),),
+            final_verdict="uncertain", disposition="escalate")
+        canonical = convergence.record_judgement(self.repo, ITEM, first)
+        before = canonical.read_bytes()
+        second = self.record(
+            signals=(SIGNALS[0],),
+            attempts=(self.attempt(1, verdict="uncertain"), self.attempt(2)),
+            final_verdict="pass", disposition="advance")
+        original_replace = os.replace
+        injected = False
+
+        def replace_then_interrupt(source, target, *args, **kwargs):
+            nonlocal injected
+            result = original_replace(source, target, *args, **kwargs)
+            if target == canonical.name and not injected:
+                injected = True
+                raise KeyboardInterrupt("injected after update replace")
+            return result
+
+        with mock.patch.object(os, "replace", side_effect=replace_then_interrupt):
+            with self.assertRaisesRegex(KeyboardInterrupt, "update replace"):
+                convergence.record_judgement(self.repo, ITEM, second)
+
+        self.assertTrue(injected)
+        self.assertEqual(canonical.read_bytes(), before)
+        self.assertFalse(list(canonical.parent.glob("*.previous")))
+        self.assertEqual(logs.count_events(
+            self.repo, ITEM, "approach.judgement.recorded"), 1)
+
     def test_log_concurrent_append_is_preserved(self):
         from scripts.factory.lib import convergence
         record = self.record()

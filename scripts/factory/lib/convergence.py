@@ -116,6 +116,24 @@ def _rmdir_if_identity(directory_fd, name, identity):
             raise
 
 
+def _rmdir_created_directory(directory_fd, name, identity):
+    """Compensate a created directory even if its entry was renamed."""
+    if identity is None:
+        return
+    if _entry_identity(directory_fd, name) == identity:
+        _rmdir_if_identity(directory_fd, name, identity)
+        return
+    with os.scandir(directory_fd) as entries:
+        for entry in entries:
+            try:
+                info = entry.stat(follow_symlinks=False)
+            except FileNotFoundError:
+                continue
+            if stat.S_ISDIR(info.st_mode) and _identity(info) == identity:
+                _rmdir_if_identity(directory_fd, entry.name, identity)
+                return
+
+
 def _version(info):
     return (_identity(info), info.st_size, info.st_mtime_ns, info.st_ctime_ns)
 
@@ -644,15 +662,25 @@ def _record_lock(repo, path):
                     try:
                         os.mkdir(component, dir_fd=parent)
                         directory_created = True
+                        directory_parent_fd = parent
+                        directory_name = component
+                        info = os.stat(
+                            component, dir_fd=parent, follow_symlinks=False)
+                        if not stat.S_ISDIR(info.st_mode):
+                            raise ConvergenceError(
+                                "approach judgement writer path is not a directory")
+                        directory_identity = _identity(info)
                     except FileExistsError:
                         pass
                 fd = os.open(component, flags, dir_fd=parent)
+                opened_identity = _identity(os.fstat(fd))
+                if (index == len(components) - 1 and directory_created
+                        and opened_identity != directory_identity):
+                    os.close(fd)
+                    raise ConvergenceError(
+                        "approach judgement untrusted symlink or replaced path")
                 descriptors.append(fd)
-                links.append((parent, component, _identity(os.fstat(fd))))
-                if index == len(components) - 1 and directory_created:
-                    directory_parent_fd = parent
-                    directory_name = component
-                    directory_identity = links[-1][2]
+                links.append((parent, component, opened_identity))
 
             def verify(*, before_append=False):
                 nonlocal integrity_failed
@@ -731,7 +759,7 @@ def _record_lock(repo, path):
         if log_fd is not None:
             os.close(log_fd)
         if directory_created and not completed:
-            _rmdir_if_identity(
+            _rmdir_created_directory(
                 directory_parent_fd, directory_name, directory_identity)
         for fd in reversed(descriptors):
             os.close(fd)
@@ -784,7 +812,6 @@ def _write_record(path, record, directory_fd, verify):
     temporary_identity = None
     previous = None
     previous_identity = None
-    published = False
     committed = False
     try:
         verify()
@@ -843,15 +870,22 @@ def _write_record(path, record, directory_fd, verify):
         else:
             os.replace(temporary, path.name, src_dir_fd=directory_fd,
                        dst_dir_fd=directory_fd)
-        published = True
         verify()
         yield
         verify()
+        if temporary is not None:
+            _unlink_if_identity(directory_fd, temporary, temporary_identity)
+            temporary = None
+        if previous is not None:
+            _unlink_if_identity(directory_fd, previous, previous_identity)
+            previous = None
         committed = True
     finally:
         # Keep publication reversible until its audit append and final identity
-        # check succeed. Remove only our inode or restore the exact prior one.
-        if (published and not committed and temporary_identity is not None
+        # check and all fallible cleanup succeed. Infer publication from the
+        # canonical inode so an interrupt between the syscall and bookkeeping
+        # cannot strand an unaudited authoritative record.
+        if (not committed and temporary_identity is not None
                 and _entry_identity(directory_fd, path.name)
                 == temporary_identity):
             if (previous is not None
