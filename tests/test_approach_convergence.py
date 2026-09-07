@@ -901,6 +901,99 @@ class TestApproachRecordWriter(ConvergenceCase):
                 if detached:
                     external.rename(canonical.parent)
 
+    def test_detached_item_during_audit_rolls_back_initial_publication(self):
+        record = self.record()
+        item_dir = paths.item_dir(self.repo, ITEM)
+        log_before = (item_dir / "log.jsonl").read_bytes()
+        canonical = self.repo / self.context()["record"]
+        self.assertFalse(canonical.parent.exists())
+        original_append = logs.append_event
+        detached = False
+
+        with tempfile.TemporaryDirectory() as tmp:
+            external = Path(tmp) / "detached-item"
+
+            def append_then_detach(*args, **kwargs):
+                nonlocal detached
+                result = original_append(*args, **kwargs)
+                item_dir.rename(external)
+                detached = True
+                return result
+
+            try:
+                with mock.patch.object(
+                        logs, "append_event", side_effect=append_then_detach):
+                    code, _out, err = self.run_cli(
+                        "approach-judgement", ITEM,
+                        "--data", json.dumps(record))
+                self.assertEqual(code, 2, err)
+                self.assertIn("replaced", err)
+                self.assertEqual(
+                    (external / "log.jsonl").read_bytes(), log_before)
+                self.assertFalse(
+                    (external / "approach-judgements").exists(),
+                    "failed transaction retained its created directory")
+                self.assertFalse(
+                    (external / ".approach-judgement.lock").exists())
+            finally:
+                if detached:
+                    external.rename(item_dir)
+
+    def test_detached_item_during_audit_restores_previous_record(self):
+        first = self.record(
+            signals=(SIGNALS[0],),
+            attempts=(self.attempt(1, verdict="uncertain"),),
+            final_verdict="uncertain", disposition="escalate")
+        code, out, err = self.run_cli(
+            "approach-judgement", ITEM, "--data", json.dumps(first))
+        self.assertEqual((code, err), (0, ""))
+        canonical = self.repo / out.strip()
+        record_before = canonical.read_bytes()
+        item_dir = paths.item_dir(self.repo, ITEM)
+        log_before = (item_dir / "log.jsonl").read_bytes()
+        lock_before = (
+            item_dir / ".approach-judgement.lock").read_bytes()
+        second = self.record(
+            signals=(SIGNALS[0],),
+            attempts=(self.attempt(1, verdict="uncertain"), self.attempt(2)),
+            final_verdict="pass", disposition="advance")
+        original_append = logs.append_event
+        detached = False
+
+        with tempfile.TemporaryDirectory() as tmp:
+            external = Path(tmp) / "detached-item"
+
+            def append_then_detach(*args, **kwargs):
+                nonlocal detached
+                result = original_append(*args, **kwargs)
+                item_dir.rename(external)
+                detached = True
+                return result
+
+            try:
+                with mock.patch.object(
+                        logs, "append_event", side_effect=append_then_detach):
+                    code, _out, err = self.run_cli(
+                        "approach-judgement", ITEM,
+                        "--data", json.dumps(second))
+                self.assertEqual(code, 2, err)
+                self.assertIn("replaced", err)
+                detached_record = (
+                    external / canonical.relative_to(item_dir))
+                self.assertEqual(detached_record.read_bytes(), record_before)
+                self.assertEqual(
+                    (external / "log.jsonl").read_bytes(), log_before)
+                self.assertEqual(
+                    (external / ".approach-judgement.lock").read_bytes(),
+                    lock_before)
+                self.assertFalse(list(
+                    (external / "approach-judgements").glob("*.tmp")))
+                self.assertFalse(list(
+                    (external / "approach-judgements").glob("*.previous")))
+            finally:
+                if detached:
+                    external.rename(item_dir)
+
     def test_context_cli_exposes_only_engine_derived_values(self):
         code, out, err = self.run_cli("approach-context", ITEM, "--json")
         self.assertEqual((code, err), (0, ""))
@@ -970,7 +1063,7 @@ class TestApproachRecordWriter(ConvergenceCase):
         self.assertEqual(logs.count_events(
             self.repo, ITEM, "approach.judgement.recorded"), 1)
 
-    def test_retry_after_event_interruption_reconciles_exactly_one_event(self):
+    def test_retry_after_event_interruption_republishes_exactly_one_event(self):
         from scripts.factory.lib import convergence
         record = self.record()
         path = self.repo / self.context()["record"]
@@ -988,7 +1081,7 @@ class TestApproachRecordWriter(ConvergenceCase):
                                side_effect=interrupted_append):
             with self.assertRaisesRegex(OSError, "injected interruption"):
                 convergence.record_judgement(self.repo, ITEM, record)
-            self.assertEqual(json.loads(path.read_text(encoding="utf-8")), record)
+            self.assertFalse(path.exists())
             self.assertEqual(convergence.record_judgement(
                 self.repo, ITEM, record), path)
 
@@ -1011,7 +1104,7 @@ class TestApproachRecordWriter(ConvergenceCase):
         self.assertEqual(logs.count_events(
             self.repo, ITEM, "approach.judgement.recorded"), 1)
 
-    def test_final_update_reconciles_interrupted_escalation_event_in_order(self):
+    def test_final_update_retries_rolled_back_escalation_in_order(self):
         from scripts.factory.lib import convergence
         first = self.record(
             signals=(SIGNALS[0],),
@@ -1029,7 +1122,9 @@ class TestApproachRecordWriter(ConvergenceCase):
             with self.assertRaisesRegex(OSError, "injected interruption"):
                 convergence.record_judgement(self.repo, ITEM, first)
 
-        self.assertEqual(json.loads(path.read_text(encoding="utf-8")), first)
+        self.assertFalse(path.exists())
+        self.assertEqual(
+            convergence.record_judgement(self.repo, ITEM, first), path)
         self.assertEqual(
             convergence.record_judgement(self.repo, ITEM, second), path)
         self.assertEqual(
@@ -1045,7 +1140,7 @@ class TestApproachRecordWriter(ConvergenceCase):
             [("feature", 1, 1, "uncertain", "escalate"),
              ("feature", 1, 2, "pass", "advance")])
 
-    def test_stale_tier_record_reconciles_then_replaces_same_canonical_path(self):
+    def test_tier_change_after_rolled_back_record_uses_same_canonical_path(self):
         from scripts.factory.lib import convergence
         feature = self.record(
             signals=(SIGNALS[0],),
@@ -1080,8 +1175,7 @@ class TestApproachRecordWriter(ConvergenceCase):
             [(event["tier"], event["escalation_bound"], event["attempts"],
               event["final_verdict"], event["disposition"])
              for event in events],
-            [("feature", 1, 1, "uncertain", "escalate"),
-             ("bug", 0, 1, "uncertain", "approach.rejected")])
+            [("bug", 0, 1, "uncertain", "approach.rejected")])
         self.assertTrue(all(event["path"] == self.context()["record"]
                             for event in events))
 

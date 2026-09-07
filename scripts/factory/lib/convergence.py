@@ -105,6 +105,17 @@ def _unlink_if_identity(directory_fd, name, identity):
         os.unlink(name, dir_fd=directory_fd)
 
 
+def _rmdir_if_identity(directory_fd, name, identity):
+    """Remove an empty directory only when this writer created its entry."""
+    if identity is None or _entry_identity(directory_fd, name) != identity:
+        return
+    try:
+        os.rmdir(name, dir_fd=directory_fd)
+    except OSError as exc:
+        if exc.errno not in (errno.ENOTEMPTY, errno.EEXIST):
+            raise
+
+
 def _version(info):
     return (_identity(info), info.st_size, info.st_mtime_ns, info.st_ctime_ns)
 
@@ -612,9 +623,14 @@ def _record_lock(repo, path):
     lock_directory_fd = None
     lock_created = False
     lock_identity = None
+    directory_created = False
+    directory_parent_fd = None
+    directory_name = None
+    directory_identity = None
     integrity_failed = False
     log_identity = None
     append_span = []
+    completed = False
     try:
         try:
             flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
@@ -627,11 +643,16 @@ def _record_lock(repo, path):
                 if index == len(components) - 1:
                     try:
                         os.mkdir(component, dir_fd=parent)
+                        directory_created = True
                     except FileExistsError:
                         pass
                 fd = os.open(component, flags, dir_fd=parent)
                 descriptors.append(fd)
                 links.append((parent, component, _identity(os.fstat(fd))))
+                if index == len(components) - 1 and directory_created:
+                    directory_parent_fd = parent
+                    directory_name = component
+                    directory_identity = links[-1][2]
 
             def verify(*, before_append=False):
                 nonlocal integrity_failed
@@ -691,7 +712,7 @@ def _record_lock(repo, path):
                 "approach judgement untrusted symlink or unreadable writer path") from exc
         try:
             yield directory_fd, log_fd, verify
-            verify()
+            completed = True
         except BaseException as exc:
             if append_span:
                 try:
@@ -709,6 +730,9 @@ def _record_lock(repo, path):
                 lock_directory_fd, ".approach-judgement.lock", lock_identity)
         if log_fd is not None:
             os.close(log_fd)
+        if directory_created and not completed:
+            _rmdir_if_identity(
+                directory_parent_fd, directory_name, directory_identity)
         for fd in reversed(descriptors):
             os.close(fd)
 
@@ -754,12 +778,14 @@ def _append_recorded_event_if_missing(repo, item_id, data, log_fd, verify):
     verify()
 
 
+@contextmanager
 def _write_record(path, record, directory_fd, verify):
     temporary = None
     temporary_identity = None
     previous = None
     previous_identity = None
     published = False
+    committed = False
     try:
         verify()
         while True:
@@ -817,12 +843,15 @@ def _write_record(path, record, directory_fd, verify):
         else:
             os.replace(temporary, path.name, src_dir_fd=directory_fd,
                        dst_dir_fd=directory_fd)
-        verify()
         published = True
+        verify()
+        yield
+        verify()
+        committed = True
     finally:
-        # If publication happened through a directory that verification then
-        # found detached, remove only our inode or restore the exact prior one.
-        if (not published and temporary_identity is not None
+        # Keep publication reversible until its audit append and final identity
+        # check succeed. Remove only our inode or restore the exact prior one.
+        if (published and not committed and temporary_identity is not None
                 and _entry_identity(directory_fd, path.name)
                 == temporary_identity):
             if (previous is not None
@@ -909,9 +938,9 @@ def record_judgement(repo, item_id, record):
                 _validate_prior_tier_replacement(existing, record)
                 _append_recorded_event_if_missing(
                     repo, item_id, existing_data, log_fd, verify)
-                _write_record(path, record, directory_fd, verify)
-                _append_recorded_event_if_missing(
-                    repo, item_id, data, log_fd, verify)
+                with _write_record(path, record, directory_fd, verify):
+                    _append_recorded_event_if_missing(
+                        repo, item_id, data, log_fd, verify)
                 return path
             validate_current(repo, meta, existing)
             _append_recorded_event_if_missing(
@@ -933,7 +962,7 @@ def record_judgement(repo, item_id, record):
                 raise ConvergenceError(
                     "approach judgement update must append exactly one reviewer "
                     "attempt and preserve prior attempts byte-for-byte")
-        _write_record(path, record, directory_fd, verify)
-        _append_recorded_event_if_missing(
-            repo, item_id, data, log_fd, verify)
+        with _write_record(path, record, directory_fd, verify):
+            _append_recorded_event_if_missing(
+                repo, item_id, data, log_fd, verify)
         return path
