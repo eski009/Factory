@@ -26,6 +26,17 @@ class TestLogs(unittest.TestCase):
         self.assertEqual(events[0]["ts"], "2026-07-03T12:00:00Z")
         self.assertEqual(events[1]["data"], {"round": 1})
 
+    def test_supplied_descriptor_appends_despite_current_offset(self):
+        logs.append_event(self.repo, "0001-x", "item.created")
+        path = self.repo / ".factory/items/0001-x/log.jsonl"
+        before = path.read_bytes()
+        with path.open("r+b") as stream:
+            logs.append_event(self.repo, "0001-x", "sentinel",
+                              file_fd=stream.fileno())
+        self.assertTrue(path.read_bytes().startswith(before))
+        self.assertEqual([e["event"] for e in logs.read_events(self.repo, "0001-x")],
+                         ["item.created", "sentinel"])
+
     def test_lines_have_sorted_keys(self):
         logs.append_event(self.repo, "0001-x", "e", {"b": 1, "a": 2})
         line = (self.repo / ".factory/items/0001-x/log.jsonl").read_text().strip()

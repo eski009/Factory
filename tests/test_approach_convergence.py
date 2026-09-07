@@ -1,7 +1,10 @@
+import fcntl
 import io
 import json
 import os
 import shutil
+import subprocess
+import sys
 import tempfile
 import threading
 import unittest
@@ -465,45 +468,85 @@ class TestApproachRecordWriter(ConvergenceCase):
     def test_log_concurrent_append_is_preserved(self):
         from scripts.factory.lib import convergence
         record = self.record()
-        original_fdopen = os.fdopen
-        injected = False
+        original_append = logs.append_event
 
-        class InterleavedAppend:
-            def __init__(self, stream):
-                self.stream = stream
+        def interleaved_append(*args, **kwargs):
+            original_append(self.repo, ITEM, "concurrent.sentinel")
+            fd = kwargs["file_fd"]
+            self.assertTrue(fcntl.fcntl(fd, fcntl.F_GETFL) & os.O_APPEND)
+            os.lseek(fd, 0, os.SEEK_SET)
+            return original_append(*args, **kwargs)
 
-            def __enter__(self):
-                self.stream.__enter__()
-                return self
-
-            def __exit__(self, *args):
-                return self.stream.__exit__(*args)
-
-            def seek(self, *args):
-                nonlocal injected
-                result = self.stream.seek(*args)
-                if not injected:
-                    injected = True
-                    logs.append_event(self_repo, ITEM, "concurrent.sentinel")
-                return result
-
-            def write(self, value):
-                return self.stream.write(value)
-
-        self_repo = self.repo
-
-        def interleaved_fdopen(fd, mode="r", *args, **kwargs):
-            stream = original_fdopen(fd, mode, *args, **kwargs)
-            return InterleavedAppend(stream) if mode == "a" else stream
-
-        with mock.patch.object(os, "fdopen", side_effect=interleaved_fdopen):
+        with mock.patch.object(logs, "append_event", side_effect=interleaved_append):
             convergence.record_judgement(self.repo, ITEM, record)
-        self.assertTrue(injected)
         events = logs.read_events(self.repo, ITEM)
         self.assertEqual(sum(e["event"] == "concurrent.sentinel" for e in events),
                          1, "concurrent append was overwritten")
         self.assertEqual(sum(e["event"] == "approach.judgement.recorded"
                              for e in events), 1)
+
+    def test_successful_cli_append_survives_later_judgement_refusal(self):
+        record = self.record()
+        item_dir = paths.item_dir(self.repo, ITEM)
+        log = item_dir / "log.jsonl"
+        directory = item_dir / "approach-judgements"
+        original_append = logs.append_event
+        original_sync = os.fsync
+        for failure in ("directory", "log", "sync"):
+            with self.subTest(failure=failure):
+                before = log.read_bytes() + b"\xff preexisting bytes\n"
+                log.write_bytes(before)
+                sentinel_bytes = b""
+                fail_sync = False
+                with log.open("rb") as pinned:
+                    def append_then_refuse(*args, **kwargs):
+                        nonlocal sentinel_bytes, fail_sync
+                        result = original_append(*args, **kwargs)
+                        offset = log.stat().st_size
+                        child = subprocess.run(
+                            [sys.executable, factory.__file__, "--repo", str(self.repo),
+                             "log", ITEM, "concurrent.sentinel"],
+                            capture_output=True, text=True, timeout=10)
+                        self.assertEqual(child.returncode, 0, child.stderr)
+                        sentinel_bytes = log.read_bytes()[offset:]
+                        self.assertEqual(json.loads(sentinel_bytes)["event"],
+                                         "concurrent.sentinel")
+                        if failure == "directory":
+                            directory.rename(item_dir / "detached-judgements")
+                            directory.mkdir()
+                        elif failure == "log":
+                            log.rename(item_dir / "detached-log")
+                            log.write_bytes(b"replacement must remain unchanged\n")
+                        else:
+                            fail_sync = True
+                        return result
+
+                    def sync(fd):
+                        nonlocal fail_sync
+                        if fail_sync:
+                            fail_sync = False
+                            raise OSError("injected sync failure")
+                        return original_sync(fd)
+
+                    with mock.patch.object(logs, "append_event", side_effect=append_then_refuse), \
+                            mock.patch.object(os, "fsync", side_effect=sync):
+                        if failure == "sync":
+                            with self.assertRaisesRegex(OSError, "injected sync failure"):
+                                self.run_cli("approach-judgement", ITEM,
+                                             "--data", json.dumps(record))
+                        else:
+                            code, _out, err = self.run_cli(
+                                "approach-judgement", ITEM, "--data", json.dumps(record))
+                            self.assertEqual(code, 2, err)
+                            self.assertIn("replaced", err)
+                    actual = pinned.read()
+                if failure == "log":
+                    self.assertEqual(log.read_bytes(), b"replacement must remain unchanged\n")
+                    log.unlink()
+                    (item_dir / "detached-log").rename(log)
+                self.assertEqual(actual, before + sentinel_bytes)
+                self.assertEqual(actual[len(before):].count(b'"concurrent.sentinel"'), 1)
+                self.assertNotIn(b'"approach.judgement.recorded"', actual)
 
     def test_log_replacement_inside_append_restores_pinned_inode(self):
         record = self.record()
@@ -552,11 +595,17 @@ class TestApproachRecordWriter(ConvergenceCase):
         log = paths.item_dir(self.repo, ITEM) / "log.jsonl"
         before = log.read_bytes()
 
-        def partial_append(*args, **kwargs):
-            os.write(kwargs["file_fd"], b'{"partial":')
-            raise OSError("injected append failure")
+        original_write = os.write
+        wrote_partial = False
 
-        with mock.patch.object(logs, "append_event", side_effect=partial_append):
+        def partial_write(fd, payload):
+            nonlocal wrote_partial
+            if wrote_partial:
+                raise OSError("injected append failure")
+            wrote_partial = True
+            return original_write(fd, payload[:10])
+
+        with mock.patch.object(os, "write", side_effect=partial_write):
             with self.assertRaisesRegex(OSError, "injected append failure"):
                 self.run_cli("approach-judgement", ITEM, "--data", json.dumps(record))
         self.assertEqual(log.read_bytes(), before)

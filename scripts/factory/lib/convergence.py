@@ -590,14 +590,13 @@ def _load_authoritative_record(repo, relative):
 def _record_lock(repo, path):
     """Anchor all writer mutations to no-follow repository descriptors.
 
-    Rollback removes the append suffix, retaining the pinned inode's prefix.
-    This is in-process recovery, not crash atomicity: arbitrary writers to the
-    same inode during rollback are outside this per-record lock's protection.
+    Rollback removes only the tracked judgement append. Public log writers
+    share the inode lock during append and rollback, preserving their bytes.
     """
     descriptors, links = [], []
     lock_fd = log_fd = None
     log_identity = None
-    rollback_size = None
+    append_span = []
     try:
         try:
             flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
@@ -617,7 +616,6 @@ def _record_lock(repo, path):
                 links.append((parent, component, _identity(os.fstat(fd))))
 
             def verify(*, before_append=False):
-                nonlocal rollback_size
                 try:
                     for parent, component, identity in links:
                         info = os.stat(component, dir_fd=parent,
@@ -638,7 +636,8 @@ def _record_lock(repo, path):
                         "approach judgement unreadable or replaced writer path") from exc
 
                 if before_append:
-                    rollback_size = os.fstat(log_fd).st_size
+                    append_span.clear()
+                    return append_span
 
             verify()
             directory_fd = descriptors[-1]
@@ -646,9 +645,11 @@ def _record_lock(repo, path):
                                    writable=True, append=True)
             log_identity = _identity(os.fstat(log_fd))
             verify()
-            lock_fd = os.open(path.name + ".lock",
+            # All judgement transactions for this item share a lock: removing
+            # an earlier append must not shift another pending rollback span.
+            lock_fd = os.open(".approach-judgement.lock",
                               os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW
-                              | os.O_NONBLOCK, 0o600, dir_fd=directory_fd)
+                              | os.O_NONBLOCK, 0o600, dir_fd=descriptors[-2])
             if not stat.S_ISREG(os.fstat(lock_fd).st_mode):
                 raise ConvergenceError("approach judgement lock must be regular")
             fcntl.flock(lock_fd, fcntl.LOCK_EX)
@@ -660,13 +661,9 @@ def _record_lock(repo, path):
             yield directory_fd, log_fd, verify
             verify()
         except BaseException as exc:
-            if rollback_size is not None:
-                # append_event closes/flushes its duplicate stream before returning
-                # (also on write failure), so no buffered bytes can reappear after
-                # truncation. Never reopen the potentially replaced pathname.
+            if append_span:
                 try:
-                    os.ftruncate(log_fd, rollback_size)
-                    os.fsync(log_fd)
+                    logs.rollback_append(log_fd, append_span)
                 except OSError as rollback_error:
                     raise ConvergenceError(
                         f"audit log rollback failed: {rollback_error}; "
@@ -715,9 +712,9 @@ def _append_recorded_event_if_missing(repo, item_id, data, log_fd, verify):
     verify()
     if found:
         return
-    verify(before_append=True)
+    append_span = verify(before_append=True)
     logs.append_event(repo, item_id, "approach.judgement.recorded", data,
-                      file_fd=log_fd)
+                      file_fd=log_fd, append_span=append_span)
     os.fsync(log_fd)
     verify()
 
