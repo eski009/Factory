@@ -268,13 +268,26 @@ def _token_segments(measured):
     return [f"{key} {measured[key]}" for key in TOKEN_KEYS if measured[key]]
 
 
-def _measured_text(summary):
+def _scope_count_text(summary):
+    counts = summary["scope_counts"]
+    return (f"spend events: leaf {counts['leaf']}, fork {counts['fork']}, "
+            f"unclassified {counts['unclassified']}")
+
+
+def _measured_text(summary, subject=None, include_scope_counts=True):
     measured = summary["measured"]
     segments = _token_segments(measured)
+    label = f"{subject}: " if subject else ""
+    token_label = f"{label}tokens" if subject else "tokens:"
     if not segments:
-        return "[measured] tokens: none logged"
-    return (f"[measured] tokens: {', '.join(segments)} "
-            f"({measured['events']} spend events)")
+        line = (f"[unmeasured] {token_label} UNMEASURED — "
+                f"{PARTIAL_QUALIFIER}")
+    else:
+        line = (f"[measured] {token_label} {', '.join(segments)} "
+                f"({measured['events']} spend events) — {PARTIAL_QUALIFIER}")
+    if include_scope_counts:
+        line += f" ({_scope_count_text(summary)})"
+    return line
 
 
 def render_text(summary):
@@ -304,10 +317,11 @@ def render_text(summary):
         if segments:
             lines.append(f"[measured] stage {name}: tokens "
                          f"{', '.join(segments)} "
-                         f"({bucket['measured']['events']} spend events)")
+                         f"({bucket['measured']['events']} spend events) — "
+                         f"{PARTIAL_QUALIFIER}")
         else:
-            lines.append(f"[unmeasured] stage {name}: tokens UNMEASURED "
-                         "(no spend events logged)")
+            lines.append(f"[unmeasured] stage {name}: tokens UNMEASURED — "
+                         f"{PARTIAL_QUALIFIER}")
     lines.append(f"[proxy] advances: {summary['advances']}, "
                  f"rework edges: {summary['rework_edges']}, "
                  f"dispatches: {summary['dispatches']}")
@@ -334,13 +348,7 @@ def render_receipt(summary):
              f"{summary['rework_edges']} rework edges")
     if summary["corrupt_log_lines"]:
         proxy += f", corrupt log lines skipped: {summary['corrupt_log_lines']}"
-    measured = summary["measured"]
-    segments = _token_segments(measured)
-    if not segments:
-        measured_line = "- [measured] tokens: none logged"
-    else:
-        measured_line = (f"- [measured] tokens: {', '.join(segments)} "
-                         f"({measured['events']} events)")
+    measured_line = "- " + _measured_text(summary)
     lines = [
         proxy,
         measured_line,
@@ -353,7 +361,8 @@ def render_receipt(summary):
         segments = _token_segments(bucket["measured"])
         if segments:
             lines.append(f"- [measured] stage {name}: {', '.join(segments)} "
-                         f"({bucket['measured']['events']} events)")
+                         f"({bucket['measured']['events']} events) — "
+                         f"{PARTIAL_QUALIFIER}")
     return "\n".join(lines)
 
 
@@ -436,17 +445,13 @@ def summarize_all(repo):
 
 
 def render_all_text(summary):
-    """Aggregate text contract: per-item measured lower bounds, per-item
-    proxy blocks, one [coverage] line, one [unmeasured] line. No line and
-    no key aggregates across items."""
-    lines = []
+    """Aggregate text contract: qualified leaf totals, proxy blocks, one
+    [coverage] line, and one [unmeasured] line."""
+    lines = [_measured_text(summary, subject="aggregate",
+                            include_scope_counts=True)]
     for item in summary["items"]:
-        segments = _token_segments(item["measured"])
-        if segments:
-            lines.append(f"[measured] {item['item']}: tokens "
-                         f"{', '.join(segments)} "
-                         f"({item['measured']['events']} spend events) "
-                         "— LOWER BOUND (not summable)")
+        lines.append(_measured_text(item, subject=item["item"],
+                                    include_scope_counts=True))
         for name in machine.STAGES:
             bucket = item["stages"].get(name)
             if bucket is None:
@@ -469,18 +474,10 @@ def render_all_text(summary):
     lines.append(coverage)
     lines.append(f"[unmeasured] UNMEASURED: {UNMEASURED_NOTE}; per-tier "
                  f"medians ({cov['done_with_tier']} of {cov['done_items']} "
-                 "done items carry a tier) — no cross-item total or median "
-                 "is computed")
+                 "done items carry a tier) — no median is computed")
     return "\n".join(lines)
 
 
 def render_lower_bound(summary):
-    """One measured line for a decision surface: the item's own measured
-    tokens explicitly labelled a lower bound, or the loud UNMEASURED
-    literal. Never a zero, a dash, or an estimated dollar figure."""
-    measured = summary["measured"]
-    segments = _token_segments(measured)
-    if not segments:
-        return "[unmeasured] tokens: UNMEASURED (no spend events logged)"
-    return (f"[measured] tokens: {', '.join(segments)} "
-            f"({measured['events']} spend events) — LOWER BOUND")
+    """One leaf-scoped, visibly partial measured-token decision line."""
+    return _measured_text(summary)
