@@ -20,6 +20,7 @@ import time
 from pathlib import Path
 
 from . import initrepo, items, logs, paths, validate, worker_attempts
+from .ownership import canonical_worktree
 
 
 class WorkError(Exception):
