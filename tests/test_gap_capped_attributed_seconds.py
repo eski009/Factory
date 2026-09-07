@@ -117,6 +117,29 @@ class StageEntryMetricTest(unittest.TestCase):
 
 
 class SourceBoundaryTest(unittest.TestCase):
+    def test_reader_parses_and_hashes_one_byte_buffer(self):
+        raw = ("{\"event\":\"item.created\",\"ts\":\"2026-01-01T00:00:00Z\"}\n"
+               "{\"event\":\"stage.advance\",\"ts\":\"2026-01-01T00:00:01Z\","
+               "\"data\":{\"from\":\"idea\",\"to\":\"done\"}}\n").encode("utf-8")
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            item_dir = root / "x"
+            item_dir.mkdir()
+            path = item_dir / "log.jsonl"
+            path.write_bytes(b"separate on-disk version")
+            with mock.patch.object(Path, "read_bytes", autospec=True,
+                                   return_value=raw) as read_bytes, \
+                 mock.patch.object(Path, "read_text", autospec=True,
+                                   side_effect=AssertionError(
+                                       "reader must not use read_text")) as read_text:
+                frozen = replay.read_source_item(root, "x")
+        read_bytes.assert_called_once_with(path)
+        read_text.assert_not_called()
+        self.assertEqual([row["event"] for row in frozen["records"]],
+                         ["item.created", "stage.advance"])
+        self.assertEqual(frozen["source_log_sha256"],
+                         replay.hashlib.sha256(raw).hexdigest())
+
     def test_manifests_are_exact_immutable_tuples(self):
         self.assertEqual(replay.PRIMARY_IDS, (
             "0001-focus-group-research-structured-intervie",

@@ -137,6 +137,7 @@ def read_source_item(source_root, item_id):
     path = source_root / item_id / "log.jsonl"
     if not path.is_file():
         raise EvidenceError(f"missing declared log: {item_id}")
+    source_bytes = path.read_bytes()
     disclosure = {
         "present": True,
         "parseable_timestamped_records": 0,
@@ -146,7 +147,7 @@ def read_source_item(source_root, item_id):
         "unparseable_timestamps": 0,
     }
     records = []
-    for raw in path.read_text(encoding="utf-8").splitlines():
+    for raw in source_bytes.decode("utf-8").splitlines():
         if not raw.strip():
             disclosure["blank_lines"] += 1
             continue
@@ -170,6 +171,6 @@ def read_source_item(source_root, item_id):
         "records": records,
         "record_count": len(records),
         "records_sha256": records_digest(records),
-        "source_log_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "source_log_sha256": hashlib.sha256(source_bytes).hexdigest(),
         "disclosure": disclosure,
     }
