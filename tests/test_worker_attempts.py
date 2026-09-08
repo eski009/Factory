@@ -8,6 +8,7 @@ import tempfile
 import threading
 import time
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -88,6 +89,102 @@ class WorkerAttemptsTest(unittest.TestCase):
         self.assertEqual(attempt.brief_path.read_text(),
                          "Do the bounded thing.\n")
         self.assertEqual(list(attempt.path.glob(".*.tmp-*")), [])
+
+    def test_shared_atomic_helper_preserves_exact_artifacts_and_errors(self):
+        directory = self.repo / "atomic-helper"
+        directory.mkdir()
+        directory_fd = os.open(directory, os.O_RDONLY)
+        try:
+            worker_attempts._atomic_json(
+                directory_fd, "record.json", {"z": 2, "a": 1})
+            record = directory / "record.json"
+            self.assertEqual(record.read_bytes(), b'{\n  "a": 1,\n  "z": 2\n}\n')
+            self.assertEqual(record.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(list(directory.glob(".record.json.tmp-*")), [])
+
+            denied = PermissionError(13, "replacement denied")
+            with mock.patch.object(
+                    worker_attempts.os, "replace", side_effect=denied):
+                with self.assertRaises(PermissionError) as raised:
+                    worker_attempts._atomic_json(
+                        directory_fd, "denied.json", {"a": 1})
+            self.assertEqual(raised.exception.errno, 13)
+            self.assertEqual(str(raised.exception), str(denied))
+            self.assertFalse((directory / "denied.json").exists())
+            self.assertEqual(list(directory.glob(".denied.json.tmp-*")), [])
+        finally:
+            os.close(directory_fd)
+
+    def test_public_worker_attempt_artifacts_remain_byte_exact(self):
+        created = datetime(2026, 9, 8, 10, 11, 12, 345678,
+                           tzinfo=timezone.utc)
+        finished = datetime(2026, 9, 8, 10, 11, 13, 456789,
+                            tzinfo=timezone.utc)
+        uuid_value = mock.Mock(hex="0123456789abcdef0123456789abcdef")
+        with (mock.patch.object(worker_attempts, "datetime") as clock,
+              mock.patch.object(worker_attempts.uuid, "uuid4",
+                                return_value=uuid_value)):
+            clock.now.return_value = created
+            attempt = self._attempt()
+
+        expected_id = (
+            "20260908T101112345678Z-0123456789abcdef0123456789abcdef")
+        expected_manifest = {
+            "attempt_id": expected_id,
+            "backend": "codex",
+            "checkout": str(self.checkout.resolve()),
+            "created_at": "2026-09-08T10:11:12.345678Z",
+            "deadline": "2026-09-08T10:11:14.345678Z",
+            "input_hashes": {
+                "plan.md": hashlib.sha256(self.plan.read_bytes()).hexdigest(),
+                "spec.md": hashlib.sha256(self.spec.read_bytes()).hexdigest(),
+            },
+            "item_id": self.ITEM,
+            "starting_sha": "a" * 40,
+            "state": "running",
+            "timeout_seconds": 2,
+            "transport": "unterminated",
+        }
+        expected_manifest_bytes = (
+            json.dumps(expected_manifest, indent=2, sort_keys=True) +
+            "\n").encode("utf-8")
+        self.assertEqual(attempt.attempt_id, expected_id)
+        self.assertEqual(attempt.brief_path.read_bytes(),
+                         b"Do the bounded thing.\n")
+        self.assertEqual(attempt.manifest_path.read_bytes(),
+                         expected_manifest_bytes)
+        self.assertEqual(attempt.stdout_path.read_bytes(), b"")
+        self.assertEqual(attempt.stderr_path.read_bytes(), b"")
+        self.assertFalse(attempt.terminal_path.exists())
+        for artifact in (attempt.brief_path, attempt.manifest_path,
+                         attempt.stdout_path, attempt.stderr_path):
+            self.assertEqual(artifact.stat().st_mode & 0o777, 0o600)
+
+        with mock.patch.object(worker_attempts, "datetime") as clock:
+            clock.now.return_value = finished
+            outcome = worker_attempts.run_process(
+                attempt,
+                [sys.executable, "-c",
+                 "import os; os.write(1,b'out\\xff'); os.write(2,b'err')"],
+                cwd=self.checkout, env=dict(os.environ))
+        expected_terminal = {
+            "attempt_id": expected_id,
+            "exit_code": 0,
+            "finished_at": "2026-09-08T10:11:13.456789Z",
+            "status": "exited",
+        }
+        self.assertEqual(
+            attempt.terminal_path.read_bytes(),
+            (json.dumps(expected_terminal, indent=2, sort_keys=True) +
+             "\n").encode("utf-8"))
+        self.assertEqual(attempt.stdout_path.read_bytes(), b"out\xff")
+        self.assertEqual(attempt.stderr_path.read_bytes(), b"err")
+        self.assertEqual(outcome, {
+            "exit_code": 0,
+            "stdout": "out�",
+            "stderr": "err",
+            "timed_out": False,
+        })
 
     @unittest.skipUnless(hasattr(os, "mkfifo"), "requires POSIX FIFOs")
     def test_stdout_and_stderr_are_visible_before_exit(self):

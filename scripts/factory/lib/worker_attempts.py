@@ -13,15 +13,15 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from . import paths
+from .safeio import (DIRECTORY_FLAGS as _DIRECTORY_FLAGS,
+                     FILE_NOFOLLOW as _FILE_NOFOLLOW,
+                     _atomic_write)
 
 
 class AttemptError(Exception):
     pass
 
 
-_DIRECTORY_FLAGS = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
-_DIRECTORY_FLAGS |= getattr(os, "O_NOFOLLOW", 0)
-_FILE_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 _TERMINATE_GRACE_SECONDS = 0.2
 _POST_REAP_DRAIN_SECONDS = 0.1
 _TERMINAL_STATUSES = frozenset(("exited", "timed_out", "launch_failed"))
@@ -29,31 +29,6 @@ _TERMINAL_STATUSES = frozenset(("exited", "timed_out", "launch_failed"))
 
 def _stamp(value):
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-def _atomic_write(directory_fd, name, data, before_replace=None):
-    temp_name = f".{name}.tmp-{uuid.uuid4().hex}"
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | _FILE_NOFOLLOW
-    fd = os.open(temp_name, flags, 0o600, dir_fd=directory_fd)
-    try:
-        stream = os.fdopen(fd, "wb", closefd=True)
-        fd = -1
-        with stream:
-            stream.write(data)
-            stream.flush()
-            os.fsync(stream.fileno())
-        if before_replace is not None:
-            before_replace()
-        os.replace(temp_name, name, src_dir_fd=directory_fd,
-                   dst_dir_fd=directory_fd)
-        os.fsync(directory_fd)
-    finally:
-        if fd >= 0:
-            os.close(fd)
-        try:
-            os.unlink(temp_name, dir_fd=directory_fd)
-        except FileNotFoundError:
-            pass
 
 
 def _atomic_json(directory_fd, name, value, before_replace=None):

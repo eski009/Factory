@@ -68,6 +68,7 @@ class MissingSnapshot:
     root: Path
     relative: PurePosixPath
     parent_identities: tuple
+    transaction_nonce: str
 
 def snapshot_path(root, relative, *, limit=1_048_576,
                   allow_missing=False) -> FileSnapshot | MissingSnapshot: ...
@@ -75,6 +76,8 @@ def snapshot_many(root, relatives, *, limit=1_048_576,
                   allow_missing=False) -> tuple[FileSnapshot | MissingSnapshot, ...]: ...
 def revalidate(snapshot_or_many) -> None: ...
 def publish_exclusive(root, relative, data) -> FileSnapshot: ...
+# Interrupted directory-tail retry form; reuse the original observation.
+def publish_exclusive(missing: MissingSnapshot, data) -> FileSnapshot: ...
 def replace_if_unchanged(snapshot, data) -> FileSnapshot: ...
 
 # config_state.py
@@ -109,17 +112,38 @@ def revalidate(snapshot) -> None: ...
   the unresolved safe component tail. Revalidation requires the same existing
   parents and continued absence of the first missing component. Publication may
   create the missing directory tail descriptor-relatively, one component at a
-  time with mode `0700`, fsyncing and recording each new device/inode before
-  installing the leaf. A matching retry adopts those exact directories; a
-  symlink, non-directory, replacement, or unexpected pre-existing component
-  refuses. This supports ordinary absent `cost/answer.md` and new evidence
-  round directories without weakening containment.
+  time with mode `0700`. `MissingSnapshot` carries a fresh transaction nonce;
+  the target-bound recovery record binds that nonce and validates every staging
+  name as the exact basename derived from it and the entry/attempt indexes
+  before using that name in any filesystem call. After mkdir and parent fsync,
+  the staging inode is journaled and fsynced before it is eligible for
+  installation. A crash in that binding gap leaves an unbound staging directory
+  as untouched diagnostic evidence; recovery durably records its identity and
+  a new unique attempt before creating that attempt, then continues forward.
+  The journal retains the exact attempt history and identities while recovery
+  is active. A matching retry reuses the original `MissingSnapshot` and adopts
+  only durably bound exact directories; a fresh snapshot cannot adopt even a
+  same-parent journal because its nonce differs. Both publication overloads
+  reject a recovery record found above the snapshot parent, while a fresh
+  root/path call also rejects one at that parent. A symlink, non-directory,
+  replacement, fresh absence observation, malformed recovery name, or
+  unexpected pre-existing component refuses without outside mutation. This
+  supports ordinary absent `cost/answer.md` and new evidence round directories
+  without weakening containment.
 - `publish_exclusive` uses a no-follow exclusive temporary regular file,
-  writes all bytes, fsyncs it, installs the absent final name without
-  overwrite, fsyncs the directory, and verifies the resulting snapshot.
+  keeps its descriptor open, writes all bytes, fsyncs it, verifies the temp
+  name still denotes that inode, installs the absent final name without
+  overwrite, removes any substituted published entry on detected mismatch,
+  fsyncs the directory, and verifies the resulting snapshot.
 - `replace_if_unchanged` accepts only the exact live snapshot, uses an atomic
   same-directory replacement, fsyncs, and verifies expected bytes and the
-  canonical parent chain. A mismatch writes nothing.
+  canonical parent chain. Mutation APIs hold an advisory exclusive lock on the
+  exact opened root inode across comparison and installation, so a cooperating
+  writer cannot enter the compare-to-replace gap. A mismatch writes nothing.
+  POSIX does not offer Python stdlib compare-and-rename or unlink-by-inode
+  primitives: a hostile same-user process that ignores the advisory lock can
+  still mutate in the final syscall boundary, and the API detects/refuses that
+  interference without claiming to prevent it.
 - `config_state.capture` strict-decodes JSON with duplicate keys rejected and
   validates the complete object using the existing config schema. Missing,
   malformed, invalid, unsafe, or concurrently replaced config raises
