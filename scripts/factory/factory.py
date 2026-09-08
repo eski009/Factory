@@ -3,15 +3,36 @@
 refusal or validation errors. Skills call this; humans can too."""
 
 import argparse
+import hmac
 import json
+import os
 import sys
 
 if __package__ in (None, ""):
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod, breaker, approach
+    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod, breaker, approach, ownership
 else:
-    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod, breaker, approach
+    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod, breaker, approach, ownership
+
+
+IMPLEMENTATION_OWNER_ENV = "FACTORY_IMPLEMENTATION_OWNER"
+
+
+class _OwnershipInheritanceOps:
+    """Read-only ops which cannot send inherited acquire down create path."""
+
+    def __init__(self, state):
+        self.state = state
+
+    @staticmethod
+    def read_bytes(path):
+        return path.read_bytes()
+
+    def exists(self, path):
+        if path == self.state:
+            return True
+        return path.exists()
 
 
 def _require_factory_repo(repo):
@@ -187,6 +208,92 @@ def cmd_cleanup(args):
         kept = " (branch kept)" if result["branch_kept"] else ""
         print(f"{args.item} {state}{kept}")
     return 0
+
+
+def _ownership_error(exc):
+    print(f"refused: {exc}", file=sys.stderr)
+    return 2
+
+
+def _required_owner_token(item_id, action):
+    token = os.environ.get(IMPLEMENTATION_OWNER_ENV)
+    if not token:
+        raise ownership.OwnershipRefusal(
+            f"{item_id}: ownership {action} requires "
+            f"{IMPLEMENTATION_OWNER_ENV}")
+    return token
+
+
+def _acquire_ownership(args):
+    token = os.environ.get(IMPLEMENTATION_OWNER_ENV)
+    if token:
+        state = ownership.owner_state_path(args.repo, args.item)
+        claim = ownership.acquire(
+            args.repo, args.item, supplied=args.worktree,
+            owner_token=token, ops=_OwnershipInheritanceOps(state))
+    else:
+        claim = ownership.acquire(
+            args.repo, args.item, supplied=args.worktree)
+    if args.json:
+        print(json.dumps({
+            "canonical_worktree": str(claim.checkout),
+            "owner_token": claim.token,
+            "inherited": claim.inherited,
+        }, indent=2, sort_keys=True))
+    else:
+        verb = "inherited" if claim.inherited else "acquired"
+        print(f"{args.item}: ownership {verb} for {claim.checkout}")
+    return 0
+
+
+def _check_ownership(args):
+    token = _required_owner_token(args.item, "check")
+    checkout = ownership.canonical_worktree(
+        args.repo, args.item, args.worktree)
+    state = ownership.owner_state_path(args.repo, args.item)
+    ownership._guard_exists(state, args.item, checkout)
+    record = ownership._read_valid_record(state, args.item, checkout)
+    if not hmac.compare_digest(
+            record["owner_sha256"], ownership._digest(token)):
+        raise ownership.OwnershipRefusal(
+            f"{args.item}: ownership check refused")
+    ownership._guard_exists(state, args.item, checkout)
+    if args.json:
+        print(json.dumps({
+            "canonical_worktree": str(checkout),
+            "owned": True,
+        }, indent=2, sort_keys=True))
+    else:
+        print(f"{args.item}: ownership verified for {checkout}")
+    return 0
+
+
+def _release_ownership(args):
+    token = _required_owner_token(args.item, "release")
+    checkout = ownership.canonical_worktree(
+        args.repo, args.item, args.worktree)
+    ownership.release(args.repo, args.item, checkout, token)
+    if args.json:
+        print(json.dumps({
+            "canonical_worktree": str(checkout),
+            "released": True,
+        }, indent=2, sort_keys=True))
+    else:
+        print(f"{args.item}: ownership released for {checkout}")
+    return 0
+
+
+def cmd_ownership(args):
+    actions = {
+        "acquire": _acquire_ownership,
+        "check": _check_ownership,
+        "release": _release_ownership,
+    }
+    try:
+        return actions[args.ownership_command](args)
+    except (ownership.OwnershipRefusal,
+            ownership.OwnershipReleaseError) as exc:
+        return _ownership_error(exc)
 
 
 def cmd_advance(args):
@@ -594,6 +701,15 @@ def main(argv=None):
     p.add_argument("item")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_cleanup)
+
+    p = sub.add_parser("ownership", help="engine-owned implementation checkout claim")
+    subown = p.add_subparsers(dest="ownership_command", required=True)
+    for name in ("acquire", "release", "check"):
+        own = subown.add_parser(name)
+        own.add_argument("item")
+        own.add_argument("--worktree")
+        own.add_argument("--json", action="store_true")
+        own.set_defaults(func=cmd_ownership)
 
     p = sub.add_parser("packet", help="write a review packet for an item")
     p.add_argument("item")

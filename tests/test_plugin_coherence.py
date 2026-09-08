@@ -19,6 +19,20 @@ def read(p):
     return p.read_text(encoding="utf-8")
 
 
+class PluginCoherenceTest(unittest.TestCase):
+    def test_implement_skill_requires_engine_owned_checkout_claim(self):
+        skill = read(ROOT / "skills/factory-implement/SKILL.md")
+        for required in (
+            "factory ownership acquire",
+            "factory ownership release",
+            "FACTORY_IMPLEMENTATION_OWNER",
+            "fresh independent reviewer",
+            "task-evidence finalization",
+        ):
+            self.assertIn(required, skill)
+        self.assertNotIn("one-at-a-time per that skill", skill)
+
+
 class TestPluginCoherence(unittest.TestCase):
     def test_engine_comments_cite_symbols_not_source_lines(self):
         citations = []
