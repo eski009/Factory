@@ -165,5 +165,155 @@ class CliWorkOwnershipTest(CliWorkTest):
         self.assertFalse(state_path.exists())
 
 
+class CliWorkOwnershipFailureTest(unittest.TestCase):
+    run_cli = CliWorkTest.run_cli
+
+    def setUp(self):
+        self._had_work_stub = "FACTORY_WORK_STUB" in os.environ
+        self._work_stub = os.environ.get("FACTORY_WORK_STUB")
+        CliWorkTest.setUp(self)
+        self.item = "0001-thing"
+
+    def tearDown(self):
+        try:
+            CliWorkTest.tearDown(self)
+        finally:
+            if self._had_work_stub:
+                os.environ["FACTORY_WORK_STUB"] = self._work_stub
+            else:
+                os.environ.pop("FACTORY_WORK_STUB", None)
+
+    def _events(self):
+        item_log = self.repo / ".factory/items" / self.item / "log.jsonl"
+        if not item_log.exists():
+            return []
+        return [json.loads(line)["event"]
+                for line in item_log.read_text().splitlines()]
+
+    def _status(self):
+        return subprocess.run(
+            ["git", "status", "--porcelain"], cwd=self.repo,
+            capture_output=True, check=True).stdout
+
+    def test_retained_owner_after_simulated_crash_refuses_without_mutation(
+            self):
+        worker = self.repo / ".factory/items" / self.item / "worker"
+        worker.mkdir(parents=True)
+        brief = worker / "brief.md"
+        sentinel = b"pre-existing brief\x00bytes\n"
+        brief.write_bytes(sentinel)
+        state = ownership.owner_state_path(self.repo, self.item)
+        item_log = self.repo / ".factory/items" / self.item / "log.jsonl"
+        claim = ownership.acquire(self.repo, self.item, supplied=self.repo)
+        owner_snapshot = state.read_bytes()
+        log_snapshot = item_log.read_bytes() if item_log.exists() else None
+        events_snapshot = self._events()
+        head_snapshot = work.git_head(self.repo)
+        status_snapshot = self._status()
+        build_brief = mock.Mock(side_effect=AssertionError(
+            "contended CLI built a brief"))
+        backend = mock.Mock(side_effect=AssertionError(
+            "contended CLI invoked backend"))
+
+        try:
+            with (mock.patch.object(work, "build_brief", build_brief),
+                  mock.patch.dict(work.BACKENDS, {"stub": backend})):
+                code, out, err = self.run_cli(
+                    "work", self.item, "--backend", "stub",
+                    "--worktree", str(self.repo))
+
+            self.assertEqual(code, 2, (out, err))
+            self.assertIn(self.item, err)
+            self.assertIn(str(self.repo.resolve(strict=True)), err)
+            self.assertIn("another implementation owner exists", err)
+            self.assertIn("automatic takeover is unsupported", err)
+            build_brief.assert_not_called()
+            backend.assert_not_called()
+            self.assertEqual(brief.read_bytes(), sentinel)
+            self.assertEqual(state.read_bytes(), owner_snapshot)
+            self.assertEqual(
+                item_log.read_bytes() if item_log.exists() else None,
+                log_snapshot)
+            self.assertEqual(self._events(), events_snapshot)
+            self.assertEqual(work.git_head(self.repo), head_snapshot)
+            self.assertEqual(self._status(), status_snapshot)
+        finally:
+            claim.release()
+
+        self.assertFalse(state.exists())
+
+    def test_release_failure_keeps_artifacts_and_future_attempt_refuses(self):
+        os.environ.pop("FACTORY_WORK_STUB", None)
+        state = ownership.owner_state_path(self.repo, self.item)
+        guard = ownership._release_guard_path(state)
+        worker = self.repo / ".factory/items" / self.item / "worker"
+        result_path = worker / "result.json"
+        before_events = self._events()
+        before_head = work.git_head(self.repo)
+        real_unlink = ownership.DEFAULT_OPS.unlink
+        acquired = {}
+
+        def unlink(path):
+            if path == state:
+                acquired["owner"] = path.read_bytes()
+                raise OSError("retain implementation owner")
+            return real_unlink(path)
+
+        with mock.patch.object(ownership.DEFAULT_OPS, "unlink",
+                               side_effect=unlink):
+            code, out, err = self.run_cli(
+                "work", self.item, "--backend", "stub",
+                "--worktree", str(self.repo))
+
+        self.assertEqual(code, 1, (out, err))
+        self.assertIn("ownership release could not be verified", err)
+        self.assertIn("automatic takeover is unsupported", err)
+        self.assertEqual(json.loads(result_path.read_text())["status"],
+                         "done")
+        self.assertEqual(self._events()[len(before_events):],
+                         ["spend", "implement.completed"])
+        self.assertNotEqual(work.git_head(self.repo), before_head)
+        worker_change = self.repo / "worker-change.txt"
+        self.assertEqual(worker_change.read_text(), "stub change\n")
+        self.assertEqual(state.read_bytes(), acquired["owner"])
+        self.assertEqual(guard.read_bytes(), b"release-pending\n")
+
+        plan = self.repo / ".factory/items" / self.item / "plan.md"
+        self.assertIn("- [x] Do the thing", plan.read_text())
+        plan.write_text(plan.read_text() + "- [ ] Retry thing\n",
+                        encoding="utf-8")
+        item_log = self.repo / ".factory/items" / self.item / "log.jsonl"
+        paths = [state, guard, worker / "brief.md", worker / "worker.log",
+                 result_path, item_log]
+        file_snapshot = {path: path.read_bytes() for path in paths}
+        head_snapshot = work.git_head(self.repo)
+        status_snapshot = self._status()
+        build_brief = mock.Mock(side_effect=AssertionError(
+            "refused retry built a brief"))
+        backend = mock.Mock(side_effect=AssertionError(
+            "refused retry invoked backend"))
+        release = mock.Mock(side_effect=AssertionError(
+            "refused retry attempted release"))
+
+        with (mock.patch.object(work, "build_brief", build_brief),
+              mock.patch.dict(work.BACKENDS, {"stub": backend}),
+              mock.patch.object(work.ownership, "release", release)):
+            retry_code, retry_out, retry_err = self.run_cli(
+                "work", self.item, "--backend", "stub",
+                "--worktree", str(self.repo))
+
+        self.assertEqual(retry_code, 2, (retry_out, retry_err))
+        self.assertIn("owner state is invalid", retry_err)
+        self.assertIn("automatic takeover is unsupported", retry_err)
+        build_brief.assert_not_called()
+        backend.assert_not_called()
+        release.assert_not_called()
+        self.assertEqual({path: path.read_bytes() for path in paths},
+                         file_snapshot)
+        self.assertEqual(work.git_head(self.repo), head_snapshot)
+        self.assertEqual(self._status(), status_snapshot)
+        self.assertEqual(worker_change.read_text(), "stub change\n")
+
+
 if __name__ == "__main__":
     unittest.main()

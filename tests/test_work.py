@@ -731,6 +731,213 @@ class RunWorkOwnershipTest(RunWorkTest):
         self.assertTrue(state.exists())
 
 
+class RunWorkFailureOwnershipTest(unittest.TestCase):
+    _events = RunWorkTest._events
+
+    def setUp(self):
+        self._had_work_stub = "FACTORY_WORK_STUB" in os.environ
+        self._work_stub = os.environ.get("FACTORY_WORK_STUB")
+        RunWorkTest.setUp(self)
+        self.item = "0001-thing"
+
+    def tearDown(self):
+        try:
+            RunWorkTest.tearDown(self)
+        finally:
+            if self._had_work_stub:
+                os.environ["FACTORY_WORK_STUB"] = self._work_stub
+            else:
+                os.environ.pop("FACTORY_WORK_STUB", None)
+
+    def _assert_failed_run(self, expected_code, expected_reason):
+        state = ownership.owner_state_path(self.repo, self.item)
+        guard = ownership._release_guard_path(state)
+        worker = self.repo / ".factory/items" / self.item / "worker"
+        artifacts = {
+            worker / "brief.md": "brief.md",
+            worker / "worker.log": "worker.log",
+            worker / "result.json": "result.json",
+        }
+        order = []
+        writes = []
+        before_events = self._events()
+        real_acquire = work.ownership.acquire
+        real_release = work.ownership.release
+        real_backend = work.BACKENDS["stub"]
+        real_append_event = work.logs.append_event
+        real_write_text = Path.write_text
+
+        def acquire(*args, **kwargs):
+            claim = real_acquire(*args, **kwargs)
+            self.assertTrue(state.exists())
+            order.append("acquire")
+            return claim
+
+        def backend(*args, **kwargs):
+            self.assertTrue(state.exists())
+            result = real_backend(*args, **kwargs)
+            self.assertTrue(state.exists())
+            order.append("backend")
+            return result
+
+        def write_text(path, *args, **kwargs):
+            self.assertTrue(state.exists())
+            result = real_write_text(path, *args, **kwargs)
+            self.assertTrue(state.exists())
+            writes.append(path)
+            order.append(artifacts[path])
+            return result
+
+        def append_event(*args, **kwargs):
+            self.assertTrue(state.exists())
+            result = real_append_event(*args, **kwargs)
+            self.assertTrue(state.exists())
+            order.append(args[2])
+            return result
+
+        def release(*args, **kwargs):
+            self.assertTrue(state.exists())
+            order.append("release.enter")
+            result = real_release(*args, **kwargs)
+            self.assertFalse(state.exists())
+            self.assertFalse(guard.exists())
+            order.append("release.exit")
+            return result
+
+        with (mock.patch.object(work.ownership, "acquire",
+                                side_effect=acquire),
+              mock.patch.object(work.ownership, "release",
+                                side_effect=release) as release_mock,
+              mock.patch.dict(work.BACKENDS, {"stub": backend}),
+              mock.patch.object(work.logs, "append_event",
+                                side_effect=append_event),
+              mock.patch.object(Path, "write_text", autospec=True,
+                                side_effect=write_text)):
+            code, result = work.run_work(
+                self.repo, self.item, backend="stub",
+                worktree=str(self.repo))
+
+        self.assertEqual(code, expected_code, result)
+        self.assertEqual(result["reason"], expected_reason)
+        self.assertEqual(order, [
+            "acquire", "brief.md", "backend", "worker.log", "result.json",
+            "spend", "implement.failed", "release.enter", "release.exit",
+        ])
+        self.assertEqual(writes, list(artifacts))
+        release_mock.assert_called_once()
+        result_path = worker / "result.json"
+        self.assertTrue(result_path.is_file())
+        self.assertEqual(json.loads(result_path.read_text()), result)
+        self.assertEqual(self._events()[len(before_events):],
+                         ["spend", "implement.failed"])
+        self.assertEqual(
+            (self.repo / ".factory/items" / self.item / "plan.md").read_text(),
+            "- [ ] Do the thing\n")
+        self.assertFalse(state.exists())
+        self.assertFalse(guard.exists())
+
+    def _assert_clean_retry(self):
+        os.environ.pop("FACTORY_WORK_STUB", None)
+        code, result = work.run_work(
+            self.repo, self.item, backend="stub", worktree=str(self.repo))
+        self.assertEqual(code, 0, result)
+        state = ownership.owner_state_path(self.repo, self.item)
+        self.assertFalse(state.exists())
+        self.assertFalse(ownership._release_guard_path(state).exists())
+
+    def test_backend_failure_finalizes_then_releases(self):
+        os.environ["FACTORY_WORK_STUB"] = json.dumps(
+            {"exit_code": 1, "commit": False, "reason": "crash"})
+        self._assert_failed_run(3, "crash")
+        self._assert_clean_retry()
+
+    def test_timeout_finalizes_then_releases(self):
+        timed_out = {"exit_code": 124, "stdout": "", "stderr": "",
+                     "timed_out": True}
+        with mock.patch.dict(
+                work.BACKENDS,
+                {"stub": mock.Mock(return_value=timed_out)}):
+            self._assert_failed_run(3, "timeout")
+        self._assert_clean_retry()
+
+    def test_auth_failure_preserves_exit_one_then_releases(self):
+        os.environ["FACTORY_WORK_STUB"] = json.dumps(
+            {"exit_code": 1, "commit": False, "reason": "auth"})
+        self._assert_failed_run(1, "auth")
+        self._assert_clean_retry()
+
+    def test_release_failure_keeps_artifacts_and_future_attempt_refuses(self):
+        os.environ.pop("FACTORY_WORK_STUB", None)
+        state = ownership.owner_state_path(self.repo, self.item)
+        guard = ownership._release_guard_path(state)
+        worker = self.repo / ".factory/items" / self.item / "worker"
+        result_path = worker / "result.json"
+        before_events = self._events()
+        before_head = work.git_head(self.repo)
+        real_unlink = ownership.DEFAULT_OPS.unlink
+        acquired = {}
+
+        def unlink(path):
+            if path == state:
+                acquired["owner"] = path.read_bytes()
+                raise OSError("retain implementation owner")
+            return real_unlink(path)
+
+        with mock.patch.object(ownership.DEFAULT_OPS, "unlink",
+                               side_effect=unlink):
+            code, outcome = work.run_work(
+                self.repo, self.item, backend="stub",
+                worktree=str(self.repo))
+
+        self.assertEqual(code, 1, outcome)
+        self.assertIn("ownership release could not be verified",
+                      outcome["error"])
+        self.assertIn("automatic takeover is unsupported", outcome["error"])
+        result = outcome["result"]
+        self.assertEqual(result["status"], "done")
+        self.assertEqual(json.loads(result_path.read_text()), result)
+        self.assertEqual(self._events()[len(before_events):],
+                         ["spend", "implement.completed"])
+        self.assertNotEqual(work.git_head(self.repo), before_head)
+        self.assertEqual((self.repo / "worker-change.txt").read_text(),
+                         "stub change\n")
+        self.assertEqual(state.read_bytes(), acquired["owner"])
+        self.assertEqual(guard.read_bytes(), b"release-pending\n")
+
+        plan = self.repo / ".factory/items" / self.item / "plan.md"
+        self.assertIn("- [x] Do the thing", plan.read_text())
+        plan.write_text(plan.read_text() + "- [ ] Retry thing\n",
+                        encoding="utf-8")
+        item_log = self.repo / ".factory/items" / self.item / "log.jsonl"
+        paths = [state, guard, worker / "brief.md", worker / "worker.log",
+                 result_path, item_log]
+        file_snapshot = {path: path.read_bytes() for path in paths}
+        head_snapshot = work.git_head(self.repo)
+        status_snapshot = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=self.repo,
+            capture_output=True, check=True).stdout
+        backend = mock.Mock(wraps=work.BACKENDS["stub"])
+
+        with (mock.patch.dict(work.BACKENDS, {"stub": backend}),
+              mock.patch.object(work.ownership, "release",
+                                wraps=work.ownership.release) as release):
+            retry_code, retry = work.run_work(
+                self.repo, self.item, backend="stub",
+                worktree=str(self.repo))
+
+        self.assertEqual(retry_code, 2, retry)
+        self.assertIn("owner state is invalid", retry["error"])
+        self.assertIn("automatic takeover is unsupported", retry["error"])
+        backend.assert_not_called()
+        release.assert_not_called()
+        self.assertEqual({path: path.read_bytes() for path in paths},
+                         file_snapshot)
+        self.assertEqual(work.git_head(self.repo), head_snapshot)
+        self.assertEqual(subprocess.run(
+            ["git", "status", "--porcelain"], cwd=self.repo,
+            capture_output=True, check=True).stdout, status_snapshot)
+
+
 class ChangeEnumTest(unittest.TestCase):
     def test_unusual_git_status_chars_validate(self):
         gstate = {"commits": ["abc123"], "clean": True,
