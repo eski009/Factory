@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -526,6 +527,208 @@ class RunWorkTest(unittest.TestCase):
         for fd in created["fds"]:
             with self.assertRaises(OSError):
                 os.fstat(fd)
+
+
+class RunWorkOwnershipTest(RunWorkTest):
+    def test_direct_work_holds_owner_through_terminal_event(self):
+        state = ownership.owner_state_path(self.repo, "0001-thing")
+        worker_dir = self.repo / ".factory/items/0001-thing/worker"
+        artifacts = {
+            worker_dir / "brief.md": "brief.md",
+            worker_dir / "worker.log": "worker.log",
+            worker_dir / "result.json": "result.json",
+        }
+        boundaries = []
+        real_acquire = work.ownership.acquire
+        real_release = work.ownership.release
+        real_build_brief = work.build_brief
+        real_backend = work.BACKENDS["stub"]
+        real_log_spend = work._log_spend
+        real_tick_plan = work._tick_plan
+        real_append_event = work.logs.append_event
+        real_write_text = Path.write_text
+
+        def acquire(*args, **kwargs):
+            claim = real_acquire(*args, **kwargs)
+            self.assertTrue(state.exists())
+            boundaries.append("acquire")
+            return claim
+
+        def build_brief(*args, **kwargs):
+            self.assertTrue(state.exists())
+            result = real_build_brief(*args, **kwargs)
+            boundaries.append("build_brief")
+            return result
+
+        def backend(*args, **kwargs):
+            self.assertTrue(state.exists())
+            result = real_backend(*args, **kwargs)
+            boundaries.append("backend")
+            return result
+
+        def log_spend(*args, **kwargs):
+            self.assertTrue(state.exists())
+            result = real_log_spend(*args, **kwargs)
+            boundaries.append("spend")
+            return result
+
+        def tick_plan(*args, **kwargs):
+            self.assertTrue(state.exists())
+            result = real_tick_plan(*args, **kwargs)
+            boundaries.append("tick")
+            return result
+
+        def append_event(*args, **kwargs):
+            self.assertTrue(state.exists())
+            result = real_append_event(*args, **kwargs)
+            if args[2] == "implement.completed":
+                boundaries.append("terminal")
+            return result
+
+        def release(*args, **kwargs):
+            self.assertTrue(state.exists())
+            result = real_release(*args, **kwargs)
+            self.assertFalse(state.exists())
+            boundaries.append("release")
+            return result
+
+        def write_text(path, *args, **kwargs):
+            boundary = artifacts.get(path)
+            if boundary is not None:
+                self.assertTrue(state.exists())
+            result = real_write_text(path, *args, **kwargs)
+            if boundary is not None:
+                boundaries.append(boundary)
+            return result
+
+        with (mock.patch.object(work.ownership, "acquire",
+                                side_effect=acquire),
+              mock.patch.object(work, "build_brief", side_effect=build_brief),
+              mock.patch.dict(work.BACKENDS, {"stub": backend}),
+              mock.patch.object(work, "_log_spend", side_effect=log_spend),
+              mock.patch.object(work, "_tick_plan", side_effect=tick_plan),
+              mock.patch.object(work.logs, "append_event",
+                                side_effect=append_event),
+              mock.patch.object(work.ownership, "release",
+                                side_effect=release),
+              mock.patch.object(Path, "write_text", autospec=True,
+                                side_effect=write_text)):
+            code, result = work.run_work(
+                self.repo, "0001-thing", backend="stub",
+                worktree=str(self.repo))
+
+        self.assertEqual(code, 0, result)
+        self.assertEqual(result["status"], "done")
+        required = ["acquire", "brief.md", "backend", "worker.log",
+                    "result.json", "spend", "tick", "terminal", "release"]
+        positions = [boundaries.index(boundary) for boundary in required]
+        self.assertEqual(positions, sorted(positions), boundaries)
+        self.assertFalse(state.exists())
+        for artifact in artifacts:
+            self.assertTrue(artifact.is_file(), artifact)
+        self.assertIn("implement.completed", self._events())
+
+    def test_direct_contender_returns_two_before_brief_or_backend(self):
+        worker_dir = self.repo / ".factory/items/0001-thing/worker"
+        worker_dir.mkdir(parents=True)
+        brief_path = worker_dir / "brief.md"
+        prior_brief = b"prior brief bytes\n"
+        brief_path.write_bytes(prior_brief)
+        state = ownership.owner_state_path(self.repo, "0001-thing")
+        barrier = threading.Barrier(2)
+        resume = threading.Event()
+        counter_lock = threading.Lock()
+        acquire_calls = 0
+        backend_calls = 0
+        outcomes = []
+        errors = []
+        real_acquire = work.ownership.acquire
+        real_backend = work.BACKENDS["stub"]
+
+        def acquire(*args, **kwargs):
+            nonlocal acquire_calls
+            with counter_lock:
+                acquire_calls += 1
+                first = acquire_calls == 1
+            claim = real_acquire(*args, **kwargs)
+            if first:
+                barrier.wait(timeout=5)
+                if not resume.wait(timeout=5):
+                    raise AssertionError("owner was not resumed")
+            return claim
+
+        def backend(*args, **kwargs):
+            nonlocal backend_calls
+            with counter_lock:
+                backend_calls += 1
+            return real_backend(*args, **kwargs)
+
+        def run_owner():
+            try:
+                outcomes.append(work.run_work(
+                    self.repo, "0001-thing", backend="stub",
+                    worktree=str(self.repo)))
+            except BaseException as exc:
+                errors.append(exc)
+
+        with (mock.patch.object(work.ownership, "acquire",
+                                side_effect=acquire),
+              mock.patch.dict(work.BACKENDS, {"stub": backend})):
+            owner = threading.Thread(target=run_owner)
+            owner.start()
+            try:
+                barrier.wait(timeout=5)
+                state_bytes = state.read_bytes()
+                with counter_lock:
+                    calls_before = backend_calls
+                code, result = work.run_work(
+                    self.repo, "0001-thing", backend="stub",
+                    worktree=str(self.repo))
+
+                self.assertEqual(code, 2, result)
+                self.assertIn("0001-thing", result["error"])
+                self.assertIn(str(self.repo.resolve(strict=True)),
+                              result["error"])
+                self.assertIn("another implementation owner exists",
+                              result["error"])
+                self.assertIn("automatic takeover is unsupported",
+                              result["error"])
+                self.assertEqual(brief_path.read_bytes(), prior_brief)
+                with counter_lock:
+                    self.assertEqual(backend_calls, calls_before)
+                    self.assertEqual(backend_calls, 0)
+                self.assertEqual(state.read_bytes(), state_bytes)
+            finally:
+                resume.set()
+                owner.join(timeout=5)
+
+        self.assertFalse(owner.is_alive())
+        self.assertEqual(errors, [])
+        self.assertEqual(len(outcomes), 1)
+        self.assertEqual(outcomes[0][0], 0, outcomes[0][1])
+        self.assertFalse(state.exists())
+
+    def test_release_failure_after_terminal_event_returns_one_and_retains_result(
+            self):
+        state = ownership.owner_state_path(self.repo, "0001-thing")
+
+        with mock.patch.object(
+                work.ownership, "release",
+                side_effect=ownership.OwnershipReleaseError(
+                    "release retained")):
+            code, result = work.run_work(
+                self.repo, "0001-thing", backend="stub",
+                worktree=str(self.repo))
+
+        result_path = (self.repo / ".factory/items/0001-thing/worker" /
+                       "result.json")
+        self.assertEqual(code, 1, result)
+        self.assertIn("release retained", result["error"])
+        self.assertEqual(result["result"]["status"], "done")
+        self.assertTrue(result_path.is_file())
+        self.assertEqual(json.loads(result_path.read_text()), result["result"])
+        self.assertIn("implement.completed", self._events())
+        self.assertTrue(state.exists())
 
 
 class ChangeEnumTest(unittest.TestCase):

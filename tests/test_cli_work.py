@@ -3,12 +3,14 @@ import json
 import os
 import subprocess
 import tempfile
+import threading
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 from scripts.factory import factory
-from scripts.factory.lib import items
+from scripts.factory.lib import items, ownership, work
 
 
 def _git(repo, *args):
@@ -68,6 +70,99 @@ class CliWorkTest(unittest.TestCase):
         code, out, err = self.run_cli("work", "0001-thing", "--backend",
                                       "stub", "--worktree", str(self.repo))
         self.assertEqual(code, 2)
+
+
+class CliWorkOwnershipTest(CliWorkTest):
+    def test_contended_work_exits_two(self):
+        worker_dir = self.repo / ".factory/items/0001-thing/worker"
+        worker_dir.mkdir(parents=True)
+        brief_path = worker_dir / "brief.md"
+        sentinel = b"pre-existing brief\x00bytes\n"
+        brief_path.write_bytes(sentinel)
+        state_path = ownership.owner_state_path(self.repo, "0001-thing")
+        backend = mock.Mock(side_effect=AssertionError(
+            "contended CLI invoked backend"))
+        outer_claim = ownership.acquire(
+            self.repo, "0001-thing", supplied=self.repo)
+        owner_bytes = state_path.read_bytes()
+
+        try:
+            with mock.patch.dict(work.BACKENDS, {"stub": backend}):
+                code, out, err = self.run_cli(
+                    "work", "0001-thing", "--backend", "stub",
+                    "--worktree", str(self.repo))
+
+            self.assertEqual(code, 2, (out, err))
+            self.assertIn("0001-thing", err)
+            self.assertIn(str(self.repo.resolve(strict=True)), err)
+            self.assertIn("another implementation owner exists", err)
+            self.assertIn("automatic takeover is unsupported", err)
+            self.assertEqual(brief_path.read_bytes(), sentinel)
+            backend.assert_not_called()
+            self.assertEqual(state_path.read_bytes(), owner_bytes)
+        finally:
+            outer_claim.release()
+
+        self.assertFalse(state_path.exists())
+
+    def test_identical_work_calls_contend_before_brief_or_backend(self):
+        worker_dir = self.repo / ".factory/items/0001-thing/worker"
+        worker_dir.mkdir(parents=True)
+        brief_path = worker_dir / "brief.md"
+        sentinel = b"first owner has not rewritten this\n"
+        brief_path.write_bytes(sentinel)
+        state_path = ownership.owner_state_path(self.repo, "0001-thing")
+        acquired = threading.Barrier(2)
+        resume_owner = threading.Event()
+        owner_result = []
+        owner_errors = []
+        real_acquire = ownership.acquire
+        backend = mock.Mock(wraps=work.BACKENDS["stub"])
+
+        def acquire_and_pause(*args, **kwargs):
+            claim = real_acquire(*args, **kwargs)
+            acquired.wait(timeout=5)
+            if not resume_owner.wait(timeout=5):
+                raise AssertionError("first CLI owner was not resumed")
+            return claim
+
+        def run_owner():
+            try:
+                owner_result.append(self.run_cli(
+                    "work", "0001-thing", "--backend", "stub",
+                    "--worktree", str(self.repo)))
+            except BaseException as exc:
+                owner_errors.append(exc)
+
+        with (mock.patch.object(work.ownership, "acquire",
+                                side_effect=acquire_and_pause),
+              mock.patch.dict(work.BACKENDS, {"stub": backend})):
+            owner = threading.Thread(target=run_owner)
+            owner.start()
+            try:
+                acquired.wait(timeout=5)
+                owner_bytes = state_path.read_bytes()
+                code, out, err = self.run_cli(
+                    "work", "0001-thing", "--backend", "stub",
+                    "--worktree", str(self.repo))
+
+                self.assertEqual(code, 2, (out, err))
+                self.assertIn("another implementation owner exists", err)
+                self.assertEqual(brief_path.read_bytes(), sentinel)
+                backend.assert_not_called()
+                self.assertEqual(state_path.read_bytes(), owner_bytes)
+            finally:
+                # The nested stdout/stderr capture above is restored before
+                # the owner can print and restore its process-global capture.
+                resume_owner.set()
+                owner.join(timeout=5)
+
+        self.assertFalse(owner.is_alive())
+        self.assertEqual(owner_errors, [])
+        self.assertEqual(len(owner_result), 1)
+        self.assertEqual(owner_result[0][0], 0, owner_result[0][2])
+        backend.assert_called_once()
+        self.assertFalse(state_path.exists())
 
 
 if __name__ == "__main__":

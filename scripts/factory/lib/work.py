@@ -20,7 +20,8 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import initrepo, items, logs, paths, validate, worker_attempts
+from . import (initrepo, items, logs, ownership, paths, validate,
+               worker_attempts)
 from .ownership import (NoRegisteredWorktree, OwnershipRefusal,
                         canonical_worktree)
 
@@ -443,42 +444,10 @@ def _worker_env(cfg, backend):
     return env
 
 
-def run_work(repo, item_id, backend=None, model=None, timeout=None,
-             network=None, worktree=None, reasoning_effort=None):
-    cfg = worker_config(repo)
-    backend = backend or cfg["backend"]
-    timeout = timeout or cfg["timeout_seconds"]
-    network = network or cfg["network"]
-    if backend not in BACKENDS:
-        return 1, {"error": f"unknown or unavailable backend: {backend}"}
-    try:
-        meta, _ = items.load_item(repo, item_id)
-    except items.ItemError as exc:
-        return 1, {"error": str(exc)}
-    if meta.get("stage") != "implement":
-        return 2, {"error": f"{item_id} is at stage "
-                            f"{meta.get('stage')!r}, not implement"}
-    plan_path = paths.item_dir(repo, item_id) / "plan.md"
-    if not plan_path.exists():
-        return 1, {"error": f"{item_id}: plan.md missing"}
-    tasks = unticked_tasks(plan_path.read_text(encoding="utf-8"))
-    if not tasks:
-        return 2, {"error": f"{item_id}: no unticked plan tasks"}
-    try:
-        work_tree = canonical_worktree(repo, item_id, worktree)
-    except OwnershipRefusal as exc:
-        return 2, {"error": str(exc)}
+def _run_owned_work(repo, item_id, work_tree, cfg, backend, model, timeout,
+                    network, sandbox, reasoning_effort, tasks):
     brief = build_brief(repo, item_id, work_tree)
-    if backend in ("claude", "codex") and shutil.which(backend) is None:
-        return 1, {"error": f"backend CLI not found on PATH: {backend}"}
-
     env = _worker_env(cfg, backend)
-    model = model or (cfg.get("models") or {}).get(backend)
-    sandbox = (cfg.get("codex") or {}).get("sandbox", "workspace-write")
-    if backend == "codex":
-        reasoning_effort = (reasoning_effort
-                            or (cfg.get("codex") or {}).get(
-                                "reasoning_effort", "medium"))
     base_sha = git_head(work_tree)
     attempt = None
     if backend in ("claude", "codex"):
@@ -546,3 +515,59 @@ def run_work(repo, item_id, backend=None, model=None, timeout=None,
         # exit 1 so the scheduler surfaces it (and never burns the pool on it).
         return 1, result
     return 3, result
+
+
+def run_work(repo, item_id, backend=None, model=None, timeout=None,
+             network=None, worktree=None, reasoning_effort=None):
+    cfg = worker_config(repo)
+    backend = backend or cfg["backend"]
+    timeout = timeout or cfg["timeout_seconds"]
+    network = network or cfg["network"]
+    if backend not in BACKENDS:
+        return 1, {"error": f"unknown or unavailable backend: {backend}"}
+    try:
+        meta, _ = items.load_item(repo, item_id)
+    except items.ItemError as exc:
+        return 1, {"error": str(exc)}
+    if meta.get("stage") != "implement":
+        return 2, {"error": f"{item_id} is at stage "
+                            f"{meta.get('stage')!r}, not implement"}
+    plan_path = paths.item_dir(repo, item_id) / "plan.md"
+    if not plan_path.exists():
+        return 1, {"error": f"{item_id}: plan.md missing"}
+    tasks = unticked_tasks(plan_path.read_text(encoding="utf-8"))
+    if not tasks:
+        return 2, {"error": f"{item_id}: no unticked plan tasks"}
+    try:
+        work_tree = canonical_worktree(repo, item_id, worktree)
+    except OwnershipRefusal as exc:
+        return 2, {"error": str(exc)}
+    if backend in ("claude", "codex") and shutil.which(backend) is None:
+        return 1, {"error": f"backend CLI not found on PATH: {backend}"}
+
+    model = model or (cfg.get("models") or {}).get(backend)
+    sandbox = (cfg.get("codex") or {}).get("sandbox", "workspace-write")
+    if backend == "codex":
+        reasoning_effort = (reasoning_effort
+                            or (cfg.get("codex") or {}).get(
+                                "reasoning_effort", "medium"))
+
+    try:
+        claim = ownership.acquire(repo, item_id, supplied=work_tree)
+    except OwnershipRefusal as exc:
+        return 2, {"error": str(exc)}
+    work_tree = claim.checkout
+
+    release_error = None
+    try:
+        code, result = _run_owned_work(
+            repo, item_id, work_tree, cfg, backend, model, timeout, network,
+            sandbox, reasoning_effort, tasks)
+    finally:
+        try:
+            claim.release()
+        except ownership.OwnershipError as exc:
+            release_error = exc
+    if release_error is not None:
+        return 1, {"error": str(release_error), "result": result}
+    return code, result
