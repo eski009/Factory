@@ -339,6 +339,19 @@ def cmd_log(args):
     except items.ItemError as exc:
         print(str(exc), file=sys.stderr)
         return 1
+    evidence_errors = initrepo.structured_event_errors(
+        args.event, data, "--data", repo=args.repo)
+    try:
+        existing_events = logs.read_events(args.repo, args.item)
+    except (OSError, UnicodeError) as exc:
+        print(f"cannot inspect existing event ids: {exc}", file=sys.stderr)
+        return 1
+    evidence_errors.extend(initrepo.structured_id_conflict_errors(
+        args.event, data, existing_events, "--data"))
+    if evidence_errors:
+        for error in evidence_errors:
+            print(error, file=sys.stderr)
+        return 1
     logs.append_event(args.repo, args.item, args.event, data)
     return 0
 

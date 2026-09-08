@@ -188,24 +188,24 @@ Run `python3 -m unittest tests.test_ledger -v`.
 `scripts/factory/lib/initrepo.py` and `scripts/factory/lib/ledger.py`; extend
 `tests/test_ledger.py` and `tests/test_logs.py`.
 
-- [ ] Implement one shared schema-plus-semantic validator registry used by
+- [x] Implement one shared schema-plus-semantic validator registry used by
   generic-log intake, ledger reads and `initrepo.validate_tree`. Invalid
   structured intake must return before append. Preserve byte-compatible spend
   validation and acceptance of unrelated historical events; test all three
   entry points and prove a rejected append leaves the log bytes unchanged.
-- [ ] Require passed waves to bind a resolving `green_sha` equal to
+- [x] Require passed waves to bind a resolving `green_sha` equal to
   `tested_sha`. Range membership determines delivery eligibility, not event
   validity: retain out-of-range candidate waves as non-delivered rows and
   label component waves as non-production evidence. Test a candidate SHA and
   a separate merged in-range SHA without conflating their waves.
-- [ ] Validate counts, chronological boundaries, unique ids, contained regular
+- [x] Validate counts, chronological boundaries, unique ids, contained regular
   screenshots, hashes, flow ids and exact duration derivation.
-- [ ] Select waves by finish time and spans by interval overlap as specified;
+- [x] Select waves by finish time and spans by interval overlap as specified;
   test pre-window starts, exact endpoint inclusivity, clipping, empty and
   reversed-time report windows.
-- [ ] Keep test/review/admin spans separate and mark missing categories
+- [x] Keep test/review/admin spans separate and mark missing categories
   unmeasured. Surface duplicates, conflicts, corrupt lines and invalid events.
-- [ ] Test repeated candidate/integrated waves remain separate rows; no renderer
+- [x] Test repeated candidate/integrated waves remain separate rows; no renderer
   sums them. Prove screenshot coverage and shipped-flow labels per wave.
 
 Run `python3 -m unittest tests.test_ledger tests.test_logs -v`.

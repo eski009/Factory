@@ -12,7 +12,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
-from . import items, machine, paths
+from . import initrepo, items, machine, paths
 
 
 DEFAULT_ADMIN_PATHS = (".factory", "docs")
@@ -296,6 +296,129 @@ def _timing_rows(item_id, stage_data, start, end):
     return rows
 
 
+def _structured_events(repo, events, item_id, event_name, id_key, warnings):
+    occurrences = {}
+    valid = {}
+    for ordinal, event in enumerate(events, 1):
+        if event.get("event") != event_name:
+            continue
+        data = event.get("data")
+        event_id = data.get(id_key) if isinstance(data, dict) else None
+        if isinstance(event_id, str):
+            occurrences.setdefault(event_id, []).append(ordinal)
+        errors = initrepo.structured_event_errors(
+            event_name, data, f"{item_id}/log.jsonl:{ordinal}", repo=repo)
+        if errors:
+            warnings.extend(errors)
+            continue
+        valid[ordinal] = data
+    duplicate_ids = {event_id for event_id, ordinals in occurrences.items()
+                     if len(ordinals) > 1}
+    for event_id in sorted(duplicate_ids):
+        warnings.append(
+            f"{item_id}: duplicate {id_key} {event_id!r}; all occurrences excluded")
+    rows = []
+    for ordinal in sorted(valid):
+        data = valid[ordinal]
+        if data[id_key] not in duplicate_ids:
+            rows.append((ordinal, data))
+    return rows
+
+
+def _wave_rows(repo, item_id, events, start, end, range_shas, warnings):
+    rows = []
+    for ordinal, data in _structured_events(
+            repo, events, item_id, "test.wave", "wave_id", warnings):
+        try:
+            tested_sha = _resolve_commit(repo, data["tested_sha"])
+        except LedgerError:
+            warnings.append(
+                f"{item_id}/log.jsonl:{ordinal}: tested_sha does not resolve")
+            continue
+        shipping_ref = data["shipping_ref"]
+        if shipping_ref is not None:
+            try:
+                shipping_ref = _resolve_commit(repo, shipping_ref)
+            except LedgerError:
+                warnings.append(
+                    f"{item_id}/log.jsonl:{ordinal}: shipping_ref does not resolve")
+                continue
+            if shipping_ref not in range_shas:
+                warnings.append(
+                    f"{item_id}/log.jsonl:{ordinal}: shipping_ref is outside base..head")
+                continue
+        screenshots = []
+        screenshot_error = False
+        for screenshot in data["screenshots"]:
+            digest, error = initrepo.evidence_file_digest(
+                repo, screenshot["path"])
+            if error:
+                warnings.append(
+                    f"{item_id}/log.jsonl:{ordinal}: screenshot "
+                    f"{screenshot['path']!r} {error}")
+                screenshot_error = True
+                continue
+            if digest != screenshot["sha256"]:
+                warnings.append(
+                    f"{item_id}/log.jsonl:{ordinal}: screenshot "
+                    f"{screenshot['path']!r} hash mismatch")
+                screenshot_error = True
+                continue
+            screenshots.append({**screenshot, "current_sha256": digest,
+                                "hash_matches": True})
+        if screenshot_error:
+            continue
+        finished = _parse_ts(data["finished_at"])
+        if not (start < finished <= end):
+            continue
+        started = _parse_ts(data["started_at"])
+        if data["result"] != "passed":
+            delivery_status = "not-green"
+        elif data["purpose"] == "component":
+            delivery_status = "non-production"
+        elif tested_sha in range_shas:
+            delivery_status = "delivery-bound"
+        else:
+            delivery_status = "candidate"
+        rows.append({
+            **data,
+            "item": item_id,
+            "tested_sha": tested_sha,
+            "shipping_ref": shipping_ref,
+            "screenshots": screenshots,
+            "duration_seconds": int((finished - started).total_seconds()),
+            "boundary_crossing": started < start,
+            "delivery_status": delivery_status,
+            "provenance": "measured",
+        })
+    return rows
+
+
+def _span_rows(repo, item_id, events, start, end, warnings):
+    rows = []
+    structured = _structured_events(
+        repo, events, item_id, "activity.span", "span_id", warnings)
+    if start >= end:
+        return rows
+    for _ordinal, data in structured:
+        started = _parse_ts(data["started_at"])
+        finished = _parse_ts(data["finished_at"])
+        if finished <= start or started > end:
+            continue
+        clipped_start = max(started, start)
+        clipped_end = min(finished, end)
+        rows.append({
+            **data,
+            "item": item_id,
+            "reported_start": _fmt_ts(clipped_start),
+            "reported_end": _fmt_ts(clipped_end),
+            "seconds": int((clipped_end - clipped_start).total_seconds()),
+            "clipped": clipped_start != started or clipped_end != finished,
+            "provenance": "measured",
+        })
+    return rows
+
+
 class _DuplicateKey(ValueError):
     pass
 
@@ -408,19 +531,33 @@ def summarize(repo, base, head, product_paths=(), admin_paths=(),
     completion_ids = set()
     timing_rows = []
     timing_unavailable = []
+    wave_rows = []
+    span_rows = []
+    event_cache = {}
+    event_read_errors = {}
+    for meta in metas:
+        events, read_error = _read_item_events(repo, meta["id"], warnings)
+        if read_error:
+            warnings.append(read_error)
+            event_read_errors[meta["id"]] = read_error
+        else:
+            event_cache[meta["id"]] = events
     if interval_ok:
         start = datetime.fromtimestamp(base_info["committer_epoch"], timezone.utc)
         end = datetime.fromtimestamp(head_info["committer_epoch"], timezone.utc)
         for meta in metas:
-            events, read_error = _read_item_events(
-                repo, meta["id"], warnings)
+            read_error = event_read_errors.get(meta["id"])
             if read_error:
-                warnings.append(read_error)
                 timing_unavailable.append(
                     {"item": meta["id"], **_unavailable(read_error)})
                 continue
+            events = event_cache[meta["id"]]
             stage_events, stage_order_valid = _valid_stage_events(
                 events, meta["id"], warnings)
+            wave_rows.extend(_wave_rows(
+                repo, meta["id"], events, start, end, set(commit_shas), warnings))
+            span_rows.extend(_span_rows(
+                repo, meta["id"], events, start, end, warnings))
             if stage_order_valid:
                 for stamp, from_stage, to_stage, _ordinal in stage_events:
                     if not (start < stamp <= end and to_stage == "done"):
@@ -443,12 +580,32 @@ def summarize(repo, base, head, product_paths=(), admin_paths=(),
             "items": sorted(completion_ids),
             "events": completion_events,
         })
+        categories = {}
+        for category in ("test", "review", "admin"):
+            ids = [row["span_id"] for row in span_rows
+                   if row["category"] == category]
+            categories[category] = (_available(ids) if ids else
+                                    {"status": "unmeasured", "value": None})
         timing = {"status": "available", "rows": timing_rows,
-                  "unavailable": timing_unavailable}
+                  "unavailable": timing_unavailable,
+                  "activity_spans": span_rows,
+                  "category_status": categories}
+        waves = _available({"rows": wave_rows})
     else:
         reason = "commit endpoint timestamps are reversed"
+        start = datetime.fromtimestamp(base_info["committer_epoch"], timezone.utc)
+        end = datetime.fromtimestamp(head_info["committer_epoch"], timezone.utc)
+        for meta in metas:
+            events = event_cache.get(meta["id"])
+            if events is None:
+                continue
+            _wave_rows(
+                repo, meta["id"], events, start, end, set(commit_shas), warnings)
+            _span_rows(repo, meta["id"], events, start, end, warnings)
         completions = _unavailable(reason)
-        timing = {**_unavailable(reason), "rows": [], "unavailable": []}
+        timing = {**_unavailable(reason), "rows": [], "unavailable": [],
+                  "activity_spans": [], "category_status": {}}
+        waves = _unavailable(reason)
 
     known_items = {meta["id"] for meta in metas}
     aliases = _read_aliases(repo, known_items, warnings)
@@ -477,6 +634,7 @@ def summarize(repo, base, head, product_paths=(), admin_paths=(),
         },
         "aliases": aliases,
         "timing": timing,
+        "waves": waves,
         "warnings": sorted(warnings),
         "limits": [
             "commit counts are inventory, not speed or throughput",

@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import subprocess
@@ -170,6 +171,30 @@ class ItemAliasTimingTest(GitRepoTestCase):
         logs.append_event(self.repo, self.item, "stage.advance",
                           {"from": from_stage, "to": to_stage})
 
+    def evidence_at(self, stamp, event, data):
+        os.environ["FACTORY_NOW"] = stamp
+        logs.append_event(self.repo, self.item, event, data)
+
+    def wave(self, wave_id, tested_sha, started, finished, **changes):
+        data = {
+            "wave_id": wave_id,
+            "purpose": "integrated",
+            "stage": "verify",
+            "command": ["python3", "-m", "unittest"],
+            "started_at": started,
+            "finished_at": finished,
+            "result": "passed",
+            "tests": {"passed": 4, "failed": 0, "skipped": 0},
+            "tested_sha": tested_sha,
+            "green_sha": tested_sha,
+            "shipping_ref": None,
+            "flows": ["J-001:S1"],
+            "shipped_flows": [],
+            "screenshots": [],
+        }
+        data.update(changes)
+        return data
+
     def test_current_inventory_completions_and_timing_are_separate(self):
         self.log_at("2026-01-01T09:30:00Z", "idea", "plan")
         self.log_at("2026-01-01T11:00:00Z", "plan", "review")
@@ -280,6 +305,114 @@ class ItemAliasTimingTest(GitRepoTestCase):
             self.repo, self.base, self.head, product_paths=["apps/ios"])
         self.assertTrue(any("1 corrupt log line" in warning
                             for warning in result["warnings"]))
+
+    def test_waves_distinguish_delivered_candidate_and_component_evidence(self):
+        screenshot = self.repo / "evidence/wave.png"
+        screenshot.parent.mkdir()
+        screenshot.write_bytes(b"captured-state")
+        digest = hashlib.sha256(screenshot.read_bytes()).hexdigest()
+        delivered = self.wave(
+            "delivered", self.head, "2026-01-01T10:30:00Z",
+            "2026-01-01T11:00:00Z", shipping_ref=self.head,
+            shipped_flows=["J-001:S1"], screenshots=[{
+                "path": "evidence/wave.png", "sha256": digest,
+                "flow": "J-001:S1", "state": "checkout"}])
+        candidate = self.wave(
+            "candidate", self.base, "2026-01-01T11:00:00Z",
+            "2026-01-01T11:30:00Z")
+        component = self.wave(
+            "component", self.head, "2026-01-01T11:30:00Z",
+            "2026-01-01T12:00:00Z", purpose="component")
+        for data in (delivered, candidate, component):
+            self.evidence_at("2026-01-01T12:00:00Z", "test.wave", data)
+        rows = ledger.summarize(
+            self.repo, self.base, self.head, product_paths=["apps/ios"]
+        )["waves"]["value"]["rows"]
+        self.assertEqual([row["delivery_status"] for row in rows],
+                         ["delivery-bound", "candidate", "non-production"])
+        self.assertEqual(rows[0]["duration_seconds"], 1800)
+        self.assertTrue(rows[0]["screenshots"][0]["hash_matches"])
+
+    def test_wave_finish_boundary_and_duplicate_ids_are_excluded(self):
+        at_base = self.wave(
+            "at-base", self.head, "2026-01-01T09:59:00Z",
+            "2026-01-01T10:00:00Z")
+        at_head = self.wave(
+            "at-head", self.head, "2026-01-01T13:59:00Z",
+            "2026-01-01T14:00:00Z")
+        duplicate = self.wave(
+            "duplicate", self.head, "2026-01-01T12:00:00Z",
+            "2026-01-01T12:01:00Z")
+        for data in (at_base, at_head, duplicate, duplicate):
+            self.evidence_at("2026-01-01T12:00:00Z", "test.wave", data)
+        result = ledger.summarize(
+            self.repo, self.base, self.head, product_paths=["apps/ios"])
+        self.assertEqual([row["wave_id"]
+                          for row in result["waves"]["value"]["rows"]],
+                         ["at-head"])
+        self.assertTrue(any("duplicate wave_id" in warning
+                            for warning in result["warnings"]))
+
+    def test_stale_screenshot_hash_excludes_wave(self):
+        screenshot = self.repo / "evidence/stale.png"
+        screenshot.parent.mkdir()
+        screenshot.write_bytes(b"current")
+        wave = self.wave(
+            "stale", self.head, "2026-01-01T11:00:00Z",
+            "2026-01-01T11:01:00Z", screenshots=[{
+                "path": "evidence/stale.png", "sha256": "0" * 64,
+                "flow": "J-001:S1", "state": "checkout"}])
+        self.evidence_at("2026-01-01T12:00:00Z", "test.wave", wave)
+        result = ledger.summarize(
+            self.repo, self.base, self.head, product_paths=["apps/ios"])
+        self.assertEqual(result["waves"]["value"]["rows"], [])
+        self.assertTrue(any("hash mismatch" in warning
+                            for warning in result["warnings"]))
+
+    def test_activity_spans_overlap_clip_and_remain_separate(self):
+        spans = [
+            {"span_id": "test-crossing", "category": "test",
+             "started_at": "2026-01-01T09:30:00Z",
+             "finished_at": "2026-01-01T10:30:00Z", "source": "suite-a"},
+            {"span_id": "review-one", "category": "review",
+             "started_at": "2026-01-01T11:00:00Z",
+             "finished_at": "2026-01-01T12:00:00Z", "source": "reviewer"},
+        ]
+        for data in spans:
+            self.evidence_at("2026-01-01T12:00:00Z", "activity.span", data)
+        timing = ledger.summarize(
+            self.repo, self.base, self.head, product_paths=["apps/ios"]
+        )["timing"]
+        rows = timing["activity_spans"]
+        self.assertEqual([(row["span_id"], row["seconds"]) for row in rows],
+                         [("test-crossing", 1800), ("review-one", 3600)])
+        self.assertTrue(rows[0]["clipped"])
+        self.assertEqual(timing["category_status"]["admin"],
+                         {"status": "unmeasured", "value": None})
+        self.assertNotIn("total", timing)
+
+    def test_duplicate_spans_all_excluded(self):
+        span = {"span_id": "same", "category": "admin",
+                "started_at": "2026-01-01T11:00:00Z",
+                "finished_at": "2026-01-01T12:00:00Z", "source": "ops"}
+        self.evidence_at("2026-01-01T12:00:00Z", "activity.span", span)
+        self.evidence_at("2026-01-01T12:01:00Z", "activity.span", span)
+        result = ledger.summarize(
+            self.repo, self.base, self.head, product_paths=["apps/ios"])
+        self.assertEqual(result["timing"]["activity_spans"], [])
+        self.assertTrue(any("duplicate span_id" in warning
+                            for warning in result["warnings"]))
+
+    def test_empty_observation_window_contains_no_spans(self):
+        span = {"span_id": "crossing", "category": "admin",
+                "started_at": "2026-01-01T09:00:00Z",
+                "finished_at": "2026-01-01T11:00:00Z", "source": "ops"}
+        self.evidence_at("2026-01-01T10:00:00Z", "activity.span", span)
+        result = ledger.summarize(
+            self.repo, self.base, self.base, product_paths=["apps/ios"])
+        self.assertEqual(result["timing"]["activity_spans"], [])
+        self.assertEqual(result["timing"]["category_status"]["admin"],
+                         {"status": "unmeasured", "value": None})
 
 
 class SyntheticAcceptanceTest(GitRepoTestCase):
