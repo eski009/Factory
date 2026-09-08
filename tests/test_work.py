@@ -12,6 +12,14 @@ from scripts.factory.lib import (initrepo, items, logs, ownership, validate,
                                  work, worker_attempts)
 
 
+OWNER_BYTES = b"trusted owner\n"
+OWNER_MESSAGE_BYTES = b"owner: trusted\n\nfull body\n"
+OWNER_EVIDENCE_BYTES = b'{"owner":"a"}\n'
+CONTENDER_BYTES = b"untrusted contender\n"
+CONTENDER_MESSAGE_BYTES = b"contender: untrusted\n\ncontender body\n"
+CONTENDER_EVIDENCE_BYTES = b'{"owner":"b"}\n'
+
+
 def _init_repo():
     tmp = tempfile.TemporaryDirectory()
     repo = Path(tmp.name)
@@ -129,6 +137,129 @@ def _init_git_repo(repo):
     (repo / "seed.txt").write_text("seed\n", encoding="utf-8")
     _git(repo, "add", "seed.txt")
     _git(repo, "commit", "-q", "-m", "seed")
+
+
+def contamination_git(repo, *args):
+    return subprocess.run(
+        ["git", *args], cwd=repo, check=True, capture_output=True).stdout
+
+
+def init_contamination_repo():
+    tmp = tempfile.TemporaryDirectory()
+    repo = Path(tmp.name)
+    contamination_git(repo, "init", "-q")
+    contamination_git(repo, "config", "user.email", "t@t")
+    contamination_git(repo, "config", "user.name", "t")
+    contamination_git(repo, "config", "commit.gpgsign", "false")
+    disabled_hooks = repo / ".git" / "disabled-hooks"
+    disabled_hooks.mkdir()
+    contamination_git(repo, "config", "core.hooksPath",
+                      str(disabled_hooks))
+    (repo / "seed.txt").write_bytes(b"seed\n")
+    contamination_git(repo, "add", "--", "seed.txt")
+    contamination_git(repo, "commit", "-q", "-m", "seed")
+    contamination_git(repo, "checkout", "-q", "-b",
+                      "factory/0001-thing")
+    return tmp, repo
+
+
+def prepare_owner_payload(repo):
+    (repo / "owner.txt").write_bytes(OWNER_BYTES)
+    contamination_git(repo, "add", "--", "owner.txt")
+    pending = repo / ".git" / "owner-message"
+    pending.write_bytes(OWNER_MESSAGE_BYTES)
+    evidence = repo / "evidence" / "transient.json"
+    evidence.parent.mkdir(parents=True, exist_ok=True)
+    evidence.write_bytes(OWNER_EVIDENCE_BYTES)
+    return pending, evidence
+
+
+def finish_owner_payload(repo, pending):
+    contamination_git(repo, "commit", "-q", "--cleanup=verbatim", "-F",
+                      str(pending))
+
+
+def contamination_snapshot(repo):
+    return {
+        "working": (repo / "owner.txt").read_bytes(),
+        "index": contamination_git(repo, "diff", "--cached", "--binary"),
+        "show": contamination_git(
+            repo, "show", "--format=%B", "--name-only", "HEAD"),
+        "evidence": (repo / "evidence" / "transient.json").read_bytes(),
+        "status": contamination_git(repo, "status", "--porcelain=v1"),
+        "committed_paths": contamination_git(
+            repo, "diff-tree", "--no-commit-id", "--name-only", "-r",
+            "HEAD"),
+    }
+
+
+def run_owner_payload(repo, pause=None):
+    pending, _evidence = prepare_owner_payload(repo)
+    if pause is not None:
+        pause()
+    finish_owner_payload(repo, pending)
+    return contamination_snapshot(repo)
+
+
+def contaminate_payload(repo, counters):
+    counters["entered"] = counters.get("entered", 0) + 1
+    (repo / "owner.txt").write_bytes(CONTENDER_BYTES)
+    counters["owner_write"] = counters.get("owner_write", 0) + 1
+    (repo / "contender.txt").write_bytes(CONTENDER_BYTES)
+    counters["contender_write"] = counters.get("contender_write", 0) + 1
+    contamination_git(repo, "add", "--", "contender.txt")
+    counters["git_add"] = counters.get("git_add", 0) + 1
+    (repo / ".git" / "owner-message").write_bytes(CONTENDER_MESSAGE_BYTES)
+    counters["message_write"] = counters.get("message_write", 0) + 1
+    (repo / "evidence" / "transient.json").write_bytes(
+        CONTENDER_EVIDENCE_BYTES)
+    counters["evidence_write"] = counters.get("evidence_write", 0) + 1
+
+
+class ContaminationFixtureTest(unittest.TestCase):
+    def test_positive_control_distinguishes_contaminated_payload(self):
+        clean_tmp, clean_repo = init_contamination_repo()
+        contaminated_tmp, contaminated_repo = init_contamination_repo()
+        try:
+            clean = run_owner_payload(clean_repo)
+            counters = {}
+            contaminated = run_owner_payload(
+                contaminated_repo,
+                pause=lambda: contaminate_payload(contaminated_repo,
+                                                   counters))
+
+            self.assertEqual(set(counters.values()), {1})
+            self.assertEqual(len(counters), 6)
+            self.assertNotEqual(contaminated["working"], clean["working"])
+            self.assertNotEqual(contaminated["show"], clean["show"])
+            self.assertNotEqual(contaminated["evidence"], clean["evidence"])
+            self.assertNotEqual(contaminated["committed_paths"],
+                                clean["committed_paths"])
+
+            contender = contaminated_repo / "contender.txt"
+            self.assertTrue(contender.exists())
+            self.assertEqual(
+                contamination_git(contaminated_repo, "ls-files", "--",
+                                  "contender.txt"),
+                b"contender.txt\n")
+            self.assertIn(b"contender.txt\n",
+                          contaminated["committed_paths"])
+            self.assertIn(CONTENDER_MESSAGE_BYTES, contaminated["show"])
+            self.assertEqual(contaminated["index"], b"")
+
+            self.assertEqual(clean["working"], OWNER_BYTES)
+            self.assertEqual(clean["evidence"], OWNER_EVIDENCE_BYTES)
+            self.assertEqual(clean["show"],
+                             OWNER_MESSAGE_BYTES + b"\n\nowner.txt\n")
+            self.assertEqual(clean["committed_paths"], b"owner.txt\n")
+            self.assertFalse((clean_repo / "contender.txt").exists())
+            self.assertEqual(
+                contamination_git(clean_repo, "ls-files", "--",
+                                  "contender.txt"),
+                b"")
+        finally:
+            contaminated_tmp.cleanup()
+            clean_tmp.cleanup()
 
 
 class GitStateTest(unittest.TestCase):

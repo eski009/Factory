@@ -11,6 +11,10 @@ from unittest import mock
 
 from scripts.factory import factory
 from scripts.factory.lib import items, ownership, work
+from tests.test_work import (OWNER_BYTES, OWNER_MESSAGE_BYTES,
+                             OWNER_EVIDENCE_BYTES, contamination_git,
+                             contamination_snapshot, init_contamination_repo,
+                             run_owner_payload, contaminate_payload)
 
 
 def _git(repo, *args):
@@ -73,6 +77,182 @@ class CliWorkTest(unittest.TestCase):
 
 
 class CliWorkOwnershipTest(CliWorkTest):
+    def test_work_cli_contender_cannot_contaminate_git_or_evidence(self):
+        item = "0001-thing"
+        with (self.repo / ".git" / "info" / "exclude").open("ab") as exclude:
+            exclude.write(b"\n.factory/\ndocs/\n")
+        state_path = ownership.owner_state_path(self.repo, item)
+        worker_dir = self.repo / ".factory" / "items" / item / "worker"
+        owner_path = self.repo / "owner.txt"
+        message_path = self.repo / ".git" / "owner-message"
+        evidence_path = self.repo / "evidence" / "transient.json"
+        canonical_repo = str(self.repo.resolve(strict=True))
+        paused = threading.Barrier(2)
+        resume_owner = threading.Event()
+        owner_codes = []
+        owner_errors = []
+        owner_backend_snapshots = []
+        backend_entries = {"owner": 0, "contender": 0}
+        operation_counters = {}
+        brief_calls = 0
+        owner_thread = None
+        oracle_tmp = None
+        captured_out = io.StringIO()
+        captured_err = io.StringIO()
+        real_backend = work.BACKENDS["stub"]
+        real_build_brief = work.build_brief
+
+        def worker_artifacts():
+            if not worker_dir.exists():
+                return {}
+            return {
+                str(path.relative_to(worker_dir)): path.read_bytes()
+                for path in sorted(worker_dir.rglob("*"))
+                if path.is_file()
+            }
+
+        def current_paused_state():
+            return {
+                "state": state_path.read_bytes(),
+                "worker_artifacts": worker_artifacts(),
+                "working": owner_path.read_bytes(),
+                "message": message_path.read_bytes(),
+                "evidence": evidence_path.read_bytes(),
+                "index": contamination_git(
+                    self.repo, "diff", "--cached", "--binary"),
+                "head": contamination_git(
+                    self.repo, "rev-parse", "HEAD"),
+                "status": contamination_git(
+                    self.repo, "status", "--porcelain=v1"),
+                "brief_calls": brief_calls,
+                "backend_entries": dict(backend_entries),
+            }
+
+        def pause_owner():
+            paused.wait(timeout=10)
+            if not resume_owner.wait(timeout=10):
+                raise AssertionError("timed out waiting to resume CLI owner")
+
+        def backend(brief, worktree, model, timeout, network, sandbox, env,
+                    reasoning_effort=None):
+            if model == "owner":
+                backend_entries["owner"] += 1
+                owner_backend_snapshots.append(
+                    run_owner_payload(Path(worktree), pause=pause_owner))
+            elif model == "contender":
+                backend_entries["contender"] += 1
+                contaminate_payload(Path(worktree), operation_counters)
+            else:
+                raise AssertionError(f"unexpected backend model: {model}")
+            return {
+                "exit_code": 0,
+                "stdout": json.dumps({
+                    "status": "done",
+                    "message": f"{model} done",
+                    "usage": {"input": 1, "output": 1, "total": 2},
+                }),
+                "stderr": "",
+                "timed_out": False,
+            }
+
+        def observe_build_brief(*args, **kwargs):
+            nonlocal brief_calls
+            brief_calls += 1
+            return real_build_brief(*args, **kwargs)
+
+        owner_args = [
+            "--repo", str(self.repo), "work", item, "--backend", "stub",
+            "--model", "owner", "--worktree", str(self.repo),
+        ]
+        contender_args = [
+            "--repo", str(self.repo), "work", item, "--backend", "stub",
+            "--model", "contender", "--worktree", str(self.repo),
+        ]
+
+        def run_owner():
+            try:
+                owner_codes.append(factory.main(owner_args))
+            except BaseException as exc:
+                owner_errors.append(exc)
+
+        try:
+            oracle_tmp, oracle_repo = init_contamination_repo()
+            oracle = run_owner_payload(oracle_repo)
+            work.BACKENDS["stub"] = backend
+            work.build_brief = observe_build_brief
+
+            with redirect_stdout(captured_out), redirect_stderr(captured_err):
+                owner_thread = threading.Thread(target=run_owner)
+                owner_thread.start()
+                try:
+                    paused.wait(timeout=10)
+                    before_contender = current_paused_state()
+                    contender_stderr_start = len(captured_err.getvalue())
+                    contender_code = factory.main(contender_args)
+                    contender_stderr = captured_err.getvalue()[
+                        contender_stderr_start:]
+                    after_contender = current_paused_state()
+
+                    self.assertEqual(contender_code, 2, contender_stderr)
+                    self.assertIn(item, contender_stderr)
+                    self.assertIn(canonical_repo, contender_stderr)
+                    self.assertIn("another implementation owner exists",
+                                  contender_stderr)
+                    self.assertIn("automatic takeover is unsupported",
+                                  contender_stderr)
+                    self.assertEqual(backend_entries["contender"], 0)
+                    self.assertEqual(operation_counters, {})
+                    self.assertEqual(after_contender["brief_calls"],
+                                     before_contender["brief_calls"])
+                    self.assertEqual(after_contender, before_contender)
+                finally:
+                    resume_owner.set()
+                    owner_thread.join(timeout=10)
+        finally:
+            resume_owner.set()
+            if owner_thread is not None and owner_thread.is_alive():
+                owner_thread.join(timeout=10)
+            work.BACKENDS["stub"] = real_backend
+            work.build_brief = real_build_brief
+            if oracle_tmp is not None:
+                oracle_tmp.cleanup()
+
+        self.assertIsNotNone(owner_thread)
+        self.assertFalse(owner_thread.is_alive())
+        self.assertEqual(owner_errors, [])
+        self.assertEqual(owner_codes, [0], captured_err.getvalue())
+        self.assertEqual(backend_entries["owner"], 1)
+        self.assertEqual(backend_entries["contender"], 0)
+        self.assertEqual(operation_counters, {})
+        self.assertEqual(brief_calls, 1)
+        self.assertFalse(state_path.exists())
+
+        final = contamination_snapshot(self.repo)
+        core_fields = (
+            "working", "index", "show", "evidence", "committed_paths",
+            "status",
+        )
+        for field in core_fields:
+            self.assertEqual(final[field], oracle[field], field)
+        self.assertEqual(len(owner_backend_snapshots), 1)
+        for field in core_fields:
+            self.assertEqual(owner_backend_snapshots[0][field],
+                             oracle[field], field)
+
+        self.assertEqual(final["working"], OWNER_BYTES)
+        self.assertEqual(final["evidence"], OWNER_EVIDENCE_BYTES)
+        self.assertEqual(final["show"],
+                         OWNER_MESSAGE_BYTES + b"\n\nowner.txt\n")
+        self.assertEqual(final["committed_paths"], b"owner.txt\n")
+        self.assertFalse((self.repo / "contender.txt").exists())
+        self.assertEqual(
+            contamination_git(self.repo, "ls-files", "--", "contender.txt"),
+            b"",
+        )
+        self.assertNotIn(b"contender.txt", final["index"])
+        self.assertNotIn(b"contender.txt", final["show"])
+        self.assertNotIn(b"contender.txt", final["committed_paths"])
+
     def test_contended_work_exits_two(self):
         worker_dir = self.repo / ".factory/items/0001-thing/worker"
         worker_dir.mkdir(parents=True)
