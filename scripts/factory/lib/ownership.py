@@ -29,6 +29,25 @@ class OwnershipReleaseError(OwnershipError):
     pass
 
 
+class _FilesystemOps:
+    """Injectable owner-state operations used by guarded release tests."""
+
+    @staticmethod
+    def read_bytes(path):
+        return path.read_bytes()
+
+    @staticmethod
+    def unlink(path):
+        path.unlink()
+
+    @staticmethod
+    def exists(path):
+        return path.exists()
+
+
+DEFAULT_OPS = _FilesystemOps()
+
+
 @dataclass
 class OwnerClaim:
     repo: Path
@@ -44,6 +63,10 @@ class OwnerClaim:
 
 def owner_state_path(repo, item_id):
     return paths.item_dir(repo, item_id) / "implementation-owner.json"
+
+
+def _release_guard_path(state):
+    return state.with_name("implementation-owner.release-pending")
 
 
 def _digest(token):
@@ -71,18 +94,35 @@ def _invalid_state(item_id, checkout):
         f"checkout {checkout}; automatic takeover is unsupported")
 
 
-def _read_valid_record(state, item_id, checkout):
+def _release_failed(item_id):
+    return OwnershipReleaseError(
+        f"{item_id}: ownership release could not be verified; "
+        "automatic takeover is unsupported")
+
+
+def _strict_json_object(pairs):
+    record = {}
+    for key, value in pairs:
+        if key in record:
+            raise ValueError("duplicate owner-state key")
+        record[key] = value
+    return record
+
+
+def _read_valid_record(state, item_id, checkout, ops=DEFAULT_OPS):
     try:
-        raw = state.read_bytes()
-        record = json.loads(raw.decode("utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        raw = ops.read_bytes(state)
+        record = json.loads(raw.decode("utf-8"),
+                            object_pairs_hook=_strict_json_object)
+    except (OSError, UnicodeDecodeError, ValueError):
         raise _invalid_state(item_id, checkout) from None
-    if (not isinstance(record, dict)
+    if (type(record) is not dict
             or set(record) != {"version", "item", "checkout", "owner_sha256"}
-            or record.get("version") != 1
-            or not isinstance(record.get("item"), str)
-            or not isinstance(record.get("checkout"), str)
-            or not isinstance(record.get("owner_sha256"), str)
+            or type(record.get("version")) is not int
+            or record["version"] != 1
+            or type(record.get("item")) is not str
+            or type(record.get("checkout")) is not str
+            or type(record.get("owner_sha256")) is not str
             or len(record["owner_sha256"]) != 64
             or any(ch not in "0123456789abcdef"
                    for ch in record["owner_sha256"])
@@ -92,13 +132,8 @@ def _read_valid_record(state, item_id, checkout):
     return record
 
 
-def _create_exclusive(state, record, item_id, checkout):
-    payload = (json.dumps(record, sort_keys=True) + "\n").encode("utf-8")
-    try:
-        fd = os.open(state, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    except FileExistsError:
-        _read_valid_record(state, item_id, checkout)
-        raise _contended(item_id, checkout)
+def _write_exclusive(path, payload):
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         remaining = memoryview(payload)
         while remaining:
@@ -109,6 +144,38 @@ def _create_exclusive(state, record, item_id, checkout):
         os.fsync(fd)
     finally:
         os.close(fd)
+
+
+def _create_exclusive(state, record, item_id, checkout, ops=DEFAULT_OPS):
+    payload = (json.dumps(record, sort_keys=True) + "\n").encode("utf-8")
+    try:
+        _write_exclusive(state, payload)
+    except FileExistsError:
+        _read_valid_record(state, item_id, checkout, ops=ops)
+        raise _contended(item_id, checkout)
+
+
+def _guard_exists(state, item_id, checkout, ops=DEFAULT_OPS):
+    try:
+        exists = ops.exists(_release_guard_path(state))
+    except OSError:
+        raise _invalid_state(item_id, checkout) from None
+    if exists:
+        raise _invalid_state(item_id, checkout)
+
+
+def _create_release_guard(state, item_id):
+    guard = _release_guard_path(state)
+    try:
+        _write_exclusive(guard, b"release-pending\n")
+        directory_fd = os.open(guard.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    except OSError as exc:
+        raise _release_failed(item_id) from exc
+    return guard
 
 
 def _registered_branch_worktrees(repo, branch):
@@ -151,33 +218,48 @@ def canonical_worktree(repo, item_id, supplied=None):
     return checkout
 
 
-def acquire(repo, item_id, supplied=None, owner_token=None):
+def acquire(repo, item_id, supplied=None, owner_token=None, ops=DEFAULT_OPS):
     repo = Path(repo)
     checkout = canonical_worktree(repo, item_id, supplied)
     state = owner_state_path(repo, item_id)
-    token = owner_token or secrets.token_urlsafe(32)
-    if state.exists():
-        record = _read_valid_record(state, item_id, checkout)
-        if owner_token and hmac.compare_digest(record["owner_sha256"],
-                                                _digest(token)):
-            return OwnerClaim(repo, item_id, checkout, token, inherited=True)
+    if owner_token is not None and type(owner_token) is not str:
         raise _contended(item_id, checkout)
+    _guard_exists(state, item_id, checkout, ops=ops)
+    try:
+        state_exists = ops.exists(state)
+    except OSError:
+        raise _invalid_state(item_id, checkout) from None
+    if state_exists:
+        record = _read_valid_record(state, item_id, checkout, ops=ops)
+        if owner_token and hmac.compare_digest(
+                record["owner_sha256"], _digest(owner_token)):
+            _guard_exists(state, item_id, checkout, ops=ops)
+            return OwnerClaim(repo, item_id, checkout, owner_token,
+                              inherited=True)
+        raise _contended(item_id, checkout)
+    token = owner_token or secrets.token_urlsafe(32)
     _create_exclusive(state, _record(item_id, checkout, token), item_id,
-                      checkout)
+                      checkout, ops=ops)
+    _guard_exists(state, item_id, checkout, ops=ops)
     return OwnerClaim(repo, item_id, checkout, token)
 
 
-def release(repo, item_id, checkout, token):
+def release(repo, item_id, checkout, token, ops=DEFAULT_OPS):
     repo = Path(repo)
     state = owner_state_path(repo, item_id)
-    record = _read_valid_record(state, item_id, checkout)
+    if type(token) is not str or not token:
+        raise OwnershipRefusal(f"{item_id}: ownership release refused")
+    record = _read_valid_record(state, item_id, checkout, ops=ops)
     if not hmac.compare_digest(record["owner_sha256"], _digest(token)):
         raise OwnershipRefusal(f"{item_id}: ownership release refused")
+    guard = _create_release_guard(state, item_id)
     try:
-        state.unlink()
-        if state.exists():
+        ops.unlink(state)
+        if ops.exists(state):
             raise OSError("owner state still exists after unlink")
     except OSError as exc:
-        raise OwnershipReleaseError(
-            f"{item_id}: ownership release could not be verified; "
-            "automatic takeover is unsupported") from exc
+        raise _release_failed(item_id) from exc
+    try:
+        guard.unlink()
+    except OSError as exc:
+        raise _release_failed(item_id) from exc

@@ -192,3 +192,356 @@ class OwnershipPrimitiveTest(OwnershipFixture):
         finally:
             for claim in claims:
                 claim.release()
+
+
+class InvalidStateTest(OwnershipFixture):
+    def _valid_record(self, **updates):
+        record = {
+            "version": 1,
+            "item": self.item,
+            "checkout": str(ownership.canonical_worktree(
+                self.repo, self.item)),
+            "owner_sha256": "a" * 64,
+        }
+        record.update(updates)
+        return record
+
+    @staticmethod
+    def _encoded(record):
+        return (json.dumps(record, sort_keys=True) + "\n").encode("utf-8")
+
+    def test_invalid_owner_state_refuses_without_mutation(self):
+        missing_digest = self._valid_record()
+        del missing_digest["owner_sha256"]
+        extra_key = self._valid_record(pid=999999999)
+        duplicate_key = self._encoded(self._valid_record()).replace(
+            b'"version": 1', b'"version": 1, "version": 1')
+        cases = {
+            "invalid UTF-8": b"\xff\xfe",
+            "malformed JSON": b"{",
+            "array": b"[]\n",
+            "missing key": self._encoded(missing_digest),
+            "extra key": self._encoded(extra_key),
+            "duplicate key": duplicate_key,
+            "unsupported version": self._encoded(
+                self._valid_record(version=2)),
+            "string version": self._encoded(
+                self._valid_record(version="1")),
+            "bool version": self._encoded(
+                self._valid_record(version=True)),
+            "float version": self._encoded(
+                self._valid_record(version=1.0)),
+            "wrong item type": self._encoded(
+                self._valid_record(item=7)),
+            "wrong checkout type": self._encoded(
+                self._valid_record(checkout=[str(self.repo)])),
+            "wrong digest type": self._encoded(
+                self._valid_record(owner_sha256=7)),
+            "other item": self._encoded(
+                self._valid_record(item=self.other_item)),
+            "other canonical checkout": self._encoded(self._valid_record(
+                checkout=str(self.other_worktree.resolve()))),
+            "short digest": self._encoded(
+                self._valid_record(owner_sha256="a" * 63)),
+            "long digest": self._encoded(
+                self._valid_record(owner_sha256="a" * 65)),
+            "uppercase digest": self._encoded(
+                self._valid_record(owner_sha256="A" * 64)),
+            "non-hex digest": self._encoded(
+                self._valid_record(owner_sha256="g" * 64)),
+        }
+        for label, raw in cases.items():
+            with self.subTest(label=label):
+                self.state_path.write_bytes(raw)
+                before = self.state_path.read_bytes()
+                with self.assertRaisesRegex(ownership.OwnershipRefusal,
+                                            "owner state"):
+                    ownership.acquire(self.repo, self.item)
+                self.assertEqual(self.state_path.read_bytes(), before)
+                self.assertFalse(ownership._release_guard_path(
+                    self.state_path).exists())
+                self.assertFalse((self.repo / "contender-ran").exists())
+
+    def test_unreadable_owner_state_refuses_without_mutation(self):
+        raw = self._encoded(self._valid_record())
+        self.state_path.write_bytes(raw)
+
+        class UnreadableOps:
+            @staticmethod
+            def exists(path):
+                return path.exists()
+
+            @staticmethod
+            def read_bytes(path):
+                raise OSError("simulated read failure")
+
+        with self.assertRaisesRegex(ownership.OwnershipRefusal,
+                                    "owner state"):
+            ownership.acquire(self.repo, self.item, ops=UnreadableOps())
+        self.assertEqual(self.state_path.read_bytes(), raw)
+
+    def test_dead_pid_and_old_timestamp_never_authorize_takeover(self):
+        fixtures = {
+            "dead PID": self._valid_record(pid=999999999),
+            "old timestamp": self._valid_record(
+                created_at="1970-01-01T00:00:00Z"),
+            "dead and old": self._valid_record(
+                pid=-1, created_at="1900-01-01T00:00:00Z"),
+        }
+        for label, record in fixtures.items():
+            with self.subTest(label=label):
+                raw = self._encoded(record)
+                self.state_path.write_bytes(raw)
+                with self.assertRaisesRegex(ownership.OwnershipRefusal,
+                                            "automatic takeover"):
+                    ownership.acquire(self.repo, self.item)
+                self.assertEqual(self.state_path.read_bytes(), raw)
+
+
+class ReleaseFailureTest(OwnershipFixture):
+    def _assert_later_acquire_refuses_without_mutation(self, expected):
+        with self.assertRaises(ownership.OwnershipRefusal):
+            ownership.acquire(self.repo, self.item)
+        self.assertEqual(self.state_path.read_bytes(), expected)
+
+    def test_missing_or_non_string_tokens_refuse_before_hashing(self):
+        outer = ownership.acquire(self.repo, self.item)
+        before = self.state_path.read_bytes()
+        current_digest = ownership._digest(outer.token)
+        attempts = {
+            "inherit missing": lambda: ownership.acquire(
+                self.repo, self.item),
+            "inherit empty": lambda: ownership.acquire(
+                self.repo, self.item, owner_token=""),
+            "inherit non-string": lambda: ownership.acquire(
+                self.repo, self.item, owner_token=7),
+            "release missing": lambda: ownership.release(
+                self.repo, self.item, outer.checkout, None),
+            "release empty": lambda: ownership.release(
+                self.repo, self.item, outer.checkout, ""),
+            "release non-string": lambda: ownership.release(
+                self.repo, self.item, outer.checkout, False),
+        }
+        try:
+            with mock.patch.object(
+                    ownership, "_digest",
+                    side_effect=AssertionError("token was hashed")) as digest:
+                for label, attempt in attempts.items():
+                    with self.subTest(label=label):
+                        with self.assertRaises(ownership.OwnershipRefusal) as ctx:
+                            attempt()
+                        self.assertNotIn(outer.token, str(ctx.exception))
+                        self.assertNotIn(current_digest, str(ctx.exception))
+                        self.assertEqual(self.state_path.read_bytes(), before)
+                digest.assert_not_called()
+        finally:
+            outer.release()
+
+    def test_clean_outer_release_unlinks_once_and_allows_later_acquire(self):
+        outer = ownership.acquire(self.repo, self.item)
+        nested = ownership.acquire(
+            self.repo, self.item, owner_token=outer.token)
+        before = self.state_path.read_bytes()
+        events = []
+        guard = ownership._release_guard_path(self.state_path)
+
+        class RecordingOps:
+            @staticmethod
+            def read_bytes(path):
+                events.append(("read", path))
+                return path.read_bytes()
+
+            @staticmethod
+            def unlink(path):
+                events.append(("unlink", path))
+                if not guard.exists():
+                    raise AssertionError("release guard missing before unlink")
+                path.unlink()
+
+            @staticmethod
+            def exists(path):
+                events.append(("exists", path))
+                if not guard.exists():
+                    raise AssertionError(
+                        "release guard missing during absence verification")
+                return path.exists()
+
+        nested.release()
+        self.assertEqual(self.state_path.read_bytes(), before)
+        self.assertEqual(events, [])
+        ownership.release(self.repo, self.item, outer.checkout, outer.token,
+                          ops=RecordingOps())
+        self.assertEqual(events, [
+            ("read", self.state_path),
+            ("unlink", self.state_path),
+            ("exists", self.state_path),
+        ])
+        self.assertFalse(self.state_path.exists())
+        self.assertFalse(guard.exists())
+        ownership.acquire(self.repo, self.item).release()
+
+    def test_later_acquire_refuses_after_simulated_crash(self):
+        abandoned = ownership.acquire(self.repo, self.item)
+        before = self.state_path.read_bytes()
+        del abandoned
+        self._assert_later_acquire_refuses_without_mutation(before)
+
+    def test_release_unlink_failure_retains_refusal(self):
+        outer = ownership.acquire(self.repo, self.item)
+        before = self.state_path.read_bytes()
+        evidence = self.repo / "completed-evidence.txt"
+        evidence.write_bytes(b"completed\n")
+        unlink_calls = []
+
+        class UnlinkFailureOps:
+            @staticmethod
+            def read_bytes(path):
+                return path.read_bytes()
+
+            @staticmethod
+            def unlink(path):
+                unlink_calls.append(path)
+                raise OSError("simulated unlink failure")
+
+            @staticmethod
+            def exists(path):
+                return path.exists()
+
+        with self.assertRaisesRegex(ownership.OwnershipReleaseError,
+                                    "could not be verified"):
+            ownership.release(self.repo, self.item, outer.checkout,
+                              outer.token, ops=UnlinkFailureOps())
+        self.assertEqual(unlink_calls, [self.state_path])
+        self.assertEqual(self.state_path.read_bytes(), before)
+        self.assertTrue(ownership._release_guard_path(
+            self.state_path).is_file())
+        self.assertEqual(evidence.read_bytes(), b"completed\n")
+        self._assert_later_acquire_refuses_without_mutation(before)
+
+    def test_release_post_delete_verification_failure_is_retained_fail_closed(
+            self):
+        outer = ownership.acquire(self.repo, self.item)
+        evidence = self.repo / "completed-evidence.txt"
+        evidence.write_bytes(b"completed\n")
+        guard = ownership._release_guard_path(self.state_path)
+        events = []
+
+        class VerificationFailureOps:
+            @staticmethod
+            def read_bytes(path):
+                events.append("read")
+                return path.read_bytes()
+
+            @staticmethod
+            def unlink(path):
+                if not guard.is_file():
+                    raise AssertionError("release guard missing before unlink")
+                events.append("unlink")
+                path.unlink()
+
+            @staticmethod
+            def exists(path):
+                events.append("verify")
+                if path.exists():
+                    raise AssertionError("owner state was not deleted")
+                if not guard.is_file():
+                    raise AssertionError(
+                        "release guard missing after owner deletion")
+                with self.assertRaises(ownership.OwnershipRefusal):
+                    ownership.acquire(self.repo, self.item)
+                raise OSError("simulated verification failure")
+
+        with self.assertRaisesRegex(ownership.OwnershipReleaseError,
+                                    "could not be verified"):
+            ownership.release(self.repo, self.item, outer.checkout,
+                              outer.token, ops=VerificationFailureOps())
+        self.assertEqual(events, ["read", "unlink", "verify"])
+        self.assertFalse(self.state_path.exists())
+        self.assertEqual(guard.read_bytes(), b"release-pending\n")
+        marker_before = guard.read_bytes()
+        with self.assertRaises(ownership.OwnershipRefusal):
+            ownership.acquire(self.repo, self.item)
+        self.assertEqual(guard.read_bytes(), marker_before)
+        self.assertEqual(events.count("unlink"), 1)
+        self.assertEqual(evidence.read_bytes(), b"completed\n")
+
+    def test_post_delete_verification_does_not_overwrite_contender(self):
+        outer = ownership.acquire(self.repo, self.item)
+        contender = b"contender-owned-state\n"
+        guard = ownership._release_guard_path(self.state_path)
+
+        class ContenderDuringVerificationOps:
+            @staticmethod
+            def read_bytes(path):
+                return path.read_bytes()
+
+            @staticmethod
+            def unlink(path):
+                if not guard.is_file():
+                    raise AssertionError("release guard missing before unlink")
+                path.unlink()
+
+            @staticmethod
+            def exists(path):
+                path.write_bytes(contender)
+                return path.exists()
+
+        with self.assertRaises(ownership.OwnershipReleaseError):
+            ownership.release(
+                self.repo, self.item, outer.checkout, outer.token,
+                ops=ContenderDuringVerificationOps())
+        self.assertEqual(self.state_path.read_bytes(), contender)
+        self.assertTrue(guard.is_file())
+        self._assert_later_acquire_refuses_without_mutation(contender)
+
+    def test_partial_write_failure_retains_fail_closed_state(self):
+        checkout = ownership.canonical_worktree(self.repo, self.item)
+        real_write = ownership.os.write
+        writes = 0
+
+        def partial_then_zero(fd, buffer):
+            nonlocal writes
+            writes += 1
+            if writes == 1:
+                return real_write(fd, memoryview(buffer)[:7])
+            return 0
+
+        with mock.patch.object(ownership, "canonical_worktree",
+                               return_value=checkout), \
+                mock.patch.object(ownership.os, "write",
+                                  side_effect=partial_then_zero):
+            with self.assertRaisesRegex(OSError, "short write"):
+                ownership.acquire(self.repo, self.item)
+        before = self.state_path.read_bytes()
+        self.assertEqual(len(before), 7)
+        self._assert_later_acquire_refuses_without_mutation(before)
+
+    def test_fsync_failure_retains_fail_closed_state(self):
+        checkout = ownership.canonical_worktree(self.repo, self.item)
+        with mock.patch.object(ownership, "canonical_worktree",
+                               return_value=checkout), \
+                mock.patch.object(ownership.os, "fsync",
+                                  side_effect=OSError("fsync failed")):
+            with self.assertRaisesRegex(OSError, "fsync failed"):
+                ownership.acquire(self.repo, self.item)
+        before = self.state_path.read_bytes()
+        self.assertGreater(len(before), 0)
+        self._assert_later_acquire_refuses_without_mutation(before)
+
+    def test_close_failure_retains_fail_closed_state(self):
+        checkout = ownership.canonical_worktree(self.repo, self.item)
+        real_close = ownership.os.close
+
+        def close_then_fail(fd):
+            real_close(fd)
+            raise OSError("close failed")
+
+        with mock.patch.object(ownership, "canonical_worktree",
+                               return_value=checkout), \
+                mock.patch.object(ownership.os, "close",
+                                  side_effect=close_then_fail):
+            with self.assertRaisesRegex(OSError, "close failed"):
+                ownership.acquire(self.repo, self.item)
+        before = self.state_path.read_bytes()
+        self.assertGreater(len(before), 0)
+        self._assert_later_acquire_refuses_without_mutation(before)
