@@ -5,6 +5,7 @@ Frontmatter is a strict scalar subset of YAML: `key: value` lines between
 Writes are deterministic: fixed field order, LF endings, trailing newline.
 """
 
+import os
 import re
 
 from . import logs, paths
@@ -110,8 +111,14 @@ def load_item(repo, item_id):
     return meta, body
 
 
-def save_item(repo, meta, body=""):
+def save_item(repo, meta, body="", *, file_fd=None):
     text = render_item(meta, body)
+    if file_fd is not None:
+        with os.fdopen(os.dup(file_fd), "w", encoding="utf-8") as stream:
+            stream.seek(0)
+            stream.write(text)
+            stream.truncate()
+        return
     d = paths.item_dir(repo, meta["id"])
     d.mkdir(parents=True, exist_ok=True)
     (d / "item.md").write_text(text, encoding="utf-8")

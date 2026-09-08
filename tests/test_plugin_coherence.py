@@ -63,6 +63,45 @@ class PluginCoherenceTest(unittest.TestCase):
 
 
 class TestPluginCoherence(unittest.TestCase):
+    def test_plan_convergence_corpus_calibrates_every_signal(self):
+        corpus = json.loads(read(
+            ROOT / "skills/factory-plan/references/approach-convergence-corpus.json"))
+        signal_ids = [
+            "natural-language-rule-tail",
+            "input-variety-task-growth",
+            "unconstrained-output-postprocess",
+        ]
+        self.assertEqual(corpus["signal_ids"], signal_ids)
+        cases = corpus["cases"]
+        for signal_id in signal_ids:
+            self.assertTrue(any(signal_id in case["expected_signals"]
+                                for case in cases), signal_id)
+            self.assertTrue(any(
+                case.get("near_neighbour_for") == signal_id
+                and signal_id not in case["expected_signals"]
+                for case in cases), signal_id)
+        self.assertTrue(any(not case["expected_signals"] for case in cases))
+        self.assertTrue(any(len(case["expected_signals"]) > 1 for case in cases))
+
+    def test_plan_skill_owns_semantics_and_uses_one_bounded_reviewer(self):
+        text = read(ROOT / "skills/factory-plan/SKILL.md")
+        for required in (
+            "approach-context", "approach-judgement",
+            "approach-convergence-corpus.json", "one fresh independent reviewer",
+            "zero signals", "planner invocation", "reviewer invocation",
+            "approach.rejected", "approaches/forbidden.md",
+        ):
+            self.assertIn(required, text)
+        block = text.split("## Approach convergence\n", 1)[1].split("\n## ", 1)[0]
+        for required in (
+            "at most one additional fresh reviewer",
+            "never infer a signal by regexing plan prose",
+            "engine validates the envelope",
+        ):
+            self.assertIn(required, block)
+        self.assertNotIn("six-seat", block.lower())
+        self.assertNotIn("council-review", block)
+
     def test_engine_comments_cite_symbols_not_source_lines(self):
         citations = []
         source_line = re.compile(r"[A-Za-z0-9_./-]+\.(?:py|md):\d+")

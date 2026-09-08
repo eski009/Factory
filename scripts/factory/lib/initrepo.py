@@ -19,7 +19,8 @@ LEDGER_SCHEMAS = {"bids": "escalation-bid", "judgements": "orchestrator-judgemen
                   "reputation": "reputation-event", "escapes": "escape"}
 DEFAULT_CONFIG = {"version": 1, "merge": "auto", "gates": ["design"],
                   "research": {"depth": "web"},
-                  "assure": {"attribution": False}}
+                  "assure": {"attribution": False},
+                  "approach_convergence": {"enabled": False}}
 
 
 def load_schema(name):
@@ -193,6 +194,21 @@ def validate_tree(repo):
                         continue
                     errors.extend(validate(data, load_schema(schema_name),
                                            f"{sub.name}/{rel}"))
+            judgement_dir = sub / "approach-judgements"
+            if judgement_dir.exists():
+                judgement_schema = load_schema("approach-judgement")
+                for judgement_path in sorted(judgement_dir.glob("*.json")):
+                    rel = f"{sub.name}/approach-judgements/{judgement_path.name}"
+                    try:
+                        judgement = json.loads(judgement_path.read_text(
+                            encoding="utf-8", errors="replace"))
+                    except (OSError, UnicodeDecodeError) as exc:
+                        errors.append(f"{rel}: unreadable ({exc})")
+                        continue
+                    except json.JSONDecodeError as exc:
+                        errors.append(f"{rel}: invalid JSON ({exc})")
+                        continue
+                    errors.extend(validate(judgement, judgement_schema, rel))
             if meta is not None and not schema_errors and log_valid:
                 expected = "idea"
                 for event in log_events:

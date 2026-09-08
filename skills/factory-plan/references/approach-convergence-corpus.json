@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "signal_ids": [
+    "natural-language-rule-tail",
+    "input-variety-task-growth",
+    "unconstrained-output-postprocess"
+  ],
+  "cases": [
+    {
+      "id": "rule-tail-positive",
+      "plan_excerpt": "Add another regular expression for each newly observed wording in the model's free-text answer, then rewrite matching sentences until all known phrases pass.",
+      "expected_signals": ["natural-language-rule-tail"]
+    },
+    {
+      "id": "rule-tail-near-neighbour",
+      "near_neighbour_for": "natural-language-rule-tail",
+      "plan_excerpt": "Parse one closed command grammar with the fixed enum approve|reject|defer and reject every token outside that grammar.",
+      "expected_signals": []
+    },
+    {
+      "id": "input-growth-positive",
+      "plan_excerpt": "Create one handler and one task for every new user phrasing; future phrasings add another handler and regression task.",
+      "expected_signals": ["input-variety-task-growth"]
+    },
+    {
+      "id": "input-growth-near-neighbour",
+      "near_neighbour_for": "input-variety-task-growth",
+      "plan_excerpt": "Implement the three protocol variants named by the closed API version enum and reject every other version.",
+      "expected_signals": []
+    },
+    {
+      "id": "postprocess-positive",
+      "plan_excerpt": "After the model emits unconstrained prose, scan the output and repair prohibited claims, missing caveats, anaphora, and any later malformed phrasing downstream.",
+      "expected_signals": ["unconstrained-output-postprocess"]
+    },
+    {
+      "id": "postprocess-near-neighbour",
+      "near_neighbour_for": "unconstrained-output-postprocess",
+      "plan_excerpt": "Replace free-text generation with schema-constrained JSON at the producing boundary and fail closed when the schema is not satisfied.",
+      "expected_signals": []
+    },
+    {
+      "id": "bounded-no-signal",
+      "plan_excerpt": "Add one boolean configuration field, validate it with the existing schema subset, and cover enabled and disabled branches.",
+      "expected_signals": []
+    },
+    {
+      "id": "multiple-signals",
+      "plan_excerpt": "Post-process unconstrained model prose with a growing regex exception list, adding another task whenever a new input wording appears.",
+      "expected_signals": [
+        "natural-language-rule-tail",
+        "input-variety-task-growth",
+        "unconstrained-output-postprocess"
+      ]
+    }
+  ]
+}

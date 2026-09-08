@@ -50,3 +50,14 @@ entries below were registered by the work that touched them._
   `docs/factory/roadmap.md` and `factory status`, and its packet names the depth
   it ran at and the intake path it took (source:
   .factory/items/0026-complexity-scored-bug-flow-bugs-run-a-su/spec.md).
+- **J-005 — Plan approach convergence gate**
+  (`plan-approach-convergence-gate`, criticality `high`, status `draft`,
+  contract `contracts/J-005-plan-approach-convergence-gate.md`). Persona: The
+  Overnight Operator (source: docs/factory/brain/personas.md). Trigger: with
+  approach convergence explicitly enabled, an item attempts to leave `plan`
+  and its current-round screen carries at least one named convergence-risk
+  signal. Outcome: the operator can audit why implementation was admitted or
+  refused from one cited current-round artifact while the autonomous run enters
+  `implement` only on a pass or follows the existing redesign route on
+  rejection (source:
+  .factory/items/0014-approach-gate-at-plan-judge-convergence-/spec.md).
