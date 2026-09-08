@@ -661,6 +661,58 @@ class RunWorkTest(unittest.TestCase):
 
 
 class RunWorkOwnershipTest(RunWorkTest):
+    def test_inherited_run_requires_matching_existing_owner(self):
+        item_dir = self.repo / ".factory/items/0001-thing"
+        plan = item_dir / "plan.md"
+        state = ownership.owner_state_path(self.repo, "0001-thing")
+        backend = mock.Mock(wraps=work.BACKENDS["stub"])
+
+        def snapshot():
+            return {path.relative_to(item_dir): path.read_bytes()
+                    for path in item_dir.rglob("*") if path.is_file()}
+
+        outer = ownership.acquire(self.repo, "0001-thing")
+        owner_bytes = state.read_bytes()
+        try:
+            with mock.patch.dict(
+                    os.environ,
+                    {work.FACTORY_IMPLEMENTATION_OWNER: outer.token}), \
+                    mock.patch.dict(work.BACKENDS, {"stub": backend}):
+                code, result = work.run_work(
+                    self.repo, "0001-thing", backend="stub",
+                    worktree=str(self.repo))
+            self.assertEqual(code, 0, result)
+            self.assertEqual(state.read_bytes(), owner_bytes)
+
+            plan.write_text("- [ ] Do the thing\n", encoding="utf-8")
+            before = snapshot()
+            with mock.patch.dict(
+                    os.environ,
+                    {work.FACTORY_IMPLEMENTATION_OWNER: "wrong-token"}), \
+                    mock.patch.dict(work.BACKENDS, {"stub": backend}):
+                code, result = work.run_work(
+                    self.repo, "0001-thing", backend="stub",
+                    worktree=str(self.repo))
+            self.assertEqual(code, 2, result)
+            self.assertEqual(snapshot(), before)
+            self.assertEqual(state.read_bytes(), owner_bytes)
+            backend.assert_called_once()
+        finally:
+            outer.release()
+
+        before = snapshot()
+        with mock.patch.dict(
+                os.environ,
+                {work.FACTORY_IMPLEMENTATION_OWNER: outer.token}), \
+                mock.patch.dict(work.BACKENDS, {"stub": backend}):
+            code, result = work.run_work(
+                self.repo, "0001-thing", backend="stub",
+                worktree=str(self.repo))
+        self.assertEqual(code, 2, result)
+        self.assertFalse(state.exists())
+        self.assertEqual(snapshot(), before)
+        backend.assert_called_once()
+
     def test_direct_work_holds_owner_through_terminal_event(self):
         state = ownership.owner_state_path(self.repo, "0001-thing")
         worker_dir = self.repo / ".factory/items/0001-thing/worker"

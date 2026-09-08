@@ -242,7 +242,8 @@ def acquire(repo, item_id, supplied=None, owner_token=None, ops=DEFAULT_OPS):
     repo = Path(repo)
     checkout = canonical_worktree(repo, item_id, supplied)
     state = owner_state_path(repo, item_id)
-    if owner_token is not None and type(owner_token) is not str:
+    if owner_token is not None and (
+            type(owner_token) is not str or not owner_token):
         raise _contended(item_id, checkout)
     _guard_exists(state, item_id, checkout, ops=ops)
     try:
@@ -251,13 +252,15 @@ def acquire(repo, item_id, supplied=None, owner_token=None, ops=DEFAULT_OPS):
         raise _invalid_state(item_id, checkout) from None
     if state_exists:
         record = _read_valid_record(state, item_id, checkout, ops=ops)
-        if owner_token and hmac.compare_digest(
+        if owner_token is not None and hmac.compare_digest(
                 record["owner_sha256"], _digest(owner_token)):
             _guard_exists(state, item_id, checkout, ops=ops)
             return OwnerClaim(repo, item_id, checkout, owner_token,
                               inherited=True)
         raise _contended(item_id, checkout)
-    token = owner_token or secrets.token_urlsafe(32)
+    if owner_token is not None:
+        raise _contended(item_id, checkout)
+    token = secrets.token_urlsafe(32)
     _create_exclusive(state, _record(item_id, checkout, token), item_id,
                       checkout, ops=ops)
     _guard_exists(state, item_id, checkout, ops=ops)

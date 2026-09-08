@@ -20,6 +20,35 @@ def read(p):
 
 
 class PluginCoherenceTest(unittest.TestCase):
+    def test_ownership_boundary_has_one_engine_authority(self):
+        ownership = read(ROOT / "scripts/factory/lib/ownership.py")
+        work = read(ROOT / "scripts/factory/lib/work.py")
+        skill = read(ROOT / "skills/factory-implement/SKILL.md")
+
+        self.assertIn("os.O_EXCL", ownership)
+        self.assertIn("canonical_worktree", ownership)
+        self.assertIn("canonical_worktree", work)
+
+        section_start = skill.index(
+            "Otherwise, fall through to the in-process path:")
+        section_end = skill.index("\n4. ", section_start)
+        in_process = skill[section_start:section_end]
+        for required in (
+            "factory ownership acquire",
+            "factory ownership release",
+            "FACTORY_IMPLEMENTATION_OWNER",
+            "reviewer",
+            "task-evidence finalization",
+        ):
+            self.assertIn(required, in_process)
+        self.assertRegex(
+            in_process, r"release failure[^.\n]*fail-closed")
+        self.assertNotRegex(
+            in_process,
+            r"(?i)factory log[^.\n;]*(?:acquir|releas)",
+        )
+        self.assertNotIn("automatic takeover", skill.lower())
+
     def test_implement_skill_requires_engine_owned_checkout_claim(self):
         skill = read(ROOT / "skills/factory-implement/SKILL.md")
         for required in (

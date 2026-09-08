@@ -42,6 +42,7 @@ DEFAULTS = {
 
 REASONS = ("crash", "timeout", "no_changes", "red_tests",
            "rate_limited", "auth", "blocked", "prep_failed")
+FACTORY_IMPLEMENTATION_OWNER = "FACTORY_IMPLEMENTATION_OWNER"
 
 
 def worker_config(repo):
@@ -553,7 +554,9 @@ def run_work(repo, item_id, backend=None, model=None, timeout=None,
                                 "reasoning_effort", "medium"))
 
     try:
-        claim = ownership.acquire(repo, item_id, supplied=work_tree)
+        claim = ownership.acquire(
+            repo, item_id, supplied=work_tree,
+            owner_token=os.environ.get(FACTORY_IMPLEMENTATION_OWNER))
     except OwnershipRefusal as exc:
         return 2, {"error": str(exc)}
     work_tree = claim.checkout
