@@ -4,9 +4,10 @@ codex (exec), stub (test-only, in-process). Python stdlib only.
 
 run_work / cmd_work exit codes:
   0  worker succeeded (result status=done, implement.completed logged)
-  1  usage/internal error (bad args, missing item, unresolvable worktree,
-     backend CLI unavailable, invalid result)
-  2  precondition refusal (item not at stage implement, or no unticked tasks)
+  1  usage/internal error (bad args, missing item, backend CLI unavailable,
+     invalid result)
+  2  precondition refusal (item not at stage implement, no unticked tasks,
+     or checkout ownership/worktree refusal)
   3  worker attempted but did not succeed (result status=failed|blocked;
      the typed `reason` tells a scheduler whether to retry or block)
 """
@@ -20,7 +21,8 @@ import time
 from pathlib import Path
 
 from . import initrepo, items, logs, paths, validate, worker_attempts
-from .ownership import canonical_worktree
+from .ownership import (NoRegisteredWorktree, OwnershipRefusal,
+                        canonical_worktree)
 
 
 class WorkError(Exception):
@@ -394,20 +396,16 @@ def normalize(item_id, backend, model, branch, gstate, parsed, test_result,
 
 
 def resolve_worktree(repo, item_id):
-    """The filesystem path of the worktree checked out on factory/<id>,
-    else the repo root if that branch exists there, else None."""
-    branch = f"factory/{item_id}"
-    listing = _git(repo, "worktree", "list", "--porcelain")
-    if listing.returncode == 0:
-        current = None
-        for line in listing.stdout.splitlines():
-            if line.startswith("worktree "):
-                current = line[len("worktree "):]
-            elif line.strip() == f"branch refs/heads/{branch}" and current:
-                return current
-    head = _git(repo, "rev-parse", "--abbrev-ref", "HEAD")
-    return (str(repo) if head.returncode == 0 and head.stdout.strip() == branch
-            else None)
+    """Return the canonical registered checkout, or None if none exists.
+
+    Ambiguous registrations and lookup/resolution failures propagate as
+    ownership refusals; only a confirmed zero-registration result retains the
+    legacy None result.
+    """
+    try:
+        return str(canonical_worktree(repo, item_id))
+    except NoRegisteredWorktree:
+        return None
 
 
 def _tick_plan(repo, item_id):
@@ -466,9 +464,10 @@ def run_work(repo, item_id, backend=None, model=None, timeout=None,
     tasks = unticked_tasks(plan_path.read_text(encoding="utf-8"))
     if not tasks:
         return 2, {"error": f"{item_id}: no unticked plan tasks"}
-    work_tree = worktree or resolve_worktree(repo, item_id)
-    if work_tree is None:
-        return 1, {"error": f"cannot resolve worktree for factory/{item_id}"}
+    try:
+        work_tree = canonical_worktree(repo, item_id, worktree)
+    except OwnershipRefusal as exc:
+        return 2, {"error": str(exc)}
     brief = build_brief(repo, item_id, work_tree)
     if backend in ("claude", "codex") and shutil.which(backend) is None:
         return 1, {"error": f"backend CLI not found on PATH: {backend}"}

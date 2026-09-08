@@ -7,8 +7,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from scripts.factory.lib import (initrepo, items, logs, validate, work,
-                                 worker_attempts)
+from scripts.factory.lib import (initrepo, items, logs, ownership, validate,
+                                 work, worker_attempts)
 
 
 def _init_repo():
@@ -240,6 +240,53 @@ class ResolveWorktreeTest(unittest.TestCase):
     def test_no_such_branch_returns_none(self):
         self.assertIsNone(work.resolve_worktree(self.repo, "0001-thing"))
 
+    def test_registered_path_with_tab_returns_strict_real_path(self):
+        linked = self.repo / "linked\tcheckout"
+        _git(self.repo, "worktree", "add", "-q", "-b",
+             "factory/0001-thing", str(linked))
+        expected = linked.resolve(strict=True)
+
+        self.assertEqual(
+            ownership.canonical_worktree(self.repo, "0001-thing"), expected)
+        self.assertEqual(
+            work.resolve_worktree(self.repo, "0001-thing"), str(expected))
+
+    def test_registered_path_with_carriage_return_returns_strict_real_path(
+            self):
+        linked = self.repo / "linked\rcheckout"
+        _git(self.repo, "worktree", "add", "-q", "-b",
+             "factory/0001-thing", str(linked))
+        expected = linked.resolve(strict=True)
+
+        self.assertEqual(
+            ownership.canonical_worktree(self.repo, "0001-thing"), expected)
+        self.assertEqual(
+            work.resolve_worktree(self.repo, "0001-thing"), str(expected))
+
+    def test_returns_authority_canonical_string(self):
+        canonical = self.repo.resolve(strict=True)
+        with mock.patch.object(work, "canonical_worktree",
+                               return_value=canonical) as authority:
+            resolved = work.resolve_worktree(self.repo, "0001-thing")
+        self.assertEqual(resolved, str(canonical))
+        authority.assert_called_once_with(self.repo, "0001-thing")
+
+    def test_only_zero_registration_is_compatible_with_none(self):
+        refusal = ownership.NoRegisteredWorktree("no registration")
+        with mock.patch.object(work, "canonical_worktree",
+                               side_effect=refusal):
+            self.assertIsNone(work.resolve_worktree(self.repo, "0001-thing"))
+
+    def test_lookup_and_ambiguity_refusals_propagate(self):
+        for message in ("git worktree lookup failed", "ambiguous"):
+            with self.subTest(message=message), \
+                    mock.patch.object(
+                        work, "canonical_worktree",
+                        side_effect=ownership.OwnershipRefusal(message)):
+                with self.assertRaisesRegex(ownership.OwnershipRefusal,
+                                            message):
+                    work.resolve_worktree(self.repo, "0001-thing")
+
 
 class RunWorkTest(unittest.TestCase):
     def setUp(self):
@@ -280,6 +327,86 @@ class RunWorkTest(unittest.TestCase):
         from scripts.factory.lib import cost
         summary = cost.summarize(self.repo, "0001-thing")
         self.assertEqual(summary["measured"]["events"], 1)
+
+    def test_authority_called_once_and_canonical_checkout_reused(self):
+        alias = self.repo / "checkout-alias"
+        alias.symlink_to(self.repo, target_is_directory=True)
+        canonical = self.repo.resolve(strict=True)
+        backend = mock.Mock(wraps=work._stub_run)
+        real_build_brief = work.build_brief
+
+        with mock.patch.object(
+                work, "canonical_worktree",
+                wraps=work.canonical_worktree) as authority, \
+                mock.patch.object(
+                    work, "build_brief",
+                    wraps=real_build_brief) as build_brief, \
+                mock.patch.dict(work.BACKENDS, {"stub": backend}):
+            code, result = work.run_work(
+                self.repo, "0001-thing", backend="stub", worktree=alias)
+
+        self.assertEqual(code, 0, result)
+        authority.assert_called_once_with(
+            self.repo, "0001-thing", alias)
+        build_brief.assert_called_once_with(
+            self.repo, "0001-thing", canonical)
+        backend.assert_called_once()
+        self.assertEqual(backend.call_args.args[1], canonical)
+
+    def test_unregistered_explicit_worktree_refuses_before_worker_directory_write(
+            self):
+        item_dir = self.repo / ".factory/items/0001-thing"
+        unregistered = self.repo / "unregistered-checkout"
+        unregistered.mkdir()
+        worker_dir = item_dir / "worker"
+        self.assertFalse(worker_dir.exists())
+        before_files = {
+            path.relative_to(item_dir): path.read_bytes()
+            for path in item_dir.rglob("*") if path.is_file()
+        }
+        before_dirs = {
+            path.relative_to(item_dir)
+            for path in item_dir.rglob("*") if path.is_dir()
+        }
+        before_events = list(logs.read_events(
+            self.repo, "0001-thing"))
+        backend = mock.Mock(side_effect=AssertionError("backend invoked"))
+
+        with mock.patch.object(
+                work, "canonical_worktree",
+                wraps=work.canonical_worktree) as authority, \
+                mock.patch.object(
+                    work, "build_brief",
+                    side_effect=AssertionError("brief built")) as build_brief, \
+                mock.patch.object(
+                    worker_attempts, "create_attempt",
+                    side_effect=AssertionError("attempt created")) as attempt, \
+                mock.patch.dict(work.BACKENDS, {"stub": backend}):
+            code, result = work.run_work(
+                self.repo, "0001-thing", backend="stub",
+                worktree=str(unregistered))
+
+        self.assertEqual(code, 2)
+        self.assertIn("supplied checkout is not the registered checkout",
+                      result["error"])
+        authority.assert_called_once_with(
+            self.repo, "0001-thing", str(unregistered))
+        build_brief.assert_not_called()
+        attempt.assert_not_called()
+        backend.assert_not_called()
+        self.assertFalse(worker_dir.exists())
+        after_files = {
+            path.relative_to(item_dir): path.read_bytes()
+            for path in item_dir.rglob("*") if path.is_file()
+        }
+        after_dirs = {
+            path.relative_to(item_dir)
+            for path in item_dir.rglob("*") if path.is_dir()
+        }
+        self.assertEqual(after_files, before_files)
+        self.assertEqual(after_dirs, before_dirs)
+        self.assertEqual(logs.read_events(self.repo, "0001-thing"),
+                         before_events)
 
     def test_wrong_stage_refused(self):
         d = self.repo / ".factory/items/0001-thing"

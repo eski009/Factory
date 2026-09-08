@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import tempfile
 import threading
@@ -46,6 +47,96 @@ class OwnershipFixture(unittest.TestCase):
 
     def tearDown(self):
         self.tmp.cleanup()
+
+
+class CanonicalWorktreeTest(OwnershipFixture):
+    def test_relative_absolute_and_symlink_spellings_share_identity(self):
+        alias = self.repo / "checkout-alias"
+        alias.symlink_to(self.repo, target_is_directory=True)
+
+        expected = self.repo.resolve(strict=True)
+        spellings = (Path("."), self.repo, alias, Path("checkout-alias"))
+        resolved = [ownership.canonical_worktree(
+            self.repo, self.item, supplied) for supplied in spellings]
+
+        self.assertTrue(all(isinstance(path, Path) for path in resolved))
+        self.assertEqual(resolved, [expected] * len(spellings))
+
+    def test_mismatched_and_unregistered_supplied_checkouts_refuse(self):
+        unregistered = self.repo / "unregistered-checkout"
+        unregistered.mkdir()
+        for supplied in (self.other_worktree, unregistered):
+            with self.subTest(supplied=supplied):
+                with self.assertRaisesRegex(
+                        ownership.OwnershipRefusal,
+                        "supplied checkout is not the registered checkout"):
+                    ownership.canonical_worktree(
+                        self.repo, self.item, supplied)
+
+    def test_duplicate_registration_refuses_before_resolving_aliases(self):
+        alias = self.repo / "checkout-alias"
+        alias.symlink_to(self.repo, target_is_directory=True)
+        listing = subprocess.CompletedProcess(
+            args=[], returncode=0,
+            stdout=(
+                b"worktree " + os.fsencode(self.repo) + b"\0"
+                b"branch refs/heads/factory/" + self.item.encode() + b"\0\0"
+                b"worktree " + os.fsencode(alias) + b"\0"
+                b"branch refs/heads/factory/" + self.item.encode() + b"\0\0"),
+            stderr=b"")
+
+        with mock.patch.object(ownership.subprocess, "run",
+                               return_value=listing), \
+                mock.patch.object(
+                    Path, "resolve",
+                    side_effect=AssertionError("aliases were resolved")) \
+                as resolve:
+            with self.assertRaisesRegex(ownership.OwnershipRefusal,
+                                        "ambiguous"):
+                ownership.canonical_worktree(self.repo, self.item)
+        resolve.assert_not_called()
+
+    def test_zero_registration_has_typed_refusal(self):
+        with self.assertRaises(ownership.NoRegisteredWorktree) as context:
+            ownership.canonical_worktree(self.repo, "0099-unregistered")
+        self.assertIsInstance(context.exception, ownership.OwnershipRefusal)
+        self.assertIn("no registered checkout", str(context.exception))
+
+    def test_git_lookup_failures_refuse_instead_of_looking_unregistered(self):
+        failures = (
+            subprocess.CompletedProcess(
+                args=[], returncode=128, stdout=b"", stderr=b"not a repo"),
+            OSError("git unavailable"),
+        )
+        for failure in failures:
+            with self.subTest(failure=failure):
+                effect = ({"return_value": failure}
+                          if isinstance(failure, subprocess.CompletedProcess)
+                          else {"side_effect": failure})
+                with mock.patch.object(ownership.subprocess, "run", **effect):
+                    with self.assertRaisesRegex(
+                            ownership.OwnershipRefusal,
+                            "git worktree lookup failed") as context:
+                        ownership.canonical_worktree(self.repo, self.item)
+                self.assertNotIsInstance(
+                    context.exception, ownership.NoRegisteredWorktree)
+
+    def test_registered_checkout_resolution_failure_refuses(self):
+        missing = self.repo / "missing-checkout"
+        listing = subprocess.CompletedProcess(
+            args=[], returncode=0,
+            stdout=(b"worktree " + os.fsencode(missing) + b"\0"
+                    b"branch refs/heads/factory/" + self.item.encode()
+                    + b"\0\0"),
+            stderr=b"")
+        with mock.patch.object(ownership.subprocess, "run",
+                               return_value=listing):
+            with self.assertRaisesRegex(
+                    ownership.OwnershipRefusal,
+                    "registered checkout.*cannot be resolved") as context:
+                ownership.canonical_worktree(self.repo, self.item)
+        self.assertNotIsInstance(context.exception,
+                                 ownership.NoRegisteredWorktree)
 
 
 class OwnershipPrimitiveTest(OwnershipFixture):

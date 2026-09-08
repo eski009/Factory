@@ -25,6 +25,10 @@ class OwnershipRefusal(OwnershipError):
     pass
 
 
+class NoRegisteredWorktree(OwnershipRefusal):
+    """The item branch has no checkout in Git's worktree registry."""
+
+
 class OwnershipReleaseError(OwnershipError):
     pass
 
@@ -179,42 +183,58 @@ def _create_release_guard(state, item_id):
 
 
 def _registered_branch_worktrees(repo, branch):
-    result = subprocess.run(
-        ["git", "worktree", "list", "--porcelain"], cwd=repo,
-        capture_output=True, text=True)
+    failure = f"{branch}: git worktree lookup failed"
+    try:
+        result = subprocess.run(
+            ["git", "worktree", "list", "--porcelain", "-z"], cwd=repo,
+            capture_output=True)
+    except (OSError, UnicodeError) as exc:
+        raise OwnershipRefusal(failure) from exc
     if result.returncode != 0:
-        return []
+        raise OwnershipRefusal(failure)
     registered = []
     current = None
-    for line in result.stdout.splitlines():
-        if line.startswith("worktree "):
-            current = line[len("worktree "):]
-        elif line == f"branch refs/heads/{branch}" and current is not None:
-            registered.append(current)
+    worktree_prefix = b"worktree "
+    branch_field = b"branch refs/heads/" + os.fsencode(branch)
+    for field in (result.stdout or b"").split(b"\0"):
+        if field.startswith(worktree_prefix):
+            current = field[len(worktree_prefix):]
+        elif field == branch_field and current is not None:
+            registered.append(os.fsdecode(current))
+        elif not field:
+            current = None
     return registered
 
 
 def canonical_worktree(repo, item_id, supplied=None):
     repo = Path(repo)
     registered = _registered_branch_worktrees(repo, f"factory/{item_id}")
-    if len(registered) != 1:
+    if not registered:
+        raise NoRegisteredWorktree(
+            f"{item_id}: no registered checkout for factory/{item_id}")
+    if len(registered) > 1:
         raise OwnershipRefusal(
             f"{item_id}: registered checkout for factory/{item_id} is "
-            "unavailable or ambiguous")
+            "ambiguous")
     try:
         checkout = Path(registered[0]).resolve(strict=True)
-        if supplied is not None:
-            given = Path(supplied)
-            if not given.is_absolute():
-                given = repo / given
-            if given.resolve(strict=True) != checkout:
-                raise OwnershipRefusal(
-                    f"{item_id}: supplied checkout is not the registered "
-                    f"checkout {checkout}")
-    except FileNotFoundError:
+    except (OSError, RuntimeError):
         raise OwnershipRefusal(
-            f"{item_id}: registered checkout for factory/{item_id} is "
-            "unavailable or ambiguous") from None
+            f"{item_id}: registered checkout for factory/{item_id} cannot "
+            "be resolved") from None
+    if supplied is not None:
+        given = Path(supplied)
+        if not given.is_absolute():
+            given = repo / given
+        try:
+            supplied_checkout = given.resolve(strict=True)
+        except (OSError, RuntimeError):
+            raise OwnershipRefusal(
+                f"{item_id}: supplied checkout cannot be resolved") from None
+        if supplied_checkout != checkout:
+            raise OwnershipRefusal(
+                f"{item_id}: supplied checkout is not the registered "
+                f"checkout {checkout}")
     return checkout
 
 
