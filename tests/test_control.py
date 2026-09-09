@@ -478,6 +478,120 @@ print(json.dumps(ticket.metadata, sort_keys=True))
 
 
 class OperationTest(ControlFixture):
+    def test_captured_log_identity_and_absence_are_exact_prerequisites(self):
+        log_path = self.item_dir / "log.jsonl"
+        for initial in (b"historical bytes\n", None):
+            with self.subTest(initial=initial):
+                self._reset_operation_fixture()
+                if initial is not None:
+                    log_path.write_bytes(initial)
+                snapshot = safeio.snapshot_path(
+                    self.repo,
+                    f".factory/items/{self.item}/log.jsonl",
+                    allow_missing=True)
+                if initial is None:
+                    log_path.write_bytes(b"")
+                else:
+                    substitute = self.item_dir / "replacement-log"
+                    substitute.write_bytes(initial)
+                    substitute.replace(log_path)
+                before = log_path.read_bytes()
+                identity = log_path.stat().st_ino
+
+                with self.assertRaisesRegex(
+                        control.ControlRefusal,
+                        "identity changed|missing log was created"):
+                    control.commit_operation(
+                        self.repo, self.item,
+                        kind="test.log-identity", key=str(initial), request={},
+                        events=({
+                            "event": "control.test",
+                            "ts": "2026-09-09T16:20:00Z",
+                        },), log_snapshot=snapshot)
+
+                self.assertEqual(log_path.read_bytes(), before)
+                self.assertEqual(log_path.stat().st_ino, identity)
+                self.assertFalse((self.item_dir / "control").exists())
+
+    def test_transactional_log_authority_recovers_and_rejects_substitution(self):
+        log_path = self.item_dir / "log.jsonl"
+        snapshot = safeio.snapshot_path(
+            self.repo, f".factory/items/{self.item}/log.jsonl",
+            allow_missing=True)
+        args = dict(
+            kind="test.log-authority", key="two-events", request={},
+            events=(
+                {"event": "control.first", "ts": "2026-09-09T16:21:00Z"},
+                {"event": "control.second", "ts": "2026-09-09T16:21:01Z"},
+            ),
+            log_snapshot=snapshot,
+        )
+        intent, _intent_bytes, _blobs = control._build_intent(
+            self.repo, self.item, args["kind"], args["key"],
+            args["request"], (), (), args["events"], args["log_snapshot"])
+
+        def crash_after_first(index):
+            if index == 0:
+                raise RuntimeError("simulated event crash")
+
+        with (mock.patch.object(
+                control, "_after_event", side_effect=crash_after_first),
+              self.assertRaisesRegex(RuntimeError, "event crash")):
+            control.commit_operation(self.repo, self.item, **args)
+
+        first_image = logs._entry_bytes(intent["events"][0])
+        self.assertEqual(log_path.read_bytes(), first_image)
+        original_identity = log_path.stat().st_ino
+        active = (self.item_dir / "control/active.json").read_bytes()
+        replacement = self.item_dir / "replacement-log"
+        replacement.write_bytes(first_image)
+        replacement.replace(log_path)
+        self.assertNotEqual(log_path.stat().st_ino, original_identity)
+
+        with self.assertRaisesRegex(
+                control.ControlRefusal, "log identity authority conflicts"):
+            control.recover_pending(self.repo, self.item)
+        self.assertEqual(log_path.read_bytes(), first_image)
+        self.assertEqual(
+            (self.item_dir / "control/active.json").read_bytes(), active)
+
+        log_path.unlink()
+        authority = next((self.item_dir / "control/operations").glob(
+            "*/log-00000000.authority"))
+        os.link(authority, log_path)
+        recovered = control.recover_pending(self.repo, self.item)
+        self.assertTrue(recovered.recovered)
+        self.assertEqual(
+            log_path.read_bytes(),
+            b"".join(logs._entry_bytes(event) for event in intent["events"]))
+
+    def test_log_authority_survives_crash_before_public_install(self):
+        snapshot = safeio.snapshot_path(
+            self.repo, f".factory/items/{self.item}/log.jsonl",
+            allow_missing=True)
+        args = dict(
+            kind="test.log-authority", key="pre-install", request={},
+            events=({
+                "event": "control.test", "ts": "2026-09-09T16:22:00Z",
+            },),
+            log_snapshot=snapshot,
+        )
+        with (mock.patch.object(
+                logs, "_after_log_authority_sync",
+                side_effect=RuntimeError("simulated pre-install crash")),
+              self.assertRaisesRegex(RuntimeError, "pre-install crash")):
+            control.commit_operation(self.repo, self.item, **args)
+
+        self.assertFalse((self.item_dir / "log.jsonl").exists())
+        authority = next((self.item_dir / "control/operations").glob(
+            "*/log-00000000.authority"))
+        self.assertTrue(authority.is_file())
+        recovered = control.recover_pending(self.repo, self.item)
+        self.assertTrue(recovered.recovered)
+        self.assertEqual(
+            (self.item_dir / "log.jsonl").stat().st_ino,
+            authority.stat().st_ino)
+
     def test_log_capacity_refuses_before_operation_namespace_and_effects(self):
         log_path = self.item_dir / "log.jsonl"
         old = b'{"event": "old", "ts": "durable"}\n'

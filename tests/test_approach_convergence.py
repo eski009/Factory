@@ -1399,6 +1399,31 @@ class TestApproachRecordWriter(ConvergenceCase):
                 self.assertEqual(logs.count_events(
                     self.repo, ITEM, "approach.judgement.recorded"), 1)
 
+    def test_record_validation_is_bound_to_prevalidated_snapshots(self):
+        from scripts.factory.lib import convergence
+
+        record = self.record()
+        plan = paths.item_dir(self.repo, ITEM) / "plan.md"
+        record_path = self.repo / self.context()["record"]
+        original_validate = convergence.validate_current
+
+        def validate_then_change(*args, **kwargs):
+            result = original_validate(*args, **kwargs)
+            plan.write_bytes(b"- [ ] changed after validation\n")
+            return result
+
+        with (mock.patch.object(
+                convergence, "validate_current",
+                side_effect=validate_then_change),
+              self.assertRaisesRegex(
+                  convergence.ConvergenceError,
+                  "no longer matches snapshot")):
+            convergence.record_judgement(self.repo, ITEM, record)
+
+        self.assertFalse(record_path.exists())
+        self.assertEqual(logs.count_events(
+            self.repo, ITEM, "approach.judgement.recorded"), 0)
+
     def test_record_update_recovers_after_replacement_boundary(self):
         from scripts.factory.lib import convergence
 
@@ -1970,7 +1995,7 @@ class TestApproachAdvanceGate(ConvergenceCase):
                         else:
                             with self.assertRaisesRegex(
                                     convergence.ConvergenceError,
-                                    "untrusted symlink"):
+                                    "untrusted symlink|unsafe or missing regular file"):
                                 if operation == "context":
                                     convergence.current_context(self.repo, ITEM)
                                 else:

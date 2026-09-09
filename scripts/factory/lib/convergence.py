@@ -1054,12 +1054,22 @@ def _record_input_relatives(item_id, record):
         PurePosixPath(".factory", "items", item_id, "item.md"),
         PurePosixPath(".factory", "items", item_id, "plan.md"),
     }
+    if not isinstance(record, dict):
+        return tuple(sorted(relatives, key=lambda value: value.as_posix()))
     for signal in record.get("signals", ()):
+        if not isinstance(signal, dict):
+            continue
         for citation in signal.get("evidence", ()):
-            relatives.add(PurePosixPath(citation["path"]))
+            if isinstance(citation, dict) and isinstance(
+                    citation.get("path"), str):
+                relatives.add(PurePosixPath(citation["path"]))
     for attempt in record.get("attempts", ()):
+        if not isinstance(attempt, dict):
+            continue
         for finding in attempt.get("findings", ()):
-            relatives.add(PurePosixPath(finding["path"]))
+            if isinstance(finding, dict) and isinstance(
+                    finding.get("path"), str):
+                relatives.add(PurePosixPath(finding["path"]))
     return tuple(sorted(relatives, key=lambda value: value.as_posix()))
 
 
@@ -1070,25 +1080,35 @@ def _restore_missing_snapshot(intent, record, *, repo):
 
 
 def record_judgement(repo, item_id, record):
-    meta, _body = items.load_item(repo, item_id)
-    if not enabled(repo):
-        raise ConvergenceError(
-            "unsolicited approach judgement: approach_convergence.enabled "
-            "is not true")
-    context = current_context(repo, item_id)
-    path = Path(repo) / context["record"]
     attempts = record.get("attempts") if isinstance(record, dict) else None
-    validate_current(repo, meta, record)
     encoded = _record_bytes(record)
     operation_key = _record_operation_key(encoded)
     try:
+        # Capture every source that validation can consult before validation.
+        # The post-validation recheck closes that interval, and the same
+        # snapshots remain transaction prerequisites through commit.
+        inputs = safeio.snapshot_many(
+            repo, _record_input_relatives(item_id, record))
+        log_snapshot = safeio.snapshot_path(
+            repo, PurePosixPath(
+                ".factory", "items", item_id, "log.jsonl"),
+            limit=control._LOG_IMAGE_LIMIT, allow_missing=True)
+        meta, _body = items.load_item(repo, item_id)
+        if not enabled(repo):
+            raise ConvergenceError(
+                "unsolicited approach judgement: "
+                "approach_convergence.enabled is not true")
+        context = current_context(repo, item_id)
+        path = Path(repo) / context["record"]
+        validate_current(repo, meta, record)
+        safeio.revalidate(inputs)
+        safeio.revalidate(log_snapshot)
+
         adopted = control.adopt_operation(
             repo, item_id, kind="approach-judgement", key=operation_key)
         if adopted is not None:
             return path
 
-        inputs = safeio.snapshot_many(
-            repo, _record_input_relatives(item_id, record))
         plan_relative = PurePosixPath(
             ".factory", "items", item_id, "plan.md")
         plan_snapshot = next(
@@ -1097,11 +1117,6 @@ def record_judgement(repo, item_id, record):
         record_relative = PurePosixPath(context["record"])
         record_snapshot = safeio.snapshot_path(
             repo, record_relative, allow_missing=True)
-        log_snapshot = safeio.snapshot_path(
-            repo, PurePosixPath(
-                ".factory", "items", item_id, "log.jsonl"),
-            limit=control._LOG_IMAGE_LIMIT, allow_missing=True)
-
         existing_intent = control.operation_intent(
             repo, item_id, kind="approach-judgement", key=operation_key)
         if existing_intent is not None:
