@@ -992,7 +992,8 @@ def _load_ticket_blobs(repo, item_id, ticket_id, manifest, blobs_fd=None):
     return values, tuple(snapshots)
 
 
-def load_ticket(repo, item_id, ticket_id, *, owner_token=None):
+def load_ticket(repo, item_id, ticket_id, *, owner_token=None,
+                revalidate_inputs=True):
     item_id = _component(item_id, "item id")
     token, verified = _verify_owner(repo, item_id, owner_token)
     canonical_repo = safeio._resolve_root(repo)
@@ -1055,7 +1056,10 @@ def load_ticket(repo, item_id, ticket_id, *, owner_token=None):
                 _owner=verified,
                 _artifacts=(manifest_snapshot, *blob_snapshots),
             )
-            revalidate_ticket(ticket)
+            if revalidate_inputs:
+                revalidate_ticket(ticket)
+            else:
+                revalidate_ticket_authority(ticket)
             _sync_pins(lock, tickets_pin, ticket_pin, blobs_pin)
             return ticket
         finally:
@@ -1064,7 +1068,8 @@ def load_ticket(repo, item_id, ticket_id, *, owner_token=None):
             _close_pin(tickets_pin)
 
 
-def revalidate_ticket(ticket) -> None:
+def revalidate_ticket_authority(ticket) -> None:
+    """Revalidate durable ticket/owner authority, excluding source inputs."""
     if not isinstance(ticket, DurableTicket):
         raise ControlRefusal("durable ticket is invalid")
     _require_ticket_manifest_limit(ticket.manifest.file.data)
@@ -1074,11 +1079,17 @@ def revalidate_ticket(ticket) -> None:
         ownership.revalidate(ticket._owner)
         if _checkout_identity(ticket.checkout) != ticket.checkout_identity:
             raise ControlRefusal("ticket checkout identity changed")
+        safeio.revalidate(ticket._artifacts)
+    except (ownership.OwnershipError, safeio.SafeIOError) as exc:
+        raise ControlRefusal("durable ticket authority changed") from exc
+
+
+def revalidate_ticket(ticket) -> None:
+    revalidate_ticket_authority(ticket)
+    try:
         config_state.revalidate(ticket.config)
         safeio.revalidate(ticket.inputs)
-        safeio.revalidate(ticket._artifacts)
-    except (ownership.OwnershipError, config_state.ConfigStateError,
-            safeio.SafeIOError) as exc:
+    except (config_state.ConfigStateError, safeio.SafeIOError) as exc:
         raise ControlRefusal("durable ticket no longer matches live state") from exc
 
 
@@ -2272,6 +2283,203 @@ def recover_pending(repo, item_id):
             _close_pin(blobs_pin)
             _close_pin(operation_pin)
             _close_pin(operations_pin)
+
+
+def adopt_operation(repo, item_id, *, kind, key):
+    """Adopt a settled or active operation by its stable semantic key.
+
+    An intent that never reached activation is deliberately not adopted: its
+    caller must reproduce the exact request so conflict checks still bind all
+    bytes.  This helper exists for lost replies after the durable boundary.
+    """
+    item_id = _component(item_id, "item id")
+    if type(kind) is not str or not kind or type(key) is not str or not key:
+        raise ControlRefusal("operation kind and key are required")
+    canonical_repo = safeio._resolve_root(repo)
+    with item_lock(canonical_repo, item_id) as lock:
+        operations_pin = _optional_pin_directory(
+            lock._control_fd, "operations")
+        if operations_pin is None:
+            return None
+        active = _active_record(lock)
+        found = None
+        try:
+            try:
+                names = os.listdir(operations_pin.fd)
+            except OSError as exc:
+                raise ControlError("cannot inspect operation namespace") from exc
+            for name in names:
+                if not _valid_digest(name):
+                    raise ControlRefusal(
+                        "operation namespace contains an invalid entry")
+                operation_pin = _pin_directory(operations_pin.fd, name)
+                blobs_pin = None
+                try:
+                    intent, _raw, intent_identity = _intent_from_directory(
+                        operation_pin.fd, canonical_repo)
+                    if intent is None or (intent["kind"], intent["key"]) != (
+                            kind, key):
+                        continue
+                    if found is not None:
+                        raise ControlRefusal(
+                            "operation key matches multiple requests")
+                    blobs_pin = _pin_directory(operation_pin.fd, "blobs")
+                    _validate_pins(
+                        lock, operations_pin, operation_pin, blobs_pin)
+                    commit_result = _read_optional_bytes(
+                        operation_pin.fd, "commit.json", sync=True)
+                    found = (operation_pin, blobs_pin, intent,
+                             intent_identity, commit_result)
+                    operation_pin = None
+                    blobs_pin = None
+                finally:
+                    _close_pin(blobs_pin)
+                    _close_pin(operation_pin)
+            if found is None:
+                return None
+            operation_pin, blobs_pin, intent, intent_identity, commit_result = found
+            found = None
+            try:
+                if commit_result is not None:
+                    commit = _decode_canonical_object(
+                        commit_result[0], "operation commit receipt")
+                    _validate_commit(commit, intent)
+                    stored_blobs, stored_identities = _load_blobs(
+                        blobs_pin, intent, sync=True)
+                    pins = (operations_pin, operation_pin, blobs_pin)
+                    _sync_operation_artifacts(
+                        lock, pins, intent, intent_identity,
+                        stored_blobs, stored_identities, None)
+                    _verify_effects(
+                        lock, operation_pin, intent, stored_blobs,
+                        canonical_repo, sync=True)
+                    return _receipt(commit)
+                if (active is not None and
+                        active[0]["operation_id"] == intent["operation_id"]):
+                    return _settle_locked(
+                        lock, (operations_pin, operation_pin, blobs_pin),
+                        intent, intent_identity, active[1])
+                return None
+            finally:
+                _close_pin(blobs_pin)
+                _close_pin(operation_pin)
+        finally:
+            if found is not None:
+                _close_pin(found[1])
+                _close_pin(found[0])
+            _close_pin(operations_pin)
+
+
+def operation_intent(repo, item_id, *, kind, key):
+    """Return a sealed copy of an existing semantic operation intent.
+
+    This read supports reconstruction after a crash that published an intent
+    but did not activate it.  It never treats the returned mutable dictionary
+    as authority; callers must still reproduce the request and pass the normal
+    conflict checks in ``commit_operation``.
+    """
+    item_id = _component(item_id, "item id")
+    if type(kind) is not str or not kind or type(key) is not str or not key:
+        raise ControlRefusal("operation kind and key are required")
+    canonical_repo = safeio._resolve_root(repo)
+    if not _operation_namespace_present(canonical_repo, item_id):
+        return None
+    with item_lock(canonical_repo, item_id) as lock:
+        operations_pin = _optional_pin_directory(
+            lock._control_fd, "operations")
+        if operations_pin is None:
+            return None
+        found = None
+        try:
+            try:
+                names = os.listdir(operations_pin.fd)
+            except OSError as exc:
+                raise ControlError(
+                    "cannot inspect operation namespace") from exc
+            for name in names:
+                if not _valid_digest(name):
+                    raise ControlRefusal(
+                        "operation namespace contains an invalid entry")
+                operation_pin = _pin_directory(operations_pin.fd, name)
+                try:
+                    intent, raw, identity = _intent_from_directory(
+                        operation_pin.fd, canonical_repo)
+                    if intent is None or (intent["kind"], intent["key"]) != (
+                            kind, key):
+                        continue
+                    if found is not None:
+                        raise ControlRefusal(
+                            "operation key matches multiple requests")
+                    _validate_pins(lock, operations_pin, operation_pin)
+                    persisted, persisted_identity = _read_bytes_at(
+                        operation_pin.fd, "intent.json",
+                        limit=_INTENT_RECORD_LIMIT, sync=True)
+                    if persisted != raw or persisted_identity != identity:
+                        raise ControlRefusal(
+                            "operation intent identity changed")
+                    found = raw
+                finally:
+                    _close_pin(operation_pin)
+            if found is None:
+                return None
+            return _decode_canonical_object(found, "operation intent")
+        finally:
+            _close_pin(operations_pin)
+
+
+def _operation_namespace_present(repo, item_id):
+    """Check for an operations directory without creating control state."""
+    chain = None
+    control_fd = None
+    operations_fd = None
+    try:
+        chain = safeio._open_root_chain(repo)
+        for component in (".factory", "items", item_id):
+            safeio._append_directory(chain, component)
+            safeio._validate_chain(chain)
+        try:
+            control_fd = os.open(
+                "control", _DIRECTORY_FLAGS, dir_fd=chain[-1].fd)
+        except FileNotFoundError:
+            safeio._require_absent(chain[-1].fd, "control")
+            safeio._validate_chain(chain)
+            return False
+        control_identity = _directory_identity(os.fstat(control_fd))
+        _validate_named_directory(
+            chain[-1].fd, "control", control_fd, control_identity)
+        try:
+            operations_fd = os.open(
+                "operations", _DIRECTORY_FLAGS, dir_fd=control_fd)
+        except FileNotFoundError:
+            try:
+                os.stat("operations", dir_fd=control_fd,
+                        follow_symlinks=False)
+            except FileNotFoundError:
+                pass
+            else:
+                raise ControlError(
+                    "operation namespace changed during inspection")
+            safeio._validate_chain(chain)
+            _validate_named_directory(
+                chain[-1].fd, "control", control_fd, control_identity)
+            return False
+        operations_identity = _directory_identity(os.fstat(operations_fd))
+        _validate_named_directory(
+            control_fd, "operations", operations_fd,
+            operations_identity)
+        safeio._validate_chain(chain)
+        _validate_named_directory(
+            chain[-1].fd, "control", control_fd, control_identity)
+        return True
+    except (OSError, safeio.SafeIOError) as exc:
+        raise ControlError(
+            "cannot safely inspect operation namespace") from exc
+    finally:
+        if operations_fd is not None:
+            os.close(operations_fd)
+        if control_fd is not None:
+            os.close(control_fd)
+        safeio._close_chain(chain or [])
 
 
 def require_settled(repo, item_id) -> None:

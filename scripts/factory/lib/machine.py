@@ -289,7 +289,9 @@ def _prospective_implement_legality(item_id, meta, events):
 
 def prepare_implement_entry(repo, item_id, *, operation_key, reason=None,
                             config=None, prerequisites=(), replacements=(),
-                            events=()) -> PreparedImplementEntry:
+                            events=(), item_snapshot=None, log_snapshot=None,
+                            cost_answer_snapshot=None, timestamp=None
+                            ) -> PreparedImplementEntry:
     """Prepare one disk-inert, captured-state transition into implement."""
     from . import breaker
 
@@ -307,11 +309,30 @@ def prepare_implement_entry(repo, item_id, *, operation_key, reason=None,
     plan_relative = PurePosixPath(
         ".factory", "items", item_id, "plan.md")
 
-    item_snapshot = safeio.snapshot_path(repo, item_relative)
+    if item_snapshot is None:
+        item_snapshot = safeio.snapshot_path(repo, item_relative)
+    elif (not isinstance(item_snapshot, safeio.FileSnapshot) or
+          item_snapshot.relative != item_relative):
+        raise control.ControlRefusal(
+            "implement-entry item snapshot is invalid")
+    else:
+        safeio.revalidate(item_snapshot)
     canonical_repo = item_snapshot.root
-    log_snapshot = safeio.snapshot_path(
-        canonical_repo, log_relative, limit=control._LOG_IMAGE_LIMIT,
-        allow_missing=True)
+    if safeio._resolve_root(repo) != canonical_repo:
+        raise control.ControlRefusal(
+            "implement-entry item snapshot belongs to another repository")
+    if log_snapshot is None:
+        log_snapshot = safeio.snapshot_path(
+            canonical_repo, log_relative, limit=control._LOG_IMAGE_LIMIT,
+            allow_missing=True)
+    elif (not isinstance(
+            log_snapshot, (safeio.FileSnapshot, safeio.MissingSnapshot)) or
+            log_snapshot.root != canonical_repo or
+            log_snapshot.relative != log_relative):
+        raise control.ControlRefusal(
+            "implement-entry log snapshot is invalid")
+    else:
+        safeio.revalidate(log_snapshot)
     if config is None:
         config = config_state.capture(canonical_repo)
     elif not isinstance(config, config_state.ConfigSnapshot):
@@ -326,8 +347,18 @@ def prepare_implement_entry(repo, item_id, *, operation_key, reason=None,
     # value from the captured, schema-validated bytes so caller mutations can
     # neither disable gates nor diverge from the file bound into the WAL.
     config = control._config_from_snapshot(config.file)
-    cost_answer_snapshot = safeio.snapshot_path(
-        canonical_repo, answer_relative, allow_missing=True)
+    if cost_answer_snapshot is None:
+        cost_answer_snapshot = safeio.snapshot_path(
+            canonical_repo, answer_relative, allow_missing=True)
+    elif (not isinstance(
+            cost_answer_snapshot,
+            (safeio.FileSnapshot, safeio.MissingSnapshot)) or
+            cost_answer_snapshot.root != canonical_repo or
+            cost_answer_snapshot.relative != answer_relative):
+        raise control.ControlRefusal(
+            "implement-entry cost answer snapshot is invalid")
+    else:
+        safeio.revalidate(cost_answer_snapshot)
 
     prerequisites, replacements = _bind_prepare_effects(
         canonical_repo, prerequisites, replacements)
@@ -364,7 +395,10 @@ def prepare_implement_entry(repo, item_id, *, operation_key, reason=None,
     captured_events = _strict_snapshot_events(log_snapshot)
     caller_events = tuple(control._normalize_events(events))
     prospective_events = captured_events + caller_events
-    now = logs.now_stamp()
+    now = timestamp or logs.now_stamp()
+    if type(now) is not str or not now:
+        raise control.ControlRefusal(
+            "implement-entry timestamp must be a nonempty string")
 
     breaker.precondition(
         canonical_repo, item_id, meta, "implement",
@@ -1042,6 +1076,99 @@ GATES = {
 
 
 def advance(repo, item_id, to, reason=None):
+    if to == "implement":
+        from . import feasibility
+        try:
+            config = config_state.capture(repo)
+            config = control._config_from_snapshot(config.file)
+            if config_state.enabled(config, "feasibility"):
+                snapshot = feasibility.require(
+                    repo, item_id, config=config)
+                item_relative = PurePosixPath(
+                    ".factory", "items", item_id, "item.md")
+                item_snapshot = next(
+                    value for value in snapshot.inputs
+                    if value.relative == item_relative)
+                prerequisites = tuple(
+                    value for value in snapshot.inputs
+                    if value.relative != item_relative)
+                source, _body = _captured_item(item_snapshot, item_id)
+                log_snapshot = safeio.snapshot_path(
+                    repo, PurePosixPath(
+                        ".factory", "items", item_id, "log.jsonl"),
+                    limit=control._LOG_IMAGE_LIMIT, allow_missing=True)
+                log_identity = (
+                    log_snapshot.sha256
+                    if isinstance(log_snapshot, safeio.FileSnapshot)
+                    else "missing")
+                identity = {
+                    "source": source["stage"],
+                    "item": item_snapshot.sha256,
+                    "log": log_identity,
+                    "spec": snapshot.report["spec_sha256"],
+                    "plan": snapshot.report["plan_structure_sha256"],
+                    "acceptance": next(
+                        value.sha256 for value in snapshot.inputs
+                        if value.relative.name == "acceptance.json"),
+                }
+                operation_key = (
+                    "feasibility-entry:" +
+                    control._digest_bytes(control._canonical(identity)[0]))
+                prepare_args = {
+                    "operation_key": operation_key,
+                    "reason": reason,
+                    "config": config,
+                    "prerequisites": prerequisites,
+                    "item_snapshot": item_snapshot,
+                }
+                transition_ts = logs.now_stamp()
+                prepared = prepare_implement_entry(
+                    repo, item_id, log_snapshot=log_snapshot,
+                    timestamp=transition_ts, **prepare_args)
+                existing = control.operation_intent(
+                    repo, item_id, kind="implement-entry",
+                    key=operation_key)
+                if existing is not None:
+                    stage_events = [
+                        event for event in existing["events"]
+                        if (event["event"] == "stage.advance" and
+                            event.get("data", {}).get("from") ==
+                            source["stage"] and
+                            event.get("data", {}).get("to") ==
+                            "implement")]
+                    if len(stage_events) != 1:
+                        raise control.ControlRefusal(
+                            "existing implementation entry is invalid")
+                    if existing.get("log_snapshot", {}).get("state") == "missing":
+                        log_snapshot = control._snapshot_from_record(
+                            existing["log_snapshot"], {},
+                            expected_repo=item_snapshot.root)
+                    answer_relative = str(PurePosixPath(
+                        ".factory", "items", item_id, "cost", "answer.md"))
+                    missing_answers = [
+                        record for record in existing["prerequisites"]
+                        if (record["relative"] == answer_relative and
+                            record["state"] == "missing")]
+                    cost_answer_snapshot = None
+                    if missing_answers:
+                        if len(missing_answers) != 1:
+                            raise control.ControlRefusal(
+                                "existing implementation entry is invalid")
+                        cost_answer_snapshot = control._snapshot_from_record(
+                            missing_answers[0], {},
+                            expected_repo=item_snapshot.root)
+                    prepared = prepare_implement_entry(
+                        repo, item_id, log_snapshot=log_snapshot,
+                        cost_answer_snapshot=cost_answer_snapshot,
+                        timestamp=stage_events[0]["ts"], **prepare_args)
+                meta, verdict, _receipt = commit_implement_entry(prepared)
+                return meta, verdict
+            config_state.revalidate(config)
+        except (config_state.ConfigStateError, control.ControlError,
+                feasibility.FeasibilityError) as exc:
+            if isinstance(exc, GateError):
+                raise
+            raise GateError(str(exc)) from exc
     with control.item_lock(repo, item_id) as lock:
         return _advance_locked(repo, item_id, to, reason, lock)
 
