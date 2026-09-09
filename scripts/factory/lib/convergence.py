@@ -806,41 +806,94 @@ def _append_recorded_event_if_missing(repo, item_id, data, log_fd, verify):
     verify()
 
 
+def _write_descriptor(fd, content):
+    """Replace one pinned regular file's bytes without reopening its path."""
+    os.lseek(fd, 0, os.SEEK_SET)
+    offset = 0
+    while offset < len(content):
+        written = os.write(fd, content[offset:])
+        if written <= 0:
+            raise OSError("approach judgement recovery write made no progress")
+        offset += written
+    os.ftruncate(fd, len(content))
+
+
+def _restore_record_bytes(directory_fd, name, content, replaced_identity,
+                          published_fd):
+    """Restore exact bytes through the pinned publication descriptor."""
+    published_info = os.fstat(published_fd)
+    if (not stat.S_ISREG(published_info.st_mode)
+            or _identity(published_info) != replaced_identity
+            or _entry_identity(directory_fd, name) != replaced_identity):
+        raise ConvergenceError(
+            "approach judgement canonical record changed during rollback")
+
+    # No pathname is opened, allocated, or renamed after the prior hard link
+    # disappears. A concurrent leaf substitution therefore cannot be followed
+    # or published as the canonical record.
+    _write_descriptor(published_fd, content)
+    after = os.fstat(published_fd)
+    live = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+    if (_identity(after) != replaced_identity
+            or _version(after) != _version(live)
+            or _read_descriptor(published_fd) != content):
+        raise ConvergenceError(
+            "approach judgement canonical record recovery failed")
+
+
 @contextmanager
 def _write_record(path, record, directory_fd, verify):
     temporary = None
     temporary_identity = None
+    temporary_fd = None
     previous = None
     previous_identity = None
+    previous_bytes = None
     committed = False
     try:
         verify()
         while True:
             name = f".{path.name}.{secrets.token_hex(16)}.tmp"
             try:
-                fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                fd = os.open(name, os.O_RDWR | os.O_CREAT | os.O_EXCL
                              | os.O_NOFOLLOW, 0o600, dir_fd=directory_fd)
                 break
             except FileExistsError:
                 continue
         temporary = name
-        temporary_identity = _identity(os.fstat(fd))
+        temporary_identity = _entry_identity(directory_fd, temporary)
         try:
+            info = os.fstat(fd)
+            if (not stat.S_ISREG(info.st_mode)
+                    or _identity(info) != temporary_identity):
+                raise ConvergenceError(
+                    "approach judgement temporary changed during creation")
             verify()
         except BaseException:
             os.close(fd)
             raise
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        temporary_fd = fd
+        with os.fdopen(fd, "w", encoding="utf-8", closefd=False) as f:
             f.write(json.dumps(record, indent=2, sort_keys=True) + "\n")
         verify()
 
         current_identity = _entry_identity(directory_fd, path.name)
         if current_identity is not None:
-            current_info = os.stat(
-                path.name, dir_fd=directory_fd, follow_symlinks=False)
-            if not stat.S_ISREG(current_info.st_mode):
-                raise ConvergenceError(
-                    "approach judgement canonical record must be regular")
+            previous_fd = _open_regular(directory_fd, path.name)
+            try:
+                before = os.fstat(previous_fd)
+                previous_bytes = _read_descriptor(previous_fd)
+                after = os.fstat(previous_fd)
+                live = os.stat(
+                    path.name, dir_fd=directory_fd, follow_symlinks=False)
+                if (_identity(before) != current_identity
+                        or _version(before) != _version(after)
+                        or _version(after) != _version(live)):
+                    raise ConvergenceError(
+                        "approach judgement canonical record changed "
+                        "before publication")
+            finally:
+                os.close(previous_fd)
             previous_identity = current_identity
             while True:
                 previous = f".{path.name}.{secrets.token_hex(16)}.previous"
@@ -895,13 +948,27 @@ def _write_record(path, record, directory_fd, verify):
                            src_dir_fd=directory_fd,
                            dst_dir_fd=directory_fd)
                 previous = None
+            elif previous_bytes is not None:
+                _restore_record_bytes(
+                    directory_fd, path.name, previous_bytes,
+                    temporary_identity, temporary_fd)
             else:
                 _unlink_if_identity(
                     directory_fd, path.name, temporary_identity)
-        if temporary is not None:
-            _unlink_if_identity(directory_fd, temporary, temporary_identity)
-        if previous is not None:
-            _unlink_if_identity(directory_fd, previous, previous_identity)
+        try:
+            if temporary is not None:
+                _unlink_if_identity(
+                    directory_fd, temporary, temporary_identity)
+            if previous is not None:
+                _unlink_if_identity(directory_fd, previous, previous_identity)
+        finally:
+            if temporary_fd is not None:
+                try:
+                    os.close(temporary_fd)
+                except OSError:
+                    # Closing a retained rollback capability cannot undo an
+                    # already coherent record-and-audit transaction.
+                    pass
 
 
 def _validate_existing_structure(record):

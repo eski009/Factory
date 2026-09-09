@@ -1,3 +1,4 @@
+import errno
 import fcntl
 import io
 import json
@@ -554,6 +555,217 @@ class TestApproachRecordWriter(ConvergenceCase):
         self.assertFalse(list(canonical.parent.glob("*.previous")))
         self.assertEqual(logs.count_events(
             self.repo, ITEM, "approach.judgement.recorded"), 1)
+
+    def test_interrupt_after_backup_unlink_reconstructs_prior_transaction(self):
+        from scripts.factory.lib import convergence
+
+        class InjectedAfterBackupUnlink(BaseException):
+            pass
+
+        first = self.record(
+            signals=(SIGNALS[0],),
+            attempts=(self.attempt(1, verdict="uncertain"),),
+            final_verdict="uncertain", disposition="escalate")
+        canonical = convergence.record_judgement(self.repo, ITEM, first)
+        audit = paths.item_dir(self.repo, ITEM) / "log.jsonl"
+        record_before = canonical.read_bytes()
+        audit_before = audit.read_bytes()
+        second = self.record(
+            signals=(SIGNALS[0],),
+            attempts=(self.attempt(1, verdict="uncertain"), self.attempt(2)),
+            final_verdict="pass", disposition="advance")
+        original_unlink = os.unlink
+        injected = False
+        canonical_unlinked = False
+
+        def unlink_then_interrupt(name, *args, **kwargs):
+            nonlocal canonical_unlinked, injected
+            if str(name) == canonical.name:
+                canonical_unlinked = True
+            is_backup = str(name).endswith(".previous") and not injected
+            result = original_unlink(name, *args, **kwargs)
+            if is_backup:
+                injected = True
+                self.assertTrue(
+                    canonical.exists(),
+                    "canonical record vanished before rollback began")
+                raise InjectedAfterBackupUnlink(
+                    "injected immediately after backup unlink")
+            return result
+
+        with mock.patch.object(os, "unlink", side_effect=unlink_then_interrupt):
+            with self.assertRaisesRegex(
+                    InjectedAfterBackupUnlink, "after backup unlink"):
+                convergence.record_judgement(self.repo, ITEM, second)
+
+        self.assertTrue(injected)
+        self.assertFalse(canonical_unlinked)
+        self.assertTrue(canonical.exists())
+        self.assertEqual(canonical.read_bytes(), record_before)
+        self.assertEqual(audit.read_bytes(), audit_before)
+        self.assertFalse(list(canonical.parent.glob("*.tmp")))
+        self.assertFalse(list(canonical.parent.glob("*.previous")))
+
+        self.assertEqual(
+            convergence.record_judgement(self.repo, ITEM, second), canonical)
+        self.assertEqual(json.loads(canonical.read_bytes()), second)
+        expected_data = {
+            "path": canonical.relative_to(self.repo).as_posix(),
+            "planning_round": second["planning_round"],
+            "plan_sha256": second["plan_sha256"],
+            "tier": second["tier"],
+            "escalation_bound": second["escalation_bound"],
+            "signals": [signal["id"] for signal in second["signals"]],
+            "attempts": len(second["attempts"]),
+            "final_verdict": second["final_verdict"],
+            "disposition": second["disposition"],
+        }
+        events = [
+            event for event in logs.read_events(self.repo, ITEM)
+            if event["event"] == "approach.judgement.recorded"
+        ]
+        self.assertEqual(len(events), 2)
+        self.assertEqual(
+            sum(event.get("data") == expected_data for event in events), 1)
+
+    def test_post_backup_rollback_never_renames_a_pathname_source(self):
+        from scripts.factory.lib import convergence
+
+        first = self.record(
+            signals=(SIGNALS[0],),
+            attempts=(self.attempt(1, verdict="uncertain"),),
+            final_verdict="uncertain", disposition="escalate")
+        canonical = convergence.record_judgement(self.repo, ITEM, first)
+        audit = paths.item_dir(self.repo, ITEM) / "log.jsonl"
+        record_before = canonical.read_bytes()
+        audit_before = audit.read_bytes()
+        second = self.record(
+            signals=(SIGNALS[0],),
+            attempts=(self.attempt(1, verdict="uncertain"), self.attempt(2)),
+            final_verdict="pass", disposition="advance")
+        original_unlink = os.unlink
+        original_replace = os.replace
+        interrupted = False
+        recovery_rename = False
+
+        def unlink_then_interrupt(name, *args, **kwargs):
+            nonlocal interrupted
+            result = original_unlink(name, *args, **kwargs)
+            if str(name).endswith(".previous") and not interrupted:
+                interrupted = True
+                raise KeyboardInterrupt("injected after backup unlink")
+            return result
+
+        def reject_pathname_recovery(source, target, *args, **kwargs):
+            nonlocal recovery_rename
+            if interrupted:
+                recovery_rename = True
+                raise AssertionError(
+                    "rollback attempted a pathname-based recovery rename")
+            return original_replace(source, target, *args, **kwargs)
+
+        with mock.patch.object(
+                os, "unlink", side_effect=unlink_then_interrupt), \
+                mock.patch.object(
+                    os, "replace", side_effect=reject_pathname_recovery):
+            with self.assertRaisesRegex(
+                    KeyboardInterrupt, "after backup unlink"):
+                convergence.record_judgement(self.repo, ITEM, second)
+
+        self.assertFalse(recovery_rename)
+        self.assertFalse(canonical.is_symlink())
+        self.assertEqual(canonical.read_bytes(), record_before)
+        self.assertEqual(audit.read_bytes(), audit_before)
+        self.assertEqual(
+            convergence.record_judgement(self.repo, ITEM, second), canonical)
+        self.assertEqual(json.loads(canonical.read_bytes()), second)
+        self.assertEqual(logs.count_events(
+            self.repo, ITEM, "approach.judgement.recorded"), 2)
+
+    def test_post_backup_interrupt_never_allocates_recovery(self):
+        from scripts.factory.lib import convergence
+
+        first = self.record(
+            signals=(SIGNALS[0],),
+            attempts=(self.attempt(1, verdict="uncertain"),),
+            final_verdict="uncertain", disposition="escalate")
+        canonical = convergence.record_judgement(self.repo, ITEM, first)
+        audit = paths.item_dir(self.repo, ITEM) / "log.jsonl"
+        record_before = canonical.read_bytes()
+        audit_before = audit.read_bytes()
+        second = self.record(
+            signals=(SIGNALS[0],),
+            attempts=(self.attempt(1, verdict="uncertain"), self.attempt(2)),
+            final_verdict="pass", disposition="advance")
+        original_open = os.open
+        original_unlink = os.unlink
+        interrupted = False
+
+        def refuse_late_allocation(name, *args, **kwargs):
+            if interrupted and (str(name).endswith(".tmp")
+                                or str(name).endswith(".recovery")):
+                raise OSError(errno.ENOSPC, "injected recovery allocation")
+            return original_open(name, *args, **kwargs)
+
+        def unlink_then_interrupt(name, *args, **kwargs):
+            nonlocal interrupted
+            result = original_unlink(name, *args, **kwargs)
+            if str(name).endswith(".previous") and not interrupted:
+                interrupted = True
+                raise KeyboardInterrupt("injected after backup unlink")
+            return result
+
+        with mock.patch.object(os, "open", side_effect=refuse_late_allocation), \
+                mock.patch.object(os, "unlink", side_effect=unlink_then_interrupt):
+            with self.assertRaisesRegex(
+                    KeyboardInterrupt, "after backup unlink"):
+                convergence.record_judgement(self.repo, ITEM, second)
+
+        self.assertTrue(interrupted)
+        self.assertEqual(canonical.read_bytes(), record_before)
+        self.assertEqual(audit.read_bytes(), audit_before)
+        self.assertFalse(list(canonical.parent.glob("*.tmp")))
+        self.assertFalse(list(canonical.parent.glob("*.previous")))
+        self.assertFalse(list(canonical.parent.glob("*.recovery")))
+
+    def test_temporary_fstat_failure_closes_fd_and_cleans_artifacts(self):
+        from scripts.factory.lib import convergence
+
+        record = self.record()
+        canonical = self.repo / self.context()["record"]
+        audit = paths.item_dir(self.repo, ITEM) / "log.jsonl"
+        audit_before = audit.read_bytes()
+        original_open = os.open
+        original_fstat = os.fstat
+        temporary_fd = None
+        injected = False
+
+        def capture_temporary(name, *args, **kwargs):
+            nonlocal temporary_fd
+            descriptor = original_open(name, *args, **kwargs)
+            if str(name).endswith(".tmp"):
+                temporary_fd = descriptor
+            return descriptor
+
+        def fail_temporary_fstat(descriptor):
+            nonlocal injected
+            if descriptor == temporary_fd and not injected:
+                injected = True
+                raise OSError("injected temporary fstat failure")
+            return original_fstat(descriptor)
+
+        with mock.patch.object(os, "open", side_effect=capture_temporary), \
+                mock.patch.object(os, "fstat", side_effect=fail_temporary_fstat):
+            with self.assertRaisesRegex(OSError, "temporary fstat failure"):
+                convergence.record_judgement(self.repo, ITEM, record)
+
+        self.assertTrue(injected)
+        with self.assertRaises(OSError):
+            os.fstat(temporary_fd)
+        self.assertFalse(canonical.exists())
+        self.assertEqual(audit.read_bytes(), audit_before)
+        self.assertFalse(list(canonical.parent.glob("*.tmp")))
+        self.assertFalse(list(canonical.parent.glob("*.previous")))
 
     def test_interrupt_after_initial_link_rolls_back_uncommitted_record(self):
         from scripts.factory.lib import convergence
