@@ -77,15 +77,34 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("triage.md", err)
 
-    def test_log_event(self):
+    def test_log_event_preserves_default_bytes(self):
         self.run_cli("init")
         self.run_cli("add", "Thing")
-        code, _, _ = self.run_cli("log", "0001-thing", "verify.green",
+        log = Path(self.repo, ".factory/items/0001-thing/log.jsonl")
+        before = log.read_bytes()
+        code, _, _ = self.run_cli("log", "0001-thing", "ordinary.event",
                                   "--data", '{"tests": "12 passed"}')
         self.assertEqual(code, 0)
-        log = Path(self.repo, ".factory/items/0001-thing/log.jsonl").read_text()
-        self.assertIn("verify.green", log)
-        self.assertIn("12 passed", log)
+        expected = (json.dumps({
+            "data": {"tests": "12 passed"},
+            "event": "ordinary.event",
+            "ts": "2026-07-03T12:00:00Z",
+        }, sort_keys=True) + "\n").encode("utf-8")
+        self.assertEqual(log.read_bytes(), before + expected)
+
+    def test_log_refuses_engine_authority_namespaces(self):
+        self.run_cli("init")
+        self.run_cli("add", "Thing")
+        log = Path(self.repo, ".factory/items/0001-thing/log.jsonl")
+        before = log.read_bytes()
+        forbidden = ("stage.advance", "verify.green", "evidence.bundle",
+                     "control.completed")
+        for event in forbidden:
+            with self.subTest(event=event):
+                code, _, err = self.run_cli("log", "0001-thing", event)
+                self.assertEqual(code, 1)
+                self.assertIn("engine", err)
+                self.assertEqual(log.read_bytes(), before)
 
     def test_bad_data_json_is_usage_error(self):
         self.run_cli("init")

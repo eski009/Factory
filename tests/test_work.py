@@ -1057,16 +1057,16 @@ class RunWorkFailureOwnershipTest(unittest.TestCase):
         result_path = worker / "result.json"
         before_events = self._events()
         before_head = work.git_head(self.repo)
-        real_unlink = ownership.DEFAULT_OPS.unlink
+        real_unlink = ownership.safeio._unlink_if_identity
         acquired = {}
 
-        def unlink(path):
-            if path == state:
-                acquired["owner"] = path.read_bytes()
+        def unlink(directory_fd, name, expected):
+            if name == state.name:
+                acquired["owner"] = state.read_bytes()
                 raise OSError("retain implementation owner")
-            return real_unlink(path)
+            return real_unlink(directory_fd, name, expected)
 
-        with mock.patch.object(ownership.DEFAULT_OPS, "unlink",
+        with mock.patch.object(ownership.safeio, "_unlink_if_identity",
                                side_effect=unlink):
             code, outcome = work.run_work(
                 self.repo, self.item, backend="stub",

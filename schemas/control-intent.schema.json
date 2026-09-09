@@ -1,0 +1,76 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "control-intent",
+  "type": "object",
+  "required": ["version", "operation_id", "item", "kind", "key", "request_sha256", "prerequisites", "replacements", "events"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {"type": "integer", "enum": [1]},
+    "operation_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "item": {"type": "string", "minLength": 1},
+    "kind": {"type": "string", "minLength": 1},
+    "key": {"type": "string", "minLength": 1},
+    "request_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "prerequisites": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {"type": "string", "enum": ["file", "missing"]},
+          "root": {"type": "string", "minLength": 1},
+          "relative": {"type": "string", "minLength": 1},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "blob": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "file_identity": {"type": "array", "items": {"type": "integer"}},
+          "directory_identities": {"type": "array", "items": {"type": "array", "items": {"type": "integer"}}},
+          "parent_identities": {"type": "array", "items": {"type": "array", "items": {"type": "integer"}}},
+          "transaction_nonce": {"type": "string", "pattern": "^[0-9a-f]{32}$"}
+        },
+        "required": ["state", "root", "relative"]
+      }
+    },
+    "replacements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["before", "after_sha256", "after_blob"],
+        "additionalProperties": false,
+        "properties": {
+          "before": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "state": {"type": "string", "enum": ["file", "missing"]},
+              "root": {"type": "string", "minLength": 1},
+              "relative": {"type": "string", "minLength": 1},
+              "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+              "blob": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+              "file_identity": {"type": "array", "items": {"type": "integer"}},
+              "directory_identities": {"type": "array", "items": {"type": "array", "items": {"type": "integer"}}},
+              "parent_identities": {"type": "array", "items": {"type": "array", "items": {"type": "integer"}}},
+              "transaction_nonce": {"type": "string", "pattern": "^[0-9a-f]{32}$"}
+            },
+            "required": ["state", "root", "relative"]
+          },
+          "after_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "after_blob": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["event", "ts", "operation_id"],
+        "additionalProperties": false,
+        "properties": {
+          "event": {"type": "string", "minLength": 1},
+          "ts": {"type": "string", "minLength": 1},
+          "operation_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "data": {}
+        }
+      }
+    }
+  }
+}

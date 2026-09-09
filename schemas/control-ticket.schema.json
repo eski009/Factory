@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "control-ticket",
+  "type": "object",
+  "required": ["version", "ticket_id", "item", "kind", "key", "owner_sha256", "checkout", "checkout_identity", "config", "inputs", "metadata"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {"type": "integer", "enum": [1]},
+    "ticket_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "item": {"type": "string", "minLength": 1},
+    "kind": {"type": "string", "minLength": 1},
+    "key": {"type": "string", "minLength": 1},
+    "owner_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "checkout": {"type": "string", "minLength": 1},
+    "checkout_identity": {"type": "array", "items": {"type": "integer"}},
+    "config": {
+      "type": "object",
+      "required": ["state", "root", "relative", "sha256", "blob", "file_identity", "directory_identities"],
+      "additionalProperties": false,
+      "properties": {
+        "state": {"type": "string", "enum": ["file"]},
+        "root": {"type": "string", "minLength": 1},
+        "relative": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "blob": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "file_identity": {"type": "array", "items": {"type": "integer"}},
+        "directory_identities": {"type": "array", "items": {"type": "array", "items": {"type": "integer"}}}
+      }
+    },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {"type": "string", "enum": ["file", "missing"]},
+          "root": {"type": "string", "minLength": 1},
+          "relative": {"type": "string", "minLength": 1},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "blob": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "file_identity": {"type": "array", "items": {"type": "integer"}},
+          "directory_identities": {"type": "array", "items": {"type": "array", "items": {"type": "integer"}}},
+          "parent_identities": {"type": "array", "items": {"type": "array", "items": {"type": "integer"}}},
+          "transaction_nonce": {"type": "string", "pattern": "^[0-9a-f]{32}$"}
+        },
+        "required": ["state", "root", "relative"]
+      }
+    },
+    "metadata": {"type": "object"}
+  }
+}

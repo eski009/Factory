@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "control-commit",
+  "type": "object",
+  "required": ["version", "operation_id", "item", "kind", "key", "request_sha256", "replacements", "events"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {"type": "integer", "enum": [1]},
+    "operation_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "item": {"type": "string", "minLength": 1},
+    "kind": {"type": "string", "minLength": 1},
+    "key": {"type": "string", "minLength": 1},
+    "request_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "replacements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["root", "relative", "sha256"],
+        "additionalProperties": false,
+        "properties": {
+          "root": {"type": "string", "minLength": 1},
+          "relative": {"type": "string", "minLength": 1},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    },
+    "events": {"type": "array", "items": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+  }
+}

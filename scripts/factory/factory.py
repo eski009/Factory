@@ -3,7 +3,6 @@
 refusal or validation errors. Skills call this; humans can too."""
 
 import argparse
-import hmac
 import json
 import os
 import sys
@@ -248,16 +247,9 @@ def _acquire_ownership(args):
 
 def _check_ownership(args):
     token = _required_owner_token(args.item, "check")
-    checkout = ownership.canonical_worktree(
-        args.repo, args.item, args.worktree)
-    state = ownership.owner_state_path(args.repo, args.item)
-    ownership._guard_exists(state, args.item, checkout)
-    record = ownership._read_valid_record(state, args.item, checkout)
-    if not hmac.compare_digest(
-            record["owner_sha256"], ownership._digest(token)):
-        raise ownership.OwnershipRefusal(
-            f"{args.item}: ownership check refused")
-    ownership._guard_exists(state, args.item, checkout)
+    verified = ownership.verify(
+        args.repo, args.item, token, supplied=args.worktree)
+    checkout = verified.checkout
     if args.json:
         print(json.dumps({
             "canonical_worktree": str(checkout),
@@ -332,6 +324,12 @@ def cmd_log(args):
         print(f"{args.event} is written only by its human verb "
               "(factory waive / factory confirm / factory cost-answer / "
               "factory approach-answer)",
+              file=sys.stderr)
+        return 1
+    if (args.event in ("stage.advance", "verify.green") or
+            args.event.startswith("evidence.") or
+            args.event.startswith("control.")):
+        print(f"{args.event} is written only by the Factory engine",
               file=sys.stderr)
         return 1
     try:

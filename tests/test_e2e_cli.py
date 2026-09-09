@@ -9,6 +9,9 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
+
+from scripts.factory.lib import logs
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CLI = REPO_ROOT / "scripts" / "factory" / "factory.py"
@@ -40,6 +43,11 @@ class TestE2ECli(unittest.TestCase):
         p = self.target / ".factory" / "items" / item / rel
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(text, encoding="utf-8")
+
+    def engine_log(self, item, event, data=None):
+        with mock.patch.dict(
+                os.environ, {"FACTORY_NOW": self.env["FACTORY_NOW"]}):
+            logs.append_event(self.target, item, event, data)
 
     def _write_assurance(self, item, verdict="pass", journey="J-001",
                          scenario="happy-1"):
@@ -100,7 +108,7 @@ class TestE2ECli(unittest.TestCase):
         self.cli("log", item, "review.approved")
         self.cli("advance", item, "verify")
         # verify -> assure (declared journey; gate: verify.green)
-        self.cli("log", item, "verify.green")
+        self.engine_log(item, "verify.green")
         self.cli("advance", item, "assure")
         # ship gate refuses without assurance evidence yet
         self.cli("advance", item, "ship", expect=2)
@@ -155,7 +163,7 @@ class TestE2ECli(unittest.TestCase):
         self.art(item, "reviews/synthesis.md")
         self.cli("log", item, "review.approved")
         self.cli("advance", item, "verify")
-        self.cli("log", item, "verify.green")
+        self.engine_log(item, "verify.green")
         self.cli("advance", item, "ship")     # verify -> ship directly, no assure
         self.cli("log", item, "ship.merged")
         self.cli("advance", item, "done")
@@ -178,11 +186,11 @@ class TestE2ECli(unittest.TestCase):
         item_md = self.target / ".factory/items" / item / "item.md"
         item_md.write_text(item_md.read_text().replace(
             "stage: idea", "stage: verify"), encoding="utf-8")
-        self.cli("log", item, "stage.advance",
-                 "--data", json.dumps({"from": "plan", "to": "implement"}))
-        self.cli("log", item, "stage.advance",
-                 "--data", json.dumps({"from": "idea", "to": "verify"}))
-        self.cli("log", item, "verify.green")
+        self.engine_log(item, "stage.advance",
+                        {"from": "plan", "to": "implement"})
+        self.engine_log(item, "stage.advance",
+                        {"from": "idea", "to": "verify"})
+        self.engine_log(item, "verify.green")
         self.cli("validate")
         # the engine still forces the undeclared item through assure
         self.cli("advance", item, "assure")

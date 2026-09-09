@@ -132,9 +132,21 @@ def revalidate(snapshot) -> None: ...
   without weakening containment.
 - `publish_exclusive` uses a no-follow exclusive temporary regular file,
   keeps its descriptor open, writes all bytes, fsyncs it, verifies the temp
-  name still denotes that inode, installs the absent final name without
-  overwrite, removes any substituted published entry on detected mismatch,
-  fsyncs the directory, and verifies the resulting snapshot.
+  name still denotes that inode, revalidates it after any install callback and
+  immediately before replacement, installs the absent final name without
+  overwrite, and verifies the resulting snapshot. Cleanup may unlink only the
+  exact inode created by this publication; a mismatched or substituted
+  destination is refused and preserved with its recovery journal evidence.
+  Atomic replacement temporaries used for journal updates capture the intended
+  bytes and full file identity after their complete write and fsync, then
+  descriptor-relatively re-read both immediately after the install callback
+  and before replacement. Cleanup removes only that exact authorized object;
+  an in-place-modified temporary remains as diagnostic evidence even when the
+  callback raises.
+  Every journal update, compaction, and removal is authorized by the exact
+  previously read bytes and inode plus an immediate revalidation of the pinned
+  directory chain, so a substituted journal is never overwritten, adopted, or
+  deleted.
 - `replace_if_unchanged` accepts only the exact live snapshot, uses an atomic
   same-directory replacement, fsyncs, and verifies expected bytes and the
   canonical parent chain. Mutation APIs hold an advisory exclusive lock on the
@@ -227,9 +239,21 @@ def require_settled(repo, item_id) -> None: ...
 
 ### Operation contract
 
-- Hold a short-lived per-item `flock` for all inspection/publication. Safely
-  open the item/control namespace without following links. A crash releases
-  the advisory lock; durable `active.json` supplies recovery state.
+- Before creating `control/` or its lock, perform a conservative read-only
+  preflight through descriptor-relative, no-follow, bounded reads of the item
+  log and caller snapshots. Repeat the applicable checks under a short-lived
+  per-item `flock` before creating operation state to close the cooperative
+  race window. A crash releases the advisory lock; durable `active.json`
+  supplies recovery state.
+- After creating and syncing `control/`, revalidate the complete canonical item
+  chain and the exact control-directory identity before opening or creating the
+  lock leaf. A detached or replaced item namespace is refused without leaving a
+  lock in either namespace.
+- Ownership release fsyncs a release guard, then re-reads the exact authorized
+  owner bytes and full file identity immediately before unlink. Guard cleanup
+  has the equivalent exact-byte/full-identity check. Changed owner or guard
+  state is preserved fail-closed; a crash after exact owner deletion remains
+  represented by the unchanged guard and cannot delete a foreign replacement.
 - Canonical intent records kind/key/request digest, exact prerequisite before
   identities/hashes, ordered replacements with before and after hashes/blobs,
   and ordered authoritative events. Events carry `operation_id`.
@@ -240,10 +264,17 @@ def require_settled(repo, item_id) -> None: ...
   means adopt, and any third state refuses. This makes creation of FH-04's new
   immutable round binding a first-class transactional effect. Metadata/stage
   replacement is conventionally last.
-- Strict-read the complete log: invalid UTF-8, malformed/non-object lines,
-  missing required keys, duplicate operation events, or a conflicting event
-  refuses. Append each missing canonical event in one `O_APPEND` write and
-  fsync. An exact existing event is adopted.
+- Strict-read the complete bounded log: invalid UTF-8,
+  malformed/non-object lines, missing required keys, duplicate operation
+  events, or a conflicting event refuses. Before publishing WAL state or any
+  replacement effect, reserve capacity for the complete set of missing
+  transactional events. Publish each missing canonical event with bounded
+  copy-on-write: write and fsync the complete old-plus-new byte image to a
+  staging inode, revalidate the old name, bytes, inode, and item-directory
+  descriptors, atomically replace the authoritative name (or link it for
+  first creation), then fsync the item directory. A fault therefore leaves
+  exactly the old or new complete bytes, and an exact existing event is
+  adopted during recovery.
 - After every effect is verified, publish immutable `commit.json`, then remove
   and directory-fsync `active.json`. A matching retry at any crash point rolls
   forward and returns the same receipt. A different operation while active
@@ -252,11 +283,22 @@ def require_settled(repo, item_id) -> None: ...
   every replacement, each event append, commit receipt, and active removal.
   Matching retry yields one replacement effect and one event; conflicting
   retry/third-state mutation/duplicate event fails closed.
-- Every existing `logs.append_event` call acquires this same item lock, fsyncs
-  its single `O_APPEND` write, and accepts an already-held validated lock from
-  engine code to avoid self-deadlock. `machine.advance` will hold the lock
-  across its metadata write and event append in Task 3. This serializes legacy
-  writers with control operations while preserving event bytes and order.
+- Every existing `logs.append_event` call acquires this same item lock and uses
+  the same bounded copy-on-write atomic publication for its single legacy
+  event; it preflights that event's capacity under the lock and accepts an
+  already-held validated lock from engine code to avoid self-deadlock.
+  Successful publication intentionally replaces the log inode while
+  preserving the exact historical bytes and canonical new-event encoding: a
+  descriptor opened before publication continues to refer to the immutable
+  old inode, so readers that want the new image must reopen `log.jsonl` by name.
+  `machine.advance` will hold the lock across its metadata write and event
+  publication in Task 3. This serializes legacy writers with control operations
+  while preserving event bytes and order.
+- Legacy `logs.append_event` retains its missing-parent compatibility: it
+  creates `.factory/items/<id>` only through descriptor-relative, no-follow
+  directory operations, durably adopts each opened directory and its parent
+  whether newly created or found by a retry, and revalidates the pinned
+  identities before acquiring the item lock or publishing the log image.
 - Generic `factory log` rejects `stage.advance`, `verify.green`, every
   `evidence.*`, and every `control.*` event. Engine-internal writers retain an
   explicit locked append path. Future domain writers must use a typed command;
@@ -269,7 +311,7 @@ Run:
 
 ```bash
 python3 -m unittest tests.test_control tests.test_ownership \
-  tests.test_worker_attempts tests.test_cli -v
+  tests.test_worker_attempts tests.test_cli tests.test_safeio -v
 git diff --check
 ```
 
