@@ -51,6 +51,11 @@ class MachineTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.repo = Path(self.tmp.name)
         os.environ["FACTORY_NOW"] = "2026-07-03T12:00:00Z"
+        config_path = paths.config_path(self.repo)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(
+            json.dumps(initrepo.DEFAULT_CONFIG, indent=2, sort_keys=True) +
+            "\n", encoding="utf-8")
 
     def tearDown(self):
         os.environ.pop("FACTORY_NOW", None)

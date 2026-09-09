@@ -20,8 +20,8 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import (initrepo, items, logs, ownership, paths, validate,
-               worker_attempts)
+from . import (config_state, control, feasibility, initrepo, items, logs,
+               ownership, paths, validate, worker_attempts)
 from .ownership import (NoRegisteredWorktree, OwnershipRefusal,
                         canonical_worktree)
 
@@ -57,6 +57,15 @@ def worker_config(repo):
                 block = raw["workers"]
         except json.JSONDecodeError:
             block = {}
+    return _worker_config_from_block(block)
+
+
+def _worker_config_from_value(value):
+    block = value.get("workers") if isinstance(value, dict) else None
+    return _worker_config_from_block(block if isinstance(block, dict) else {})
+
+
+def _worker_config_from_block(block):
     merged = dict(DEFAULTS)
     merged["retry"] = dict(DEFAULTS["retry"])
     merged["codex"] = dict(DEFAULTS["codex"])
@@ -109,6 +118,23 @@ def build_brief(repo, item_id, worktree):
     if spec_text.strip():
         lines += ["", "## Spec (acceptance criteria)", spec_text.strip()]
     return "\n".join(lines) + "\n"
+
+
+def build_dispatch_brief(item_id, worktree, handoff):
+    """Wrap captured dispatch bytes in the legacy execution contract."""
+    return "\n".join((
+        f"You are a headless implementer for work item {item_id}.",
+        f"Working directory (git worktree on branch factory/{item_id}): "
+        f"{worktree}",
+        "Implement every selected task in the authoritative dispatch below. "
+        "Follow TDD, run the tests named in the plan, and commit your work to "
+        "the current branch as you go. Do not modify files outside the "
+        "owned_paths declared by the dispatch.",
+        "",
+        "## Authoritative plan dispatch",
+        handoff.rstrip("\n"),
+        "",
+    ))
 
 
 def _git(worktree, *args):
@@ -446,11 +472,31 @@ def _worker_env(cfg, backend):
 
 
 def _run_owned_work(repo, item_id, work_tree, cfg, backend, model, timeout,
-                    network, sandbox, reasoning_effort, tasks):
-    brief = build_brief(repo, item_id, work_tree)
+                    network, sandbox, reasoning_effort, tasks,
+                    dispatch_snapshot=None, owner_token=None):
+    brief = (build_dispatch_brief(
+        item_id, work_tree, dispatch_snapshot.handoff)
+        if dispatch_snapshot is not None
+        else build_brief(repo, item_id, work_tree))
     env = _worker_env(cfg, backend)
-    base_sha = git_head(work_tree)
+    base_sha = (dispatch_snapshot.head
+                if dispatch_snapshot is not None else git_head(work_tree))
     attempt = None
+    if dispatch_snapshot is not None:
+        try:
+            feasibility.revalidate_dispatch(dispatch_snapshot.ticket)
+        except feasibility.FeasibilityError as exc:
+            return 2, {"error": str(exc),
+                       "reason": str(exc),
+                       "detail": str(exc)}
+    if dispatch_snapshot is not None:
+        try:
+            feasibility.revalidate_dispatch(dispatch_snapshot.ticket)
+        except feasibility.FeasibilityError as exc:
+            return 2, {"error": str(exc),
+                       "reason": str(exc),
+                       "detail": str(exc)}
+
     if backend in ("claude", "codex"):
         try:
             attempt = worker_attempts.create_attempt(
@@ -493,6 +539,8 @@ def _run_owned_work(repo, item_id, work_tree, cfg, backend, model, timeout,
                        parsed, test_result,
                        f"items/{item_id}/worker/worker.log",
                        duration_s=duration_s)
+    if dispatch_snapshot is not None:
+        result["dispatch_ticket"] = dispatch_snapshot.ticket.ticket_id
     errors = validate.validate(result, initrepo.load_schema("result"),
                                "result")
     if errors:
@@ -503,11 +551,29 @@ def _run_owned_work(repo, item_id, work_tree, cfg, backend, model, timeout,
 
     _log_spend(repo, item_id, backend, model, result.get("usage"))
     if result["status"] == "done":
-        _tick_plan(repo, item_id)
-        logs.append_event(repo, item_id, "implement.completed",
-                          {"tasks": len(tasks),
-                           "tests": _test_summary(test_result),
-                           "backend": backend})
+        if dispatch_snapshot is not None:
+            scope = feasibility.inspect_worker_scope(
+                dispatch_snapshot.ticket)
+            if scope["status"] != "pass":
+                return 2, {
+                    "error": scope["reason"], "reason": scope["reason"],
+                    "scope": scope, "result": result,
+                }
+            try:
+                feasibility.finalize_tasks(
+                    repo, item_id,
+                    ticket_id=dispatch_snapshot.ticket.ticket_id,
+                    owner_token=owner_token)
+            except feasibility.FeasibilityError as exc:
+                return 2, {
+                    "error": str(exc), "reason": str(exc), "result": result,
+                }
+        else:
+            _tick_plan(repo, item_id)
+            logs.append_event(repo, item_id, "implement.completed",
+                              {"tasks": len(tasks),
+                               "tests": _test_summary(test_result),
+                               "backend": backend})
         return 0, result
     logs.append_event(repo, item_id, "implement.failed",
                       {"reason": result.get("reason"), "backend": backend})
@@ -518,9 +584,11 @@ def _run_owned_work(repo, item_id, work_tree, cfg, backend, model, timeout,
     return 3, result
 
 
-def run_work(repo, item_id, backend=None, model=None, timeout=None,
-             network=None, worktree=None, reasoning_effort=None):
-    cfg = worker_config(repo)
+def _run_work_legacy(repo, item_id, backend=None, model=None, timeout=None,
+                     network=None, worktree=None, reasoning_effort=None,
+                     _captured_cfg=None):
+    cfg = (_captured_cfg if _captured_cfg is not None
+           else worker_config(repo))
     backend = backend or cfg["backend"]
     timeout = timeout or cfg["timeout_seconds"]
     network = network or cfg["network"]
@@ -566,6 +634,71 @@ def run_work(repo, item_id, backend=None, model=None, timeout=None,
         code, result = _run_owned_work(
             repo, item_id, work_tree, cfg, backend, model, timeout, network,
             sandbox, reasoning_effort, tasks)
+    finally:
+        try:
+            claim.release()
+        except ownership.OwnershipError as exc:
+            release_error = exc
+    if release_error is not None:
+        return 1, {"error": str(release_error), "result": result}
+    return code, result
+
+
+def run_work(repo, item_id, backend=None, model=None, timeout=None,
+             network=None, worktree=None, reasoning_effort=None):
+    try:
+        config = config_state.capture(repo)
+        config = control._config_from_snapshot(config.file)
+    except (config_state.ConfigStateError, control.ControlError) as exc:
+        return 2, {"error": str(exc)}
+    if not config_state.enabled(config, "feasibility"):
+        try:
+            config_state.revalidate(config)
+        except config_state.ConfigStateError as exc:
+            return 2, {"error": str(exc)}
+        return _run_work_legacy(
+            repo, item_id, backend=backend, model=model, timeout=timeout,
+            network=network, worktree=worktree,
+            reasoning_effort=reasoning_effort,
+            _captured_cfg=_worker_config_from_value(config.value))
+    cfg = _worker_config_from_value(config.value)
+    backend = backend or cfg["backend"]
+    timeout = timeout or cfg["timeout_seconds"]
+    network = network or cfg["network"]
+    if backend not in BACKENDS:
+        return 1, {"error": f"unknown or unavailable backend: {backend}"}
+    try:
+        work_tree = canonical_worktree(repo, item_id, worktree)
+    except OwnershipRefusal as exc:
+        return 2, {"error": str(exc)}
+    if backend in ("claude", "codex") and shutil.which(backend) is None:
+        return 1, {"error": f"backend CLI not found on PATH: {backend}"}
+    model = model or (cfg.get("models") or {}).get(backend)
+    sandbox = (cfg.get("codex") or {}).get("sandbox", "workspace-write")
+    if backend == "codex":
+        reasoning_effort = (reasoning_effort or
+                            (cfg.get("codex") or {}).get(
+                                "reasoning_effort", "medium"))
+    try:
+        claim = ownership.acquire(
+            repo, item_id, supplied=work_tree,
+            owner_token=os.environ.get(FACTORY_IMPLEMENTATION_OWNER))
+    except OwnershipRefusal as exc:
+        return 2, {"error": str(exc)}
+    result = {"error": "implementation dispatch did not start"}
+    release_error = None
+    try:
+        try:
+            dispatch_snapshot = feasibility.prepare_dispatch(
+                repo, item_id, config=config, owner_token=claim.token)
+        except feasibility.FeasibilityError as exc:
+            code, result = 2, {"error": str(exc)}
+        else:
+            code, result = _run_owned_work(
+                repo, item_id, claim.checkout, cfg, backend, model, timeout,
+                network, sandbox, reasoning_effort, dispatch_snapshot.tasks,
+                dispatch_snapshot=dispatch_snapshot,
+                owner_token=claim.token)
     finally:
         try:
             claim.release()

@@ -11,6 +11,7 @@
                "enum": ["crash", "timeout", "no_changes", "red_tests",
                         "rate_limited", "auth", "blocked", "prep_failed"]},
     "backend": {"type": "string", "enum": ["claude", "codex", "stub"]},
+    "dispatch_ticket": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "model": {"type": "string"},
     "branch": {"type": "string", "minLength": 1},
     "commits": {"type": "array", "items": {"type": "string"}},
