@@ -96,6 +96,9 @@ Then take the Exit branch that matches the verdicts. A draft contract never bloc
 
 ## Failure discipline
 
+A failure is never a silent pass: persist its evidence and take exactly one of
+the explicit branches below.
+
 - **fail** = the product objectively did not meet the contract's expectation at a node (wrong outcome, dead end, material console/network error, or an objective craft defect — clipping, broken imagery, unstyled error/empty states, placeholder content, viewport collapse). After attribution, only final `fail` scenarios marked `regression` are eligible for feasibility rework; when attribution is disabled, fail closed by recording each branch fail as `regression` for this purpose. Persist `verdicts.json` first. In enabled mode, preserve the completed canonical plan as the proposal prefix, append exactly one unchecked task per regression naming `assurance/verdicts.json` and its scenario id, refresh the proposed acceptance hash/revision with `assure` and the exact verdicts SHA-256, then invoke `factory plan-rework ITEM --source assure --source-file .factory/items/ITEM/assurance/verdicts.json --finding SCENARIO_ID ... --plan-proposal PROPOSAL --acceptance-proposal PROPOSAL --json`. Do not separately log rejection or advance. Only `assurance rejected too many times; move item to blocked` is the cap signal; other refusals leave the item at assure for correction. Disabled mode retains `assure.rejected` plus the implementation advance.
 - **ambiguity** = the walk completed but a judgement call the contract doesn't settle remains (is this copy clear enough? is this next action obvious?). Park for the human with the reviewer's question quoted verbatim in the packet.
 - **blocker** = the walk could not run (app won't launch, fixture missing, browser capability absent). Record in `assurance/blockers.md`, park. Environment fixed → the stage simply re-runs; blockers are never converted to passes by inspection.
