@@ -30,7 +30,9 @@ class ControlFixture(unittest.TestCase):
         _git(self.repo, "config", "user.email", "t@example.test")
         _git(self.repo, "config", "user.name", "Control Test")
         (self.repo / "seed.txt").write_text("seed\n", encoding="utf-8")
-        _git(self.repo, "add", "seed.txt")
+        (self.repo / ".gitignore").write_text(
+            ".factory/\n", encoding="utf-8")
+        _git(self.repo, "add", "seed.txt", ".gitignore")
         _git(self.repo, "commit", "-q", "-m", "seed")
         _git(self.repo, "checkout", "-q", "-b", f"factory/{self.item}")
         initrepo.init(self.repo)
@@ -49,6 +51,8 @@ class ControlFixture(unittest.TestCase):
         self.target.write_bytes(b"before\n")
         self.created = self.item_dir / "created.bin"
         self.config_bytes = (self.repo / ".factory/config.json").read_bytes()
+        _git(self.repo, "add", "docs/factory")
+        _git(self.repo, "commit", "-q", "-m", "factory docs")
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -156,6 +160,59 @@ class TicketTest(ControlFixture):
             self.assertEqual(manifest["version"], 1)
             self.assertNotIn(claim.token, json.dumps(manifest, sort_keys=True))
         finally:
+            claim.release()
+
+    def test_ticket_refuses_valid_owner_when_checkout_is_dirty(self):
+        claim = ownership.acquire(self.repo, self.item)
+        try:
+            (self.repo / "seed.txt").write_text("dirty\n", encoding="utf-8")
+            with self.assertRaisesRegex(
+                    control.ControlRefusal, "checkout is dirty"):
+                control.issue_ticket(
+                    self.repo, self.item, kind="plan.dispatch", key="dirty",
+                    owner_token=claim.token,
+                    config=config_state.capture(self.repo), inputs=(),
+                    metadata={})
+            self.assertFalse((self.item_dir / "control/tickets").exists())
+        finally:
+            (self.repo / "seed.txt").write_text("seed\n", encoding="utf-8")
+            claim.release()
+
+    def test_ticket_refuses_valid_owner_when_canonical_checkout_disappears(self):
+        claim = ownership.acquire(self.repo, self.item)
+        branch = f"factory/{self.item}"
+        try:
+            _git(self.repo, "checkout", "-q", "-b", "detached-owner")
+            with self.assertRaisesRegex(
+                    control.ControlRefusal, "ownership does not match"):
+                control.issue_ticket(
+                    self.repo, self.item, kind="plan.dispatch", key="absent",
+                    owner_token=claim.token,
+                    config=config_state.capture(self.repo), inputs=(),
+                    metadata={})
+            self.assertFalse((self.item_dir / "control/tickets").exists())
+        finally:
+            _git(self.repo, "checkout", "-q", branch)
+            claim.release()
+
+    def test_ticket_refuses_valid_owner_when_canonical_checkout_is_ambiguous(self):
+        claim = ownership.acquire(self.repo, self.item)
+        duplicate = self.repo.parent / f"{self.repo.name}-duplicate"
+        _git(
+            self.repo, "worktree", "add", "--force", str(duplicate),
+            f"factory/{self.item}")
+        try:
+            with self.assertRaisesRegex(
+                    control.ControlRefusal, "ownership does not match"):
+                control.issue_ticket(
+                    self.repo, self.item, kind="plan.dispatch",
+                    key="ambiguous", owner_token=claim.token,
+                    config=config_state.capture(self.repo), inputs=(),
+                    metadata={})
+            self.assertFalse((self.item_dir / "control/tickets").exists())
+        finally:
+            _git(
+                self.repo, "worktree", "remove", "--force", str(duplicate))
             claim.release()
 
     def test_identical_issue_adopts_and_same_kind_key_conflict_refuses(self):

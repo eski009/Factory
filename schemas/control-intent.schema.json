@@ -11,6 +11,22 @@
     "kind": {"type": "string", "minLength": 1},
     "key": {"type": "string", "minLength": 1},
     "request_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "log_snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "state": {"type": "string", "enum": ["file", "missing"]},
+        "root": {"type": "string", "minLength": 1},
+        "relative": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "blob": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "file_identity": {"type": "array", "items": {"type": "integer"}},
+        "directory_identities": {"type": "array", "items": {"type": "array", "items": {"type": "integer"}}},
+        "parent_identities": {"type": "array", "items": {"type": "array", "items": {"type": "integer"}}},
+        "transaction_nonce": {"type": "string", "pattern": "^[0-9a-f]{32}$"}
+      },
+      "required": ["state", "root", "relative"]
+    },
     "prerequisites": {
       "type": "array",
       "items": {

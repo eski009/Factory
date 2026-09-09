@@ -23,14 +23,24 @@ verify.green event as the existing `journeys: none` substitution.
 advance() returns (meta, verdict): the cost breaker's verdict is computed
 on every transition and is advisory — the caller parks, the engine never
 does. Item spec 0016 §5.
+
+Prepared implementation entry is the transactional seam for item 0036's
+plan-dispatch begin/finish ticket handoff and Git-observable scope completion.
+FH-04 will use the same operation substrate for requirements freeze, round
+binding, preflight, and exactly-once verify.green. Generic factory log writes
+remain outside this seam.
 """
+
+from __future__ import annotations
 
 import json
 import re
 import subprocess
+from dataclasses import dataclass
 from pathlib import PurePosixPath
+from typing import Literal
 
-from . import items, logs, paths
+from . import config_state, control, items, logs, paths, safeio
 
 STAGES = ["idea", "triage", "spec", "design", "plan",
           "implement", "review", "verify", "assure", "ship", "done"]
@@ -57,8 +67,409 @@ MAX_APPROACH_REJECTIONS = 1
 MAX_VERIFY_REWORKS = 2
 
 
+@dataclass(frozen=True)
+class PreparedImplementEntry:
+    item_id: str
+    source: str
+    destination: Literal["implement"]
+    operation_key: str
+    item_snapshot: safeio.FileSnapshot
+    log_snapshot: safeio.FileSnapshot | safeio.MissingSnapshot
+    config: config_state.ConfigSnapshot
+    cost_answer_snapshot: safeio.FileSnapshot | safeio.MissingSnapshot
+    prerequisites: tuple
+    replacements: tuple
+    events: tuple
+    replacement_item: bytes
+    stage_event: dict
+    breaker_verdict: dict
+    _request_bytes: bytes
+    _events_bytes: bytes
+    _breaker_verdict_bytes: bytes
+
+
 class GateError(Exception):
     """Transition refused: illegal move or precondition unmet."""
+
+
+def _snapshot_key(snapshot):
+    if not isinstance(snapshot, (safeio.FileSnapshot,
+                                 safeio.MissingSnapshot)):
+        raise control.ControlRefusal("implement-entry snapshot is invalid")
+    return snapshot.root, snapshot.relative
+
+
+def _strict_snapshot_events(snapshot):
+    """Decode one captured authoritative log without tolerant omissions."""
+    if isinstance(snapshot, safeio.MissingSnapshot):
+        return ()
+    raw = snapshot.data
+    if raw and not raw.endswith(b"\n"):
+        raise control.ControlRefusal("item log is missing its final newline")
+    try:
+        text = raw.decode("utf-8", errors="strict")
+    except UnicodeError as exc:
+        raise control.ControlRefusal("item log is invalid UTF-8") from exc
+    events = []
+    seen = set()
+    for line in text.splitlines():
+        if not line:
+            raise control.ControlRefusal("item log contains an empty record")
+        try:
+            event = json.loads(
+                line, object_pairs_hook=control._strict_object,
+                parse_constant=control._reject_constant)
+        except (ValueError, json.JSONDecodeError) as exc:
+            raise control.ControlRefusal(
+                "item log contains invalid JSON") from exc
+        if (type(event) is not dict or
+                type(event.get("event")) is not str or not event["event"] or
+                type(event.get("ts")) is not str or not event["ts"]):
+            raise control.ControlRefusal("item log contains an invalid event")
+        operation_id = event.get("operation_id")
+        if operation_id is not None:
+            if not control._valid_digest(operation_id):
+                raise control.ControlRefusal(
+                    "item log contains an invalid operation id")
+            identity = (operation_id,
+                        control._digest_bytes(control._canonical(event)[0]))
+            if identity in seen:
+                raise control.ControlRefusal(
+                    "item log contains a duplicate operation event")
+            seen.add(identity)
+        events.append(event)
+    return tuple(events)
+
+
+def _decode_item_bytes(data, item_id):
+    try:
+        text = data.decode("utf-8", errors="strict")
+    except UnicodeError as exc:
+        raise items.ItemError(
+            f"{item_id}: item.md is unreadable (invalid encoding)") from exc
+    meta, body = items.parse_item(text)
+    if meta["id"] != item_id:
+        raise items.ItemError(
+            f"item dir {item_id!r} contains id {meta['id']!r} - "
+            "dir name and id must match")
+    return meta, body
+
+
+def _decode_canonical_value(data, label, expected_type):
+    try:
+        value = json.loads(
+            data.decode("utf-8", errors="strict"),
+            object_pairs_hook=control._strict_object,
+            parse_constant=control._reject_constant)
+        canonical, value = control._canonical(value)
+    except (UnicodeError, ValueError, json.JSONDecodeError,
+            control.ControlRefusal) as exc:
+        raise control.ControlRefusal(
+            f"prepared implement-entry {label} is invalid") from exc
+    if canonical != data or type(value) is not expected_type:
+        raise control.ControlRefusal(
+            f"prepared implement-entry {label} is invalid")
+    return value
+
+
+def _captured_item(snapshot, item_id):
+    return _decode_item_bytes(snapshot.data, item_id)
+
+
+def _assurance_mode_from_events(events):
+    for event in events:
+        if event.get("event") != items.BUG_ASSURANCE_EVENT:
+            continue
+        data = event.get("data")
+        if (isinstance(data, dict)
+                and data.get("mode") == items.VERIFY_ASSURANCE
+                and data.get("source") == "factory-bug"):
+            return items.VERIFY_ASSURANCE
+    return None
+
+
+def _bind_prepare_effects(repo, prerequisites, replacements):
+    try:
+        prerequisites = tuple(prerequisites)
+        replacements = tuple(replacements)
+    except TypeError as exc:
+        raise control.ControlRefusal(
+            "implement-entry effects are invalid") from exc
+
+    prerequisite_keys = set()
+    for snapshot in prerequisites:
+        key = _snapshot_key(snapshot)
+        if key[0] != repo:
+            raise control.ControlRefusal(
+                "implement-entry snapshot belongs to another repository")
+        if key in prerequisite_keys:
+            raise control.ControlRefusal(
+                "implement-entry has a duplicate prerequisite")
+        prerequisite_keys.add(key)
+
+    bound_replacements = []
+    replacement_keys = set()
+    for replacement in replacements:
+        if (type(replacement) not in (tuple, list) or
+                len(replacement) != 2 or
+                not isinstance(replacement[1], bytes)):
+            raise control.ControlRefusal(
+                "implement-entry replacement is invalid")
+        before, after = replacement
+        key = _snapshot_key(before)
+        if key[0] != repo:
+            raise control.ControlRefusal(
+                "implement-entry snapshot belongs to another repository")
+        if key in replacement_keys:
+            raise control.ControlRefusal(
+                "implement-entry has a duplicate replacement")
+        if key in prerequisite_keys:
+            raise control.ControlRefusal(
+                "implement-entry prerequisite cannot also be a replacement")
+        replacement_keys.add(key)
+        bound_replacements.append((before, after))
+
+    safeio.revalidate(prerequisites)
+    safeio.revalidate(before for before, _after in bound_replacements)
+    return prerequisites, tuple(bound_replacements)
+
+
+def _replacement_bytes(replacements, relative):
+    for before, after in replacements:
+        if before.relative == relative:
+            return after
+    return None
+
+
+def _snapshot_for_relative(prerequisites, relative):
+    for snapshot in prerequisites:
+        if snapshot.relative == relative:
+            return snapshot
+    return None
+
+
+def _snapshot_bytes(snapshot):
+    return snapshot.data if isinstance(snapshot, safeio.FileSnapshot) else None
+
+
+def _prospective_implement_legality(item_id, meta, events):
+    source = meta["stage"]
+    if source in SPECIAL:
+        if meta.get("paused-from") != "implement":
+            raise GateError(
+                f"{source} item may only resume to "
+                f"{meta.get('paused-from')!r}")
+        meta.pop("paused-from", None)
+        meta.pop("paused-reason", None)
+    elif source == "review":
+        _count, last = _approach_edges(events)
+        if _count_after(events, "review.rejected", last) > MAX_REVIEW_REJECTIONS:
+            raise GateError("review rejected too many times; move item to blocked")
+    elif source == "assure":
+        _count, last = _approach_edges(events)
+        if _count_after(events, "assure.rejected", last) > MAX_ASSURE_REJECTIONS:
+            raise GateError(
+                "assurance rejected too many times; move item to blocked")
+    elif source == "verify":
+        _count, last = _approach_edges(events)
+        if _verify_reworks_after(events, last) >= MAX_VERIFY_REWORKS:
+            raise GateError(
+                f"verify reworked {MAX_VERIFY_REWORKS} times since the "
+                "last redesign; if the design cannot converge, record "
+                "approaches/forbidden.md and route factory advance "
+                f"{item_id} spec")
+    else:
+        expected = next_stage(meta, _assurance_mode_from_events(events))
+        if expected != "implement":
+            raise GateError(
+                f"illegal transition {source} -> " "implement "
+                f"(next is {expected!r})")
+    return source
+
+
+def prepare_implement_entry(repo, item_id, *, operation_key, reason=None,
+                            config=None, prerequisites=(), replacements=(),
+                            events=()) -> PreparedImplementEntry:
+    """Prepare one disk-inert, captured-state transition into implement."""
+    from . import breaker
+
+    item_id = control._component(item_id, "item id")
+    if type(operation_key) is not str or not operation_key:
+        raise control.ControlRefusal(
+            "implement-entry operation_key must be a stable nonempty string")
+
+    item_relative = PurePosixPath(
+        ".factory", "items", item_id, "item.md")
+    log_relative = PurePosixPath(
+        ".factory", "items", item_id, "log.jsonl")
+    answer_relative = PurePosixPath(
+        ".factory", "items", item_id, "cost", "answer.md")
+    plan_relative = PurePosixPath(
+        ".factory", "items", item_id, "plan.md")
+
+    item_snapshot = safeio.snapshot_path(repo, item_relative)
+    canonical_repo = item_snapshot.root
+    log_snapshot = safeio.snapshot_path(
+        canonical_repo, log_relative, limit=control._LOG_IMAGE_LIMIT,
+        allow_missing=True)
+    if config is None:
+        config = config_state.capture(canonical_repo)
+    elif not isinstance(config, config_state.ConfigSnapshot):
+        raise config_state.ConfigStateError(
+            "prepare_implement_entry requires a ConfigSnapshot")
+    else:
+        config_state.revalidate(config)
+    if config.file.root != canonical_repo:
+        raise control.ControlRefusal(
+            "implement-entry config belongs to another repository")
+    # ConfigSnapshot is frozen but its parsed dict is not. Reconstruct the
+    # value from the captured, schema-validated bytes so caller mutations can
+    # neither disable gates nor diverge from the file bound into the WAL.
+    config = control._config_from_snapshot(config.file)
+    cost_answer_snapshot = safeio.snapshot_path(
+        canonical_repo, answer_relative, allow_missing=True)
+
+    prerequisites, replacements = _bind_prepare_effects(
+        canonical_repo, prerequisites, replacements)
+    if any(snapshot.relative == log_relative for snapshot in prerequisites):
+        raise control.ControlRefusal(
+            "implement-entry owns the item log snapshot")
+    forbidden_replacements = {item_relative, log_relative,
+                              PurePosixPath(".factory", "config.json")}
+    if any(before.relative in forbidden_replacements
+           for before, _after in replacements):
+        raise control.ControlRefusal(
+            "implement-entry owns item, log, and config state")
+
+    plan_bytes = _replacement_bytes(replacements, plan_relative)
+    if plan_bytes is None:
+        plan_snapshot = _snapshot_for_relative(
+            prerequisites, plan_relative)
+        if plan_snapshot is None:
+            plan_snapshot = safeio.snapshot_path(
+                canonical_repo, plan_relative, allow_missing=True)
+            prerequisites = prerequisites + (plan_snapshot,)
+        plan_bytes = _snapshot_bytes(plan_snapshot)
+
+    answer_bytes = _replacement_bytes(replacements, answer_relative)
+    if answer_bytes is None:
+        answer_bytes = _snapshot_bytes(cost_answer_snapshot)
+
+    safeio.revalidate((item_snapshot, log_snapshot, cost_answer_snapshot))
+    config_state.revalidate(config)
+    safeio.revalidate(prerequisites)
+    safeio.revalidate(before for before, _after in replacements)
+
+    meta, body = _captured_item(item_snapshot, item_id)
+    captured_events = _strict_snapshot_events(log_snapshot)
+    caller_events = tuple(control._normalize_events(events))
+    prospective_events = captured_events + caller_events
+    now = logs.now_stamp()
+
+    breaker.precondition(
+        canonical_repo, item_id, meta, "implement",
+        events=prospective_events, now=now, corrupt_log_lines=0,
+        config=config, answer_bytes=answer_bytes)
+    source = _prospective_implement_legality(
+        item_id, meta, prospective_events)
+    _gate_implement(canonical_repo, meta, plan_bytes=plan_bytes)
+
+    meta["stage"] = "implement"
+    meta["updated"] = now
+    replacement_item = items.render_item(meta, body).encode("utf-8")
+    event_data = {"from": source, "to": "implement"}
+    if reason:
+        event_data["reason"] = reason
+    stage_event = control._normalize_events(({
+        "event": "stage.advance", "ts": now, "data": event_data,
+    },))[0]
+    post_events = prospective_events + (stage_event,)
+    breaker_verdict = breaker.verdict(
+        canonical_repo, item_id, meta, "implement", backlog=False,
+        events=post_events, now=now, corrupt_log_lines=0,
+        config=config, answer_bytes=answer_bytes)
+    authoritative_events = (stage_event,)
+    if breaker_verdict["fired"]:
+        breaker_event = control._normalize_events(({
+            "event": "cost.breaker",
+            "ts": now,
+            "data": {
+                "rework_edges": breaker_verdict["rework_edges"],
+                "threshold": breaker_verdict["threshold"],
+            },
+        },))[0]
+        authoritative_events += (breaker_event,)
+
+    prepared_events = caller_events + authoritative_events
+    request = {
+        "version": 1,
+        "source": source,
+        "destination": "implement",
+        "breaker_verdict": breaker_verdict,
+    }
+    request_bytes = control._canonical(request)[0]
+    events_bytes = control._canonical(list(prepared_events))[0]
+    breaker_verdict_bytes = control._canonical(breaker_verdict)[0]
+    return PreparedImplementEntry(
+        item_id=item_id,
+        source=source,
+        destination="implement",
+        operation_key=operation_key,
+        item_snapshot=item_snapshot,
+        log_snapshot=log_snapshot,
+        config=config,
+        cost_answer_snapshot=cost_answer_snapshot,
+        prerequisites=tuple(prerequisites),
+        replacements=tuple(replacements),
+        events=prepared_events,
+        replacement_item=replacement_item,
+        stage_event=stage_event,
+        breaker_verdict=breaker_verdict,
+        _request_bytes=request_bytes,
+        _events_bytes=events_bytes,
+        _breaker_verdict_bytes=breaker_verdict_bytes,
+    )
+
+
+def _operation_prerequisites(prepared):
+    prerequisites = list(prepared.prerequisites)
+    bound = {_snapshot_key(snapshot) for snapshot in prerequisites}
+    replacement_keys = {
+        _snapshot_key(before) for before, _after in prepared.replacements}
+    for snapshot in (prepared.config.file, prepared.cost_answer_snapshot):
+        key = _snapshot_key(snapshot)
+        if key not in bound and key not in replacement_keys:
+            prerequisites.append(snapshot)
+            bound.add(key)
+    return tuple(prerequisites)
+
+
+def commit_implement_entry(
+        prepared: PreparedImplementEntry
+        ) -> tuple[dict, dict, control.CommitReceipt]:
+    """Commit or adopt an exactly-once prepared implementation entry."""
+    if not isinstance(prepared, PreparedImplementEntry):
+        raise control.ControlRefusal("prepared implement entry is invalid")
+
+    replacements = prepared.replacements + (
+        (prepared.item_snapshot, prepared.replacement_item),)
+    request = _decode_canonical_value(
+        prepared._request_bytes, "request", dict)
+    events = _decode_canonical_value(
+        prepared._events_bytes, "events", list)
+    breaker_verdict = _decode_canonical_value(
+        prepared._breaker_verdict_bytes, "breaker verdict", dict)
+    receipt = control.commit_operation(
+        prepared.item_snapshot.root, prepared.item_id,
+        kind="implement-entry", key=prepared.operation_key,
+        request=request,
+        prerequisites=_operation_prerequisites(prepared),
+        replacements=replacements,
+        events=events,
+        log_snapshot=prepared.log_snapshot)
+    meta, _body = _decode_item_bytes(
+        prepared.replacement_item, prepared.item_id)
+    return meta, breaker_verdict, receipt
 
 
 def runs_assure(journeys=None, assurance=None):
@@ -552,9 +963,22 @@ def _gate_plan(repo, meta):
     _require_fresh_redesign_spec(repo, meta)
 
 
-def _gate_implement(repo, meta):
-    path = _artifact(repo, meta, "plan.md")
-    if not path.exists() or "- [ ]" not in _read_text_or_empty(path):
+_UNSUPPLIED = object()
+
+
+def _gate_implement(repo, meta, *, plan_bytes=_UNSUPPLIED):
+    if plan_bytes is _UNSUPPLIED:
+        path = _artifact(repo, meta, "plan.md")
+        valid = path.exists() and "- [ ]" in _read_text_or_empty(path)
+    else:
+        try:
+            plan_text = (plan_bytes.decode("utf-8", errors="strict")
+                         if plan_bytes is not None else "")
+        except (AttributeError, UnicodeError):
+            plan_text = ""
+        plan_text = plan_text.replace("\r\n", "\n").replace("\r", "\n")
+        valid = "- [ ]" in plan_text
+    if not valid:
         raise GateError("plan.md with at least one '- [ ]' task required")
 
 
@@ -618,9 +1042,19 @@ GATES = {
 
 
 def advance(repo, item_id, to, reason=None):
+    with control.item_lock(repo, item_id) as lock:
+        return _advance_locked(repo, item_id, to, reason, lock)
+
+
+def _advance_locked(repo, item_id, to, reason, lock):
     # Function-local: breaker imports cost, which imports machine. The
     # precedent is _validate_assurance_artifacts' local imports above.
     from . import breaker
+    control._validate_item_lock(lock, repo=repo, item_id=item_id)
+    if control._active_record(lock) is not None:
+        raise control.ControlRefusal(
+            "legacy advance refused while an active operation is pending "
+            "recovery")
     meta, body = items.load_item(repo, item_id)
     frm = meta["stage"]
     # One ordered rule, before the branch dispatch: the waiting-human
@@ -690,7 +1124,8 @@ def advance(repo, item_id, to, reason=None):
     event_data = {"from": frm, "to": to}
     if reason:
         event_data["reason"] = reason
-    logs.append_event(repo, item_id, "stage.advance", event_data)
+    logs.append_event(
+        repo, item_id, "stage.advance", event_data, _lock=lock)
     # Computed after the append so the verdict sees the edge this transition
     # just created. This post-mutation call must remain total: tolerant
     # logs.read_events_with_stats and cost.summarize skip hostile log entries;
@@ -705,7 +1140,9 @@ def advance(repo, item_id, to, reason=None):
     verdict = breaker.verdict(repo, item_id, meta, to, backlog=False)
     if verdict["fired"]:
         # Audit trail only — nothing ever counts or gates on this event.
-        logs.append_event(repo, item_id, "cost.breaker",
-                          {"rework_edges": verdict["rework_edges"],
-                           "threshold": verdict["threshold"]})
+        logs.append_event(
+            repo, item_id, "cost.breaker",
+            {"rework_edges": verdict["rework_edges"],
+             "threshold": verdict["threshold"]},
+            _lock=lock)
     return meta, verdict

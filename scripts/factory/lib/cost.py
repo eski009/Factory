@@ -80,6 +80,17 @@ def summarize(repo, item_id):
     items.load_item(repo, item_id)
     events, corrupt = logs.read_events_with_stats(repo, item_id)
     now = logs.now_stamp()
+    return summarize_events(item_id, events, now, corrupt)
+
+
+def summarize_events(item_id, events, now, corrupt_log_lines=0):
+    """Aggregate an already-captured event sequence at a frozen clock value.
+
+    This supplied-state entry point is pure: it never reads the item, log, or
+    clock. Callers are responsible for supplying the strict events captured at
+    their consistency boundary and the corrupt-line count from that capture.
+    """
+    corrupt = corrupt_log_lines
 
     stages = {}
     waiting = 0

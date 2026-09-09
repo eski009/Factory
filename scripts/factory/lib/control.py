@@ -18,6 +18,7 @@ import json
 import os
 import re
 import stat
+import subprocess
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -698,6 +699,24 @@ def _checkout_identity(checkout):
         os.close(fd)
 
 
+def _require_clean_checkout(checkout):
+    """Refuse dispatch from code state Git cannot reproduce exactly."""
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain=v1", "--untracked-files=all",
+             "--", ".", ":(exclude).factory/**"],
+            cwd=checkout, capture_output=True)
+    except (OSError, UnicodeError) as exc:
+        raise ControlRefusal(
+            "canonical implementation checkout cannot be inspected") from exc
+    if result.returncode != 0:
+        raise ControlRefusal(
+            "canonical implementation checkout cannot be inspected")
+    if result.stdout:
+        raise ControlRefusal(
+            "canonical implementation checkout is dirty")
+
+
 def _owner_token(owner_token):
     if owner_token is None:
         owner_token = os.environ.get("FACTORY_IMPLEMENTATION_OWNER")
@@ -853,6 +872,7 @@ def issue_ticket(repo, item_id, *, kind, key, owner_token,
 
     token, verified = _verify_owner(repo, item_id, owner_token)
     canonical_repo = safeio._resolve_root(repo)
+    _require_clean_checkout(verified.checkout)
     try:
         config_state.revalidate(config)
         safeio.revalidate(inputs)
@@ -896,6 +916,12 @@ def issue_ticket(repo, item_id, *, kind, key, owner_token,
 
     _preflight_namespace_component(canonical_repo, item_id, "tickets")
     with item_lock(canonical_repo, item_id) as lock:
+        try:
+            ownership.revalidate(verified)
+        except ownership.OwnershipError as exc:
+            raise ControlRefusal(
+                "implementation ownership changed during ticket issue") from exc
+        _require_clean_checkout(verified.checkout)
         tickets_pin = _pin_directory(
             lock._control_fd, "tickets", create=True)
         ticket_pin = None
@@ -1093,6 +1119,8 @@ def _operation_identity(intent):
         "replacements": intent["replacements"],
         "events": events,
     }
+    if "log_snapshot" in intent:
+        identity["log_snapshot"] = intent["log_snapshot"]
     return _digest_bytes(_canonical(identity)[0])
 
 
@@ -1102,7 +1130,7 @@ def _require_intent_record_limit(data):
 
 
 def _build_intent(repo, item_id, kind, key, request, prerequisites,
-                  replacements, events):
+                  replacements, events, log_snapshot=None):
     canonical_repo = safeio._resolve_root(repo)
     if type(kind) is not str or not kind or type(key) is not str or not key:
         raise ControlRefusal("operation kind and key are required")
@@ -1118,6 +1146,18 @@ def _build_intent(repo, item_id, kind, key, request, prerequisites,
     replacement_records = []
     prerequisite_keys = set()
     replacement_keys = set()
+    log_record = None
+    if log_snapshot is not None:
+        if not isinstance(
+                log_snapshot, (safeio.FileSnapshot, safeio.MissingSnapshot)):
+            raise ControlRefusal("operation log snapshot is invalid")
+        log_record = _snapshot_record(log_snapshot)
+        _validate_snapshot_record(log_record, expected_repo=canonical_repo)
+        expected_log = f".factory/items/{item_id}/log.jsonl"
+        if (log_record["root"] != str(canonical_repo) or
+                log_record["relative"] != expected_log):
+            raise ControlRefusal("operation log snapshot path is invalid")
+        _collect_snapshot_blob(log_snapshot, blobs)
     for snapshot in prerequisites:
         record = _snapshot_record(snapshot)
         _validate_snapshot_record(record, expected_repo=canonical_repo)
@@ -1156,6 +1196,11 @@ def _build_intent(repo, item_id, kind, key, request, prerequisites,
             "after_sha256": after_digest,
             "after_blob": after_digest,
         })
+    if log_record is not None:
+        log_key = _snapshot_key(log_record)
+        if log_key in prerequisite_keys or log_key in replacement_keys:
+            raise ControlRefusal(
+                "operation log snapshot overlaps another snapshot")
     _validate_operation_blobs(blobs)
     intent = {
         "version": 1,
@@ -1168,6 +1213,8 @@ def _build_intent(repo, item_id, kind, key, request, prerequisites,
         "replacements": replacement_records,
         "events": events,
     }
+    if log_record is not None:
+        intent["log_snapshot"] = log_record
     operation_id = _operation_identity(intent)
     intent["operation_id"] = operation_id
     intent["events"] = [
@@ -1185,9 +1232,10 @@ def _build_intent(repo, item_id, kind, key, request, prerequisites,
 def _validate_intent(intent, *, expected_repo=None):
     errors = validate(
         intent, initrepo.load_schema("control-intent"), "intent")
-    expected = {"version", "operation_id", "item", "kind", "key",
+    required = {"version", "operation_id", "item", "kind", "key",
                 "request_sha256", "prerequisites", "replacements", "events"}
-    if (errors or type(intent) is not dict or set(intent) != expected or
+    if (errors or type(intent) is not dict or
+            set(intent) not in (required, required | {"log_snapshot"}) or
             intent.get("version") != 1 or
             not _valid_digest(intent.get("operation_id")) or
             not _valid_digest(intent.get("request_sha256")) or
@@ -1220,6 +1268,15 @@ def _validate_intent(intent, *, expected_repo=None):
         if key_tuple in replacement_keys or key_tuple in prerequisite_keys:
             raise ControlRefusal("operation intent is invalid")
         replacement_keys.add(key_tuple)
+    if "log_snapshot" in intent:
+        record = intent["log_snapshot"]
+        _validate_snapshot_record(record, expected_repo=expected_repo)
+        expected_log = f".factory/items/{intent['item']}/log.jsonl"
+        key_tuple = _snapshot_key(record)
+        if (record["relative"] != expected_log or
+                key_tuple in prerequisite_keys or
+                key_tuple in replacement_keys):
+            raise ControlRefusal("operation intent is invalid")
     event_encodings = set()
     for event in intent["events"]:
         if (type(event) is not dict or
@@ -1286,13 +1343,8 @@ def _scan_operation_conflicts(operations_fd, expected, repo):
     return own_found
 
 
-def _strict_log_image_at(item_fd, *, sync=False):
-    """Return the fully validated authoritative log and its exact byte size."""
-    result = _read_optional_bytes(
-        item_fd, "log.jsonl", limit=_LOG_IMAGE_LIMIT, sync=sync)
-    if result is None:
-        return [], 0
-    raw = result[0]
+def _parse_strict_log(raw):
+    """Parse one already captured, complete authoritative log image."""
     if raw and not raw.endswith(b"\n"):
         raise ControlRefusal("item log is missing its final newline")
     try:
@@ -1323,6 +1375,22 @@ def _strict_log_image_at(item_fd, *, sync=False):
                 raise ControlRefusal("item log contains a duplicate operation event")
             seen.add(identity)
         events.append(event)
+    return events
+
+
+def _strict_log_bytes_at(item_fd, *, sync=False):
+    """Return one fully validated, descriptor-relative log byte image."""
+    result = _read_optional_bytes(
+        item_fd, "log.jsonl", limit=_LOG_IMAGE_LIMIT, sync=sync)
+    raw = b"" if result is None else result[0]
+    _parse_strict_log(raw)
+    return raw
+
+
+def _strict_log_image_at(item_fd, *, sync=False):
+    """Return the fully validated authoritative log and its exact byte size."""
+    raw = _strict_log_bytes_at(item_fd, sync=sync)
+    events = _parse_strict_log(raw)
     return events, len(raw)
 
 
@@ -1346,6 +1414,35 @@ def _event_prefix(events, intended, operation_id):
     return len(existing)
 
 
+def _authorized_log_prefix_at(item_fd, intent, blobs, *, sync=False):
+    """Validate the exact captured log plus this operation's event prefix."""
+    record = intent.get("log_snapshot")
+    if record is None:
+        events, size = _strict_log_image_at(item_fd, sync=sync)
+        return _event_prefix(
+            events, intent["events"], intent["operation_id"]), size
+
+    if record["state"] == "file":
+        try:
+            captured = blobs[record["blob"]]
+        except KeyError as exc:
+            raise ControlRefusal("operation log snapshot blob is missing") from exc
+    else:
+        captured = b""
+    raw = _strict_log_bytes_at(item_fd, sync=sync)
+    candidate = captured
+    if raw == candidate:
+        return 0, len(raw)
+    from . import logs
+    for index, event in enumerate(intent["events"]):
+        candidate += logs._entry_bytes(event)
+        if raw == candidate:
+            return index + 1, len(raw)
+        if len(candidate) > len(raw):
+            break
+    raise ControlRefusal("item log changed outside the prepared operation")
+
+
 def _preflight_log_capacity_at(item_fd, intended, operation_id):
     """Refuse before effects when all missing event lines cannot fit."""
     events, current_size = _strict_log_image_at(item_fd)
@@ -1363,8 +1460,28 @@ def _preflight_log_capacity(lock, intended, operation_id):
         lock._item_fd, intended, operation_id)
 
 
+def _preflight_intent_log_capacity_at(item_fd, intent, blobs, *, sync=False):
+    prefix, current_size = _authorized_log_prefix_at(
+        item_fd, intent, blobs, sync=sync)
+    from . import logs
+    missing_size = sum(
+        len(logs._entry_bytes(event))
+        for event in intent["events"][prefix:])
+    if current_size + missing_size > _LOG_IMAGE_LIMIT:
+        raise ControlRefusal("item log image exceeds its read limit")
+    return prefix
+
+
+def _preflight_intent_log_capacity(lock, intent, blobs, *, sync=False):
+    return _preflight_intent_log_capacity_at(
+        lock._item_fd, intent, blobs, sync=sync)
+
+
 def _load_blobs(blobs_pin, intent, *, sync=False):
     digests = []
+    log_record = intent.get("log_snapshot")
+    if log_record is not None and log_record["state"] == "file":
+        digests.append(log_record["blob"])
     for record in intent["prerequisites"]:
         if record["state"] == "file":
             digests.append(record["blob"])
@@ -1734,10 +1851,9 @@ def _verify_effects(lock, operation_pin, intent, blobs, repo, *, sync=False):
                 isinstance(before, safeio.FileSnapshot) and
                 after == before.data and state == "before")):
             raise ControlRefusal("committed replacement no longer matches")
-    events = _strict_log(lock, sync=sync)
-    if _event_prefix(
-            events, intent["events"], intent["operation_id"]) != len(
-                intent["events"]):
+    prefix, _size = _authorized_log_prefix_at(
+        lock._item_fd, intent, blobs, sync=sync)
+    if prefix != len(intent["events"]):
         raise ControlRefusal("committed operation event is missing")
 
 
@@ -1798,8 +1914,7 @@ def _settle_locked(lock, pins, intent, intent_identity, active_identity):
     else:
         # A malformed or unterminated authoritative log refuses before any
         # replacement effect, including during active recovery.
-        _preflight_log_capacity(
-            lock, intent["events"], intent["operation_id"])
+        _preflight_intent_log_capacity(lock, intent, blobs)
         for record in intent["prerequisites"]:
             snapshot = _snapshot_from_record(
                 record, blobs, expected_repo=repo)
@@ -1851,8 +1966,7 @@ def _settle_locked(lock, pins, intent, intent_identity, active_identity):
                     "operation replacement authority is missing")
             _after_replacement(index)
             _validate_pins(lock, *pins)
-        prefix = _preflight_log_capacity(
-            lock, intent["events"], intent["operation_id"])
+        prefix = _preflight_intent_log_capacity(lock, intent, blobs)
         from . import logs
         for index in range(prefix, len(intent["events"])):
             logs._append_entry_locked(
@@ -1860,9 +1974,9 @@ def _settle_locked(lock, pins, intent, intent_identity, active_identity):
                 _operation_id=intent["operation_id"])
             _after_event(index)
             _validate_pins(lock, *pins)
-        if _event_prefix(
-                _strict_log(lock), intent["events"],
-                intent["operation_id"]) != len(intent["events"]):
+        completed, _size = _authorized_log_prefix_at(
+            lock._item_fd, intent, blobs)
+        if completed != len(intent["events"]):
             raise ControlRefusal("operation events could not be verified")
         commit = _expected_commit(intent)
         commit_bytes, commit = _canonical(commit)
@@ -1986,8 +2100,7 @@ def _read_only_operation_preflight(repo, item_id, intent, blobs):
         for component in (".factory", "items", item_id):
             safeio._append_directory(chain, component)
         safeio._validate_chain(chain)
-        _preflight_log_capacity_at(
-            chain[-1].fd, intent["events"], intent["operation_id"])
+        _preflight_intent_log_capacity_at(chain[-1].fd, intent, blobs)
 
         control_pin = _optional_pin_directory(chain[-1].fd, "control")
         if control_pin is not None:
@@ -2017,16 +2130,17 @@ def _read_only_operation_preflight(repo, item_id, intent, blobs):
 def _initial_preflight(lock, intent, blobs):
     _reject_overlapping_missing_tails(intent, blobs, lock.repo)
     _preflight_snapshots(intent, blobs, lock.repo)
-    _preflight_log_capacity(
-        lock, intent["events"], intent["operation_id"])
+    _preflight_intent_log_capacity(lock, intent, blobs)
 
 
 def commit_operation(repo, item_id, *, kind, key, request,
-                     prerequisites=(), replacements=(), events=()):
+                     prerequisites=(), replacements=(), events=(),
+                     log_snapshot=None):
     """Commit, resume, or adopt one canonical crash-recoverable operation."""
     item_id = _component(item_id, "item id")
     intent, intent_bytes, blobs = _build_intent(
-        repo, item_id, kind, key, request, prerequisites, replacements, events)
+        repo, item_id, kind, key, request, prerequisites, replacements, events,
+        log_snapshot)
     canonical_repo = safeio._resolve_root(repo)
     # This is a request-structural refusal: evaluate it before the read-only
     # namespace preflight and, critically, before item_lock can create
@@ -2048,8 +2162,7 @@ def commit_operation(repo, item_id, *, kind, key, request,
             # append.  Refuse predictable capacity failure before creating the
             # operations namespace, publishing WAL intent/active, or applying
             # any replacement effect.
-            _preflight_log_capacity(
-                lock, intent["events"], intent["operation_id"])
+            _preflight_intent_log_capacity(lock, intent, blobs)
             if active is not None:
                 active_value, active_identity = active
                 operations_pin = _optional_pin_directory(
