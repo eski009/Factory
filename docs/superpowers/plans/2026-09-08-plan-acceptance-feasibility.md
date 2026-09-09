@@ -4,6 +4,34 @@
 > **Review:** each task gets a fresh independent review, with at most three
 > review/revise iterations. A third rejection parks the branch unmerged.
 
+## Precursor resolution — 2026-09-09
+
+The previous plan was parked after review 3 because its five prerequisite
+boundaries were missing. That park is resolved by the landed precursor commits
+`2923c30`, `c485165`, and `90a0484`; the previous review and rejection record
+remains historical evidence, not an approval of the revised 0036 implementation.
+The precursor full suite and whole-feature review passed as reported in the
+engineering handoff. Implementation of this revised plan still needs its own
+tests and reviews.
+
+Reuse `config_state`, `safeio`, `control`, and the prepared implementation-entry
+API in `machine`; do not recreate snapshot, ticket, WAL, recovery, or guarded
+replacement machinery. The resolved boundaries are:
+
+1. Transition validation is repository-only and feeds prepared implementation
+   entry. Canonical checkout validation belongs to dispatch after ownership and
+   ticket issuance, never to the pre-checkout plan transition.
+2. A durable owner-bound control ticket transports validated bytes and snapshot
+   authority across processes. Finalization is a separate control operation.
+3. Capture config once for selection, reconstruct from those bytes, and
+   revalidate that same file after ownership and before launch. Any change
+   refuses; it never switches execution mode.
+4. Scope inspection covers complete Git-observable committed, index, worktree,
+   and untracked paths. Transient restored uncommitted writes are excluded.
+5. Rework is one prepared implementation operation keyed by source stage,
+   authoritative artifact digest, and ordered finding ids, committing plan and
+   acceptance replacements plus rejection and stage events in one WAL transaction.
+
 ## Goal and boundary
 
 Implement item 0036 as the mechanically testable union of retrospective FH-01
@@ -193,18 +221,21 @@ class PlanSnapshot:
     acceptance: dict
     pending_tasks: tuple[str, ...]
     pending_task_markers: tuple
-    namespace_identities: tuple
-    checkout_baseline: object | None
+    inputs: tuple  # safeio snapshots; repository-only, process-local
 
-def inspect(repo, item_id, *, dispatch=False, checkout=None) -> dict: ...
-def require(repo, item_id, *, dispatch=False, checkout=None) -> PlanSnapshot | None: ...
-def revalidate(snapshot) -> None: ...
+def inspect(repo, item_id, *, config) -> dict: ...
+def require(repo, item_id, *, config) -> PlanSnapshot | None: ...
 def worker_handoff(snapshot, *, tasks=None) -> str: ...
-def inspect_worker_scope(snapshot, checkout) -> dict: ...
-def finalize_tasks(snapshot, checkout) -> None: ...
+def prepare_dispatch(repo, item_id, *, config, owner_token, key, tasks=None): ...
+def inspect_worker_scope(ticket) -> dict: ...
+def finalize_tasks(repo, item_id, *, ticket_id, owner_token): ...
+def prepare_rework_entry(repo, item_id, *, config, source, source_snapshot,
+                         finding_ids, plan_proposal, acceptance_proposal): ...
 ```
 
-`require` strict-reads and validates config first. It returns `None` only for a
+`require` consumes the selection snapshot from `config_state.capture`,
+reconstructs its value from captured bytes (as the precursor does), and
+revalidates that same snapshot; it never captures a second config. It returns `None` only for a
 valid config that omits `feasibility`; otherwise it returns one immutable
 snapshot or raises. `inspect` exposes only deterministic JSON-safe report
 fields: status (`disabled|pass|fail`), item, hashes, cursor, current-worker
@@ -215,11 +246,14 @@ Validation rules:
 
 1. Securely read config, item metadata, `spec.md`, `plan.md`,
    `acceptance.json`, and referenced dependency metadata from the canonical
-   repository namespace. Walk every component using descriptor-relative
+   repository namespace using `safeio.snapshot_many`/`snapshot_path` and
+   `safeio.revalidate`, retaining their bounded descriptor-relative guarantees.
+   Reuse their implementation rather than adding another filesystem layer.
+   They walk every component using descriptor-relative
    `openat`, `O_NOFOLLOW`, and `O_DIRECTORY`; open leaves with
    `O_NONBLOCK|O_NOFOLLOW`, require regular-file `fstat`, read at most 1 MiB,
-   and decode strict UTF-8. Record directory/file
-   `(device,inode,size,mtime_ns,ctime_ns)`. Reopen the complete chain by name
+   and the feasibility adapter decodes strict UTF-8. Retain the precursor's
+   directory/file identity records. Reopen the complete chain by name
    and compare identities after the cross-file snapshot; reject replacement,
    detached/replaced ancestors, in-place mutation, short read, FIFO/device,
    symlink, duplicate JSON keys, or invalid bytes. Reads never create or
@@ -229,8 +263,8 @@ Validation rules:
    raises; it cannot silently disable feasibility. Compatibility is promised
    for valid disabled configurations only.
 3. Validate the closed acceptance schema, requested item id, exact spec hash,
-   normalized plan-structure hash, and the fixed resume strategy. Transition
-   and dispatch modes both require an unchecked task: a rejecting stage must
+   normalized plan-structure hash, and the fixed resume strategy. Repository
+   transition validation and checkout-bound dispatch both require an unchecked task: a rejecting stage must
    prepare rework before it can return the item to implementation. The report
    derives the first task or `COMPLETE`; no producer stores that value and no
    prose scoring occurs.
@@ -282,47 +316,64 @@ one owner and component tests passes.
 For enabled mode, no implementation consumer independently rereads `plan.md`,
 `spec.md`, or `acceptance.json` after validation:
 
-- `require(..., dispatch=True, checkout=canonical_worktree)` runs inside the
-  held 0020 ownership lifetime and returns exact validated bytes, ordered
-  unchecked task texts and marker byte ranges, namespace identities, a clean
-  checkout baseline, and a handoff limited to the current item's owned paths.
-  `revalidate(snapshot)` immediately precedes attempt creation and backend
-  launch. If a pathname changes afterward, the worker still consumes immutable
-  snapshot bytes, never the new revision.
+- Capture config once before selecting enabled/disabled execution. Reconstruct
+  selection from its bytes, not a mutable parsed dict. Enabled dispatch obtains
+  the existing ownership claim, revalidates that config, and calls
+  `prepare_dispatch`, which validates repository inputs and issues a
+  `control.issue_ticket` with that config and those `safeio` input snapshots.
+  Ticket issuance requires the owner's canonical, unambiguous clean checkout.
+  Bind recorded HEAD, ordered task texts/marker ranges, and task selection in
+  ticket metadata; validate source paths against that checkout only here.
+  Return a ticket id and handoff; never treat a Python object or report as
+  cross-process authority. `control.load_ticket(..., owner_token=...)`
+  reconstructs exact captured bytes and validates ownership in later processes.
+  Revalidate the ticket and clean baseline immediately before attempt creation
+  and again before backend launch. A change refuses without mode switching.
+  Once launched, workers consume the immutable ticket inputs.
 - `worker_handoff` includes exact plan/spec, current task(s), current owner's
   paths, provider/interface graph, shared gates, revision, and cursor. Joint
   ownership never grants this worker another participant's paths.
 - Enabled dispatch requires the implementation checkout to start at the
   recorded HEAD with a clean index, worktree, and untracked set. After a
   headless backend returns, `inspect_worker_scope` requires the baseline HEAD
-  to remain an ancestor and inventories every touched path, including paths
-  later reverted. It walks every intervening commit, diffs it against every
+  to remain an ancestor and inventories all Git-observable paths, including
+  committed changes later reverted. It walks every intervening commit, diffs it against every
   parent with NUL-delimited `--name-status -z -M -C`, and unions both old and
   new names for renames/copies; it also unions the final index diff, worktree
   diff, and untracked files. A merge commit is inspected against every parent.
   Non-zero Git status, malformed records, undecodable paths, history rewrite,
   a dirty final checkout, or a path outside the current participant's owned
-  prefixes fails closed. The result records the complete touched-path set and
+  prefixes fails closed. This covers committed/index/worktree/untracked paths;
+  it explicitly excludes transient uncommitted writes restored before inspection.
+  It is not active write enforcement. The result records that observable path set and
   one stable non-retryable reason: `scope_inspection_failed`, `history_rewrite`,
   `dirty_checkout`, or `scope_violation`.
 - Successful headless completion never calls legacy `_tick_plan`. After the
   backend, tests, result write, and scope inspection pass, `finalize_tasks`
-  revalidates every config/spec/plan/acceptance/dependency identity in the
-  original snapshot. It constructs replacement bytes only from
-  `snapshot.plan_bytes`, changing only the exact `[ ]` markers captured for
-  the dispatched tasks. It writes through the already validated item
-  directory using a no-follow exclusive temporary regular file, `fsync`s the
-  file and directory, checks the canonical plan still has the snapshotted
-  identity, atomically replaces it, and verifies the canonical namespace now
-  names the expected bytes. Only then may `implement.completed` be logged.
-  Any concurrent artifact or ancestor change writes no plan byte and no
+  loads the durable ticket under its owner and constructs replacement bytes
+  only from ticket plan bytes and captured marker ranges. It submits its own
+  `control.commit_operation`, keyed by ticket id plus ordered task selection,
+  binding config/spec/acceptance/dependencies and ticket authority as prerequisites,
+  the captured plan snapshot as the replacement preimage, and an exact current
+  log snapshot. Marker replacement and the applicable completion event share
+  this WAL operation; emit `implement.completed` only at the existing completion
+  boundary, never for an intermediate task. Bind successful result/review evidence
+  into the request/prerequisites before committing. Use existing guarded
+  replacements, immutable intents/blobs/receipts, exact log-prefix authority,
+  and recovery. Do not implement another rename protocol.
+  A pre-activation concurrent artifact or ancestor change writes no plan byte and no
   completion event; it preserves worker commits/result evidence and returns
-  exit 2 with the non-retryable reason `concurrent_plan_change`.
-- The in-process skill runs `factory plan-check ITEM --dispatch --worktree PATH
-  --json` immediately before every implementer or fix dispatch while the outer
-  claim is held. It passes only that returned handoff/task to the fresh worker.
-  After independent review, it performs the same snapshot-guarded marker-only
-  finalization for that task. The next check derives its cursor from the next
+  exit 2 with the non-retryable reason `concurrent_plan_change`. After WAL
+  activation, interruptions recover the same operation to settlement or retain
+  a recovery conflict; do not promise rollback or zero partial effects.
+  On a lost completion reply, recover/adopt the durable operation and receipt
+  before trying to load pre-finalization inputs, whose plan is now obsolete.
+- The in-process skill uses a mutating `plan-dispatch` adapter while the outer
+  claim is held, immediately before every implementer or fix dispatch. It passes
+  the returned handoff/task and ticket id to the worker lifecycle. After review,
+  a separate `plan-finalize --ticket ID` adapter executes the control operation.
+  Both authenticate through existing owner-token plumbing without exposing tokens
+  in reports or handoffs. The next ticket derives its cursor from the next
   unchecked task. A structural contract change between tasks therefore refuses
   before a second dispatch.
 
@@ -338,14 +389,26 @@ exit codes, logs, and result bytes follow the existing branch byte-for-byte.
 ## Engine and CLI integration
 
 - Add `"feasibility"` to the config schema enum, not the default.
-- In `machine.advance`, for every destination `implement`, strict config
-  inspection and enabled `require(..., dispatch=True)` happen before breaker
-  actions, metadata writes, or event appends. This covers normal plan exit,
-  review/verify/assure re-entry, and special-stage resume. Convert
-  `FeasibilityError` to `GateError`; preserve exit 2 and zero mutation.
-- Add read-only `factory plan-check ITEM [--dispatch] [--worktree PATH]
-  [--json]`. Text failures go to stderr; JSON always emits the report. Return 0
-  for disabled/pass and 2 for fail. Snapshot the whole repo to prove no writes.
+- In `machine.advance`, capture one strict config before every destination
+  `implement`. Valid disabled config keeps the legacy branch. Enabled config
+  runs repository-only `require`, passes its exact input snapshots and the same
+  config into `machine.prepare_implement_entry`, and commits that prepared
+  operation. No checkout is consulted here. Convert `FeasibilityError` and
+  `ControlRefusal` to `GateError`; preserve exit 2 and zero pre-activation
+  mutation. This covers normal plan exit and already-prepared rework/resume.
+- Add read-only `factory plan-check ITEM [--json]`. Text failures go to stderr;
+  JSON always emits the report. Return 0 for disabled/pass and 2 for fail.
+  Snapshot the whole repo to prove no writes. Add mutating owner-authenticated
+  `plan-dispatch ITEM [--task N] --json` and `plan-finalize ITEM --ticket ID`
+  adapters over durable tickets/control operations; neither emits an owner
+  token. Add `plan-rework ITEM --source <review|verify|assure>
+  --source-file PATH --finding ID... --plan-proposal PATH
+  --acceptance-proposal PATH`: it verifies the source artifact and proposal
+  snapshots, derives the stable operation key from source stage + source digest
+  + ordered finding ids, and calls `prepare_rework_entry` so proposal
+  replacements, rejection evidence, stage entry, and breaker event settle as
+  one prepared WAL operation. Proposal paths are read-only inputs and never
+  become authoritative files themselves.
 - Refactor enabled `work.run_work` so it acquires ownership before reading plan
   inputs, calls `require` inside the claim, builds the brief exclusively from
   the snapshot, revalidates immediately before attempt/backend launch, and
@@ -367,7 +430,7 @@ contract-first branch instead of its transcription-only “complete code” rule
 The plan freezes interfaces, decisions, task boundaries, commands, and
 acceptance links, but does not prescribe every implementation line. It writes
 the sidecar, hashes spec and normalized plan structure, declares the derived
-cursor strategy, and requires `plan-check --dispatch` before advance. No length
+cursor strategy, and requires repository-only `plan-check` before advance. No length
 cap or subjective compactness score exists. Disabled mode retains the old
 contract.
 
@@ -376,23 +439,29 @@ It never invents rework on entry. An interrupted implementation resumes its
 existing unchecked tasks; a completed plan is not dispatchable.
 
 The stage that rejects an implementation owns rework preparation, in this
-strict order, before `advance ... implement`:
+strict order, before the atomic `plan-rework` adapter:
 
 1. Persist its authoritative finding artifact: review uses the blocking
    findings in `reviews/synthesis.md`; verify uses the exact failing
    commands/results/remedies in `verify.md`; assure uses only scenarios with a
    final `regression` verdict in `assurance/verdicts.json` (and the evidence
    paths those entries cite).
-2. Append one bounded unchecked implementation task per accepted finding to
-   `plan.md`, each naming its source artifact and finding/scenario id. Do not
+2. Produce proposed plan bytes with one bounded unchecked implementation task
+   per accepted finding, each naming its source artifact and finding/scenario
+   id. Do not mutate canonical `plan.md`, and do not propose a task
    append for an interrupted implementation, an assurance ambiguity/blocker,
    or a design-level rejection routed to spec.
-3. Refresh `plan_structure_sha256` and `revision`: the reason names the source
-   stage and SHA-256 of its authoritative artifact; `changed_sections` names
-   only the affected contract surfaces. The cursor remains the derived
-   strategy and automatically points to the first appended task.
-4. Run `factory plan-check ITEM --dispatch --worktree PATH`; only after it
-   passes may the stage log its rejection and advance to implementation.
+3. Produce proposed acceptance bytes with the refreshed
+   `plan_structure_sha256` and `revision`: the reason names the source stage and
+   SHA-256 of its authoritative artifact; `changed_sections` names only the
+   affected contract surfaces. The cursor remains the derived strategy and
+   automatically points to the first proposed task. Do not mutate canonical
+   `acceptance.json`.
+4. Invoke `plan-rework` with both proposal files and the ordered finding ids.
+   The adapter validates their prospective graph, then commits both canonical
+   replacements, the rejection event, the implementation entry, and any
+   breaker event as one recoverable operation. A repeated invocation adopts
+   the same receipt; different proposal bytes under the same key conflict.
 
 This ordering is added to `factory-review`, `factory-verify`, and
 `factory-assure`, with executable fixtures for each re-entry. It ensures both
@@ -416,16 +485,18 @@ history.
 - [ ] Prove config/artifact/dependency symlink, FIFO/device, source-path escape,
   invalid UTF-8, duplicate keys, oversize input, in-place mutation, cross-file
   replacement, ancestor detachment, and safe not-yet-created-tail behavior.
-- [ ] Implement deterministic reports, immutable snapshots, revalidation,
-  handoff, checkout baselines, complete scope inspection, and guarded task
-  finalization. Run
+- [ ] Implement deterministic reports, immutable repository snapshots, graph
+  validation, derived cursors, and owner-limited handoff construction by
+  composing `config_state` and `safeio`; do not implement checkout baselines,
+  tickets, scope inspection, or finalization in this task. Run
   `python3 -m unittest tests.test_feasibility -v` and `git diff --check`.
 - [ ] Fresh independent Task 1 review; at most three iterations. Commit on PASS
   as `feat: add plan feasibility snapshots`.
 
 ## Task 2 — Transition, CLI, and headless enforcement
 
-**Files:** modify `schemas/config.schema.json`,
+**Files:** extend `scripts/factory/lib/feasibility.py`; modify
+`schemas/config.schema.json`,
 `scripts/factory/lib/initrepo.py`, `scripts/factory/lib/machine.py`,
 `scripts/factory/lib/work.py`, and `scripts/factory/factory.py`; create
 `tests/test_plan_feasibility_gate.py`; extend `tests/test_work.py`,
@@ -437,8 +508,9 @@ history.
 - [ ] Prove valid enabled entry and zero-mutation refusal for ordinary,
   review/verify/assure, and waiting-human implementation entries; enabled entry
   with no unchecked task refuses.
-- [ ] Test plan-check text/JSON, dispatch/worktree, not-a-repo, hostile config,
-  and read-only behavior; handoff exposes only current owner scope.
+- [ ] Test plan-check text/JSON, not-a-repo, hostile config,
+  and read-only behavior; test owner-authenticated plan-dispatch/finalize and
+  plan-rework separately; handoff exposes only current owner scope and no token.
 - [ ] Instrument headless ownership, snapshot, baseline, revalidation, attempt,
   brief, backend, result, scope check, guarded finalization, events, and release.
   Test both pre-launch replacement windows; post-backend concurrent plan change;
@@ -446,6 +518,10 @@ history.
   index/worktree/untracked files; history rewrite; Git inspection failure; and
   release. All safety refusals preserve diagnostics, suppress ticks/completion,
   return exit 2, and are classified non-retryable.
+- [ ] Prove rework proposal validation and one-operation settlement for review,
+  verify, and assure, including retry/recovery at every WAL boundary, source
+  digest/finding-id idempotency, conflicting proposals, and zero canonical
+  mutation before activation.
 - [ ] Run `python3 -m unittest tests.test_plan_feasibility_gate tests.test_work
   tests.test_cli tests.test_initrepo tests.test_default_path_invariance -v`
   and `git diff --check`.
@@ -464,7 +540,7 @@ reference; add `skills/capabilities/references/plan-feasibility.md`; extend
 - [ ] Document the sidecar, opt-in migration, normalized hash/derived-cursor,
   declared-versus-proven boundary, owner-limited handoff, delivery graphs, and
   contract-first compact-plan branch.
-- [ ] Pin plan-check immediately before every held-ownership dispatch, guarded
+- [ ] Pin plan-dispatch immediately before every held-ownership dispatch, guarded
   marker finalization, non-retryable safety refusal handling, and no
   runtime-proof claim.
 - [ ] Use executable coherence fixtures to show compact enabled plans reach
