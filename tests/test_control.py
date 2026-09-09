@@ -557,7 +557,7 @@ class OperationTest(ControlFixture):
 
         log_path.unlink()
         authority = next((self.item_dir / "control/operations").glob(
-            "*/log-00000000.authority"))
+            "*/log-00000000.authority-*"))
         os.link(authority, log_path)
         recovered = control.recover_pending(self.repo, self.item)
         self.assertTrue(recovered.recovered)
@@ -584,13 +584,81 @@ class OperationTest(ControlFixture):
 
         self.assertFalse((self.item_dir / "log.jsonl").exists())
         authority = next((self.item_dir / "control/operations").glob(
-            "*/log-00000000.authority"))
+            "*/log-00000000.authority-*"))
         self.assertTrue(authority.is_file())
         recovered = control.recover_pending(self.repo, self.item)
         self.assertTrue(recovered.recovered)
         self.assertEqual(
             (self.item_dir / "log.jsonl").stat().st_ino,
             authority.stat().st_ino)
+
+    def test_each_event_append_revalidates_the_previous_log_inode(self):
+        snapshot = safeio.snapshot_path(
+            self.repo, f".factory/items/{self.item}/log.jsonl",
+            allow_missing=True)
+        args = dict(
+            kind="test.log-authority", key="between-events", request={},
+            events=(
+                {"event": "control.first", "ts": "2026-09-09T16:23:00Z"},
+                {"event": "control.second", "ts": "2026-09-09T16:23:01Z"},
+            ),
+            log_snapshot=snapshot,
+        )
+        intent, _intent_bytes, _blobs = control._build_intent(
+            self.repo, self.item, args["kind"], args["key"],
+            args["request"], (), (), args["events"], args["log_snapshot"])
+        log_path = self.item_dir / "log.jsonl"
+
+        def substitute_after_first(index):
+            if index == 0:
+                replacement = self.item_dir / "replacement-log"
+                replacement.write_bytes(log_path.read_bytes())
+                replacement.replace(log_path)
+
+        with (mock.patch.object(
+                control, "_after_event",
+                side_effect=substitute_after_first),
+              self.assertRaisesRegex(
+                  control.ControlRefusal,
+                  "log identity authority conflicts")):
+            control.commit_operation(self.repo, self.item, **args)
+
+        self.assertEqual(
+            log_path.read_bytes(), logs._entry_bytes(intent["events"][0]))
+        self.assertTrue((self.item_dir / "control/active.json").is_file())
+
+    def test_preinstall_recovery_refuses_substituted_authority_inode(self):
+        snapshot = safeio.snapshot_path(
+            self.repo, f".factory/items/{self.item}/log.jsonl",
+            allow_missing=True)
+        args = dict(
+            kind="test.log-authority", key="authority-substitution",
+            request={},
+            events=({
+                "event": "control.test", "ts": "2026-09-09T16:24:00Z",
+            },),
+            log_snapshot=snapshot,
+        )
+        with (mock.patch.object(
+                logs, "_after_log_authority_sync",
+                side_effect=RuntimeError("simulated pre-install crash")),
+              self.assertRaisesRegex(RuntimeError, "pre-install crash")):
+            control.commit_operation(self.repo, self.item, **args)
+
+        authority = next((self.item_dir / "control/operations").glob(
+            "*/log-00000000.authority-*"))
+        original_name = authority.name
+        replacement = authority.with_name("replacement-authority")
+        replacement.write_bytes(authority.read_bytes())
+        replacement.replace(authority)
+        self.assertEqual(authority.name, original_name)
+
+        with self.assertRaisesRegex(
+                control.ControlRefusal,
+                "log identity authority conflicts"):
+            control.recover_pending(self.repo, self.item)
+        self.assertFalse((self.item_dir / "log.jsonl").exists())
+        self.assertTrue((self.item_dir / "control/active.json").is_file())
 
     def test_log_capacity_refuses_before_operation_namespace_and_effects(self):
         log_path = self.item_dir / "log.jsonl"

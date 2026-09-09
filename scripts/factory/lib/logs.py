@@ -236,8 +236,12 @@ def _after_log_directory_sync():
     """Test seam after the installed namespace is durable."""
 
 
+_UNSUPPLIED_IDENTITY = object()
+
+
 def _append_entry_locked(lock, entry, *, _operation_id=None,
-                         _authority_fd=None, _authority_name=None):
+                         _authority_fd=None, _authority_index=None,
+                         _source_identity=_UNSUPPLIED_IDENTITY):
     """Publish one full old+new log image under a validated item lock.
 
     The authoritative inode is never modified in place.  Before installation,
@@ -248,11 +252,13 @@ def _append_entry_locked(lock, entry, *, _operation_id=None,
     from . import control
 
     control._validate_item_lock(lock)
-    if (_authority_fd is None) != (_authority_name is None):
+    if (_authority_fd is None) != (_authority_index is None):
         raise control.ControlRefusal(
             "transactional log authority is incomplete")
-    if _authority_name is not None:
-        control._component(_authority_name, "log authority name")
+    if (_authority_index is not None and
+            (type(_authority_index) is not int or _authority_index < 0)):
+        raise control.ControlRefusal(
+            "transactional log authority index is invalid")
     active = control._active_record(lock)
     if _operation_id is None:
         if active is not None:
@@ -281,6 +287,10 @@ def _append_entry_locked(lock, entry, *, _operation_id=None,
             if _file_identity(named) != old_identity:
                 raise control.ControlError("item log identity changed")
             old_mode = stat.S_IMODE(named.st_mode)
+        if (_source_identity is not _UNSUPPLIED_IDENTITY and
+                old_identity != _source_identity):
+            raise control.ControlRefusal(
+                "transactional log source identity changed")
     except OSError as exc:
         raise control.ControlError(
             "item log history could not be made durable") from exc
@@ -298,15 +308,19 @@ def _append_entry_locked(lock, entry, *, _operation_id=None,
     installed = False
     try:
         authority_reused = False
+        authority_name = None
         if _authority_fd is not None:
+            found = control._find_log_authority(
+                _authority_fd, _authority_index, image, sync=True)
+            if found is not None:
+                authority_name, _authority_identity = found
             try:
-                os.link(
-                    _authority_name, staging_name,
-                    src_dir_fd=_authority_fd, dst_dir_fd=lock._item_fd,
-                    follow_symlinks=False)
-                authority_reused = True
-            except FileNotFoundError:
-                pass
+                if authority_name is not None:
+                    os.link(
+                        authority_name, staging_name,
+                        src_dir_fd=_authority_fd, dst_dir_fd=lock._item_fd,
+                        follow_symlinks=False)
+                    authority_reused = True
             except OSError as exc:
                 raise control.ControlError(
                     "transactional log authority could not be staged") from exc
@@ -345,9 +359,11 @@ def _append_entry_locked(lock, entry, *, _operation_id=None,
 
         if _authority_fd is not None:
             if not authority_reused:
+                authority_name = control._log_authority_name(
+                    _authority_index, staging_inode)
                 try:
                     os.link(
-                        staging_name, _authority_name,
+                        staging_name, authority_name,
                         src_dir_fd=lock._item_fd,
                         dst_dir_fd=_authority_fd, follow_symlinks=False)
                 except FileExistsError:
@@ -356,8 +372,15 @@ def _append_entry_locked(lock, entry, *, _operation_id=None,
                     raise control.ControlError(
                         "transactional log authority could not be retained") from exc
                 os.fsync(_authority_fd)
-            authority_identity = _named_exact_identity(
-                _authority_fd, _authority_name, image)
+            found = control._find_log_authority(
+                _authority_fd, _authority_index, image, sync=True)
+            if found is None:
+                raise control.ControlRefusal(
+                    "transactional log authority is missing")
+            persisted_name, authority_identity = found
+            if persisted_name != authority_name:
+                raise control.ControlRefusal(
+                    "transactional log authority conflicts")
             cleanup_identity = _opened_named_exact_identity(
                 lock._item_fd, staging_name, staging_fd, image)
             if authority_identity[:2] != cleanup_identity[:2]:
@@ -400,8 +423,15 @@ def _append_entry_locked(lock, entry, *, _operation_id=None,
             raise control.ControlError(
                 "item log staging identity changed during install")
         if _authority_fd is not None:
-            authority_identity = _named_exact_identity(
-                _authority_fd, _authority_name, image)
+            found = control._find_log_authority(
+                _authority_fd, _authority_index, image, sync=True)
+            if found is None:
+                raise control.ControlRefusal(
+                    "transactional log authority is missing")
+            persisted_name, authority_identity = found
+            if persisted_name != authority_name:
+                raise control.ControlRefusal(
+                    "transactional log authority conflicts")
             if authority_identity[:2] != installed_identity[:2]:
                 raise control.ControlRefusal(
                     "transactional log authority conflicts")

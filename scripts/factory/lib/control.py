@@ -1425,34 +1425,74 @@ def _event_prefix(events, intended, operation_id):
     return len(existing)
 
 
-def _log_authority_name(index):
-    return f"log-{index:08d}.authority"
+def _log_authority_prefix(index):
+    return f"log-{index:08d}.authority-"
+
+
+def _log_authority_name(index, inode_identity):
+    device, inode = inode_identity
+    if (type(device) is not int or device < 0 or
+            type(inode) is not int or inode < 0):
+        raise ControlRefusal("operation log identity authority is invalid")
+    return f"{_log_authority_prefix(index)}{device}-{inode}"
+
+
+def _find_log_authority(operation_fd, index, expected, *, sync=False):
+    prefix = _log_authority_prefix(index)
+    try:
+        names = [name for name in os.listdir(operation_fd)
+                 if name.startswith(prefix)]
+    except OSError as exc:
+        raise ControlError(
+            "operation log identity authority cannot be inspected") from exc
+    if not names:
+        return None
+    if len(names) != 1:
+        raise ControlRefusal("operation log identity authority conflicts")
+    name = names[0]
+    suffix = name[len(prefix):].split("-")
+    if len(suffix) != 2 or not all(value.isdigit() for value in suffix):
+        raise ControlRefusal("operation log identity authority is invalid")
+    recorded_identity = tuple(int(value) for value in suffix)
+    try:
+        authority, authority_identity = _read_bytes_at(
+            operation_fd, name, limit=max(len(expected), 1), sync=sync)
+    except FileNotFoundError as exc:
+        raise ControlRefusal(
+            "operation log identity authority is missing") from exc
+    if (authority != expected or
+            authority_identity[:2] != recorded_identity):
+        raise ControlRefusal("operation log identity authority conflicts")
+    return name, authority_identity
 
 
 def _require_log_authority(operation_pin, index, expected, identity, *,
                            sync=False):
     if operation_pin is None:
         return
-    try:
-        authority, authority_identity = _read_bytes_at(
-            operation_pin.fd, _log_authority_name(index),
-            limit=max(len(expected), 1), sync=sync)
-    except FileNotFoundError as exc:
+    found = _find_log_authority(
+        operation_pin.fd, index, expected, sync=sync)
+    if found is None:
         raise ControlRefusal(
-            "operation log identity authority is missing") from exc
-    if (authority != expected or
-            authority_identity[:2] != identity[:2]):
+            "operation log identity authority is missing")
+    _name, authority_identity = found
+    if authority_identity[:2] != identity[:2]:
         raise ControlRefusal("operation log identity authority conflicts")
 
 
 def _authorized_log_prefix_at(item_fd, intent, blobs, *, sync=False,
-                              operation_pin=None):
+                              operation_pin=None, include_identity=False):
     """Validate the exact captured log plus this operation's event prefix."""
     record = intent.get("log_snapshot")
     if record is None:
         events, size = _strict_log_image_at(item_fd, sync=sync)
-        return _event_prefix(
-            events, intent["events"], intent["operation_id"]), size
+        result = (_event_prefix(
+            events, intent["events"], intent["operation_id"]), size)
+        if include_identity:
+            current = _read_optional_bytes(
+                item_fd, "log.jsonl", limit=_LOG_IMAGE_LIMIT, sync=sync)
+            return result + (None if current is None else current[1],)
+        return result
 
     if record["state"] == "file":
         try:
@@ -1475,7 +1515,9 @@ def _authorized_log_prefix_at(item_fd, intent, blobs, *, sync=False,
                 raise ControlRefusal("operation log snapshot identity changed")
         elif current is not None:
             raise ControlRefusal("operation missing log was created")
-        return 0, len(raw)
+        result = (0, len(raw))
+        return (result + (None if current is None else current[1],)
+                if include_identity else result)
     from . import logs
     for index, event in enumerate(intent["events"]):
         candidate += logs._entry_bytes(event)
@@ -1484,7 +1526,9 @@ def _authorized_log_prefix_at(item_fd, intent, blobs, *, sync=False,
                 raise ControlRefusal("operation log event identity is missing")
             _require_log_authority(
                 operation_pin, index, candidate, current[1], sync=sync)
-            return index + 1, len(raw)
+            result = (index + 1, len(raw))
+            return (result + (current[1],)
+                    if include_identity else result)
         if len(candidate) > len(raw):
             break
     raise ControlRefusal("item log changed outside the prepared operation")
@@ -2022,11 +2066,19 @@ def _settle_locked(lock, pins, intent, intent_identity, active_identity):
             lock, intent, blobs, operation_pin=operation_pin)
         from . import logs
         for index in range(prefix, len(intent["events"])):
+            current_prefix, _size, source_identity = (
+                _authorized_log_prefix_at(
+                    lock._item_fd, intent, blobs,
+                    operation_pin=operation_pin, include_identity=True))
+            if current_prefix != index:
+                raise ControlRefusal(
+                    "operation log changed between event appends")
             logs._append_entry_locked(
                 lock, intent["events"][index],
                 _operation_id=intent["operation_id"],
                 _authority_fd=operation_pin.fd,
-                _authority_name=_log_authority_name(index))
+                _authority_index=index,
+                _source_identity=source_identity)
             _after_event(index)
             _validate_pins(lock, *pins)
         completed, _size = _authorized_log_prefix_at(
