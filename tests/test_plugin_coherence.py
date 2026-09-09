@@ -4,9 +4,16 @@ Spec §2, §10.
 """
 
 import json
+import hashlib
 import re
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
+
+from scripts.factory.lib import (
+    config_state, feasibility, initrepo, items, logs, machine, ownership,
+    safeio, work)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -17,6 +24,101 @@ def skill_names():
 
 def read(p):
     return p.read_text(encoding="utf-8")
+
+
+FEASIBILITY_ITEM = "0001-feature"
+
+
+def feasibility_acceptance(spec, plan):
+    return {
+        "version": 1,
+        "item": FEASIBILITY_ITEM,
+        "spec_sha256": hashlib.sha256(spec).hexdigest(),
+        "plan_structure_sha256": feasibility.plan_structure_sha256(plan),
+        "revision": {
+            "reason": "Initial complete contract",
+            "changed_sections": ["initial"],
+        },
+        "resume_cursor": {"strategy": "first-unchecked-task"},
+        "participants": [{
+            "item": FEASIBILITY_ITEM, "owned_paths": ["src"],
+        }],
+        "dependencies": [],
+        "resources": [{
+            "id": "code", "kind": "path", "value": "src/feature.py",
+            "access": "modify", "provider": FEASIBILITY_ITEM,
+            "availability": "available",
+        }],
+        "interfaces": [],
+        "criteria": [{
+            "id": "AC-1", "statement": "Feature works",
+            "requires": ["code"], "tests": ["unit"],
+        }],
+        "tests": [{
+            "id": "unit", "purpose": "component",
+            "command": ["python3", "-m", "unittest"],
+            "covers": ["code"],
+        }],
+        "delivery": {
+            "mode": "solo", "participants": [FEASIBILITY_ITEM],
+            "merge_order": [FEASIBILITY_ITEM], "shared_gates": [],
+        },
+        "out_of_scope": ["runtime proof"],
+    }
+
+
+def make_feasibility_repo(repo, *, stage="implement", plan=None,
+                          enabled=True):
+    plan = plan or b"# Compact plan\n- [ ] implement AC-1\n"
+    spec = b"# Spec\n\n## Acceptance criteria\n1. Feature works.\n"
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.test"],
+        cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.name", "Coherence Test"],
+        cwd=repo, check=True)
+    (repo / ".gitignore").write_text(".factory/\n", encoding="utf-8")
+    (repo / "src").mkdir()
+    (repo / "src/base.txt").write_text("base\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", ".gitignore", "src/base.txt"],
+        cwd=repo, check=True)
+    subprocess.run(
+        ["git", "commit", "-q", "-m", "seed"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "checkout", "-q", "-b", f"factory/{FEASIBILITY_ITEM}"],
+        cwd=repo, check=True)
+    initrepo.init(repo)
+    subprocess.run(
+        ["git", "add", "docs/factory"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "commit", "-q", "-m", "factory docs"],
+        cwd=repo, check=True)
+    config_path = repo / ".factory/config.json"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    config["gates"] = ["feasibility"] if enabled else ["design"]
+    config_path.write_text(
+        json.dumps(config, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8")
+    meta = {
+        "id": FEASIBILITY_ITEM, "title": "Feature", "stage": stage,
+        "kind": "backend", "created": "2026-09-09T10:00:00Z",
+        "updated": "2026-09-09T10:00:00Z",
+    }
+    if stage == "waiting-human":
+        meta["paused-from"] = "implement"
+        meta["paused-reason"] = "interrupted"
+    items.save_item(repo, meta, "Fixture.")
+    item_dir = repo / ".factory/items" / FEASIBILITY_ITEM
+    (item_dir / "spec.md").write_bytes(spec)
+    (item_dir / "plan.md").write_bytes(plan)
+    if enabled:
+        (item_dir / "acceptance.json").write_text(
+            json.dumps(feasibility_acceptance(spec, plan),
+                       indent=2, sort_keys=True) + "\n",
+            encoding="utf-8")
+    return item_dir, spec, plan
 
 
 class PluginCoherenceTest(unittest.TestCase):
@@ -235,6 +337,167 @@ class TestPluginCoherence(unittest.TestCase):
         ref = read(ROOT / "skills/capabilities/references/headless-workers.md")
         self.assertIn("factory provision", ref)
         self.assertIn("factory cleanup", ref)
+
+    def test_plan_feasibility_skill_wiring_is_complete(self):
+        reference = (ROOT / "skills/capabilities/references/"
+                     "plan-feasibility.md")
+        self.assertTrue(reference.exists())
+        plan = read(ROOT / "skills/factory-plan/SKILL.md")
+        implement = read(ROOT / "skills/factory-implement/SKILL.md")
+        review = read(ROOT / "skills/factory-review/SKILL.md")
+        verify = read(ROOT / "skills/factory-verify/SKILL.md")
+        assure = read(ROOT / "skills/factory-assure/SKILL.md")
+        workers = read(ROOT / "skills/factory-workers/SKILL.md")
+        headless = read(
+            ROOT / "skills/capabilities/references/headless-workers.md")
+
+        self.assertIn("contract-first branch", plan)
+        self.assertIn("factory plan-check", plan)
+        self.assertIn("factory plan-dispatch", implement)
+        self.assertIn("factory plan-finalize", implement)
+        self.assertIn("completed plan is a refusal", implement)
+        self.assertIn("never issue a replacement fix ticket", implement)
+        self.assertIn("never finalized before the full suite is green",
+                      implement)
+        for source, text in (("review", review), ("verify", verify),
+                             ("assure", assure)):
+            self.assertIn(f"factory plan-rework ITEM --source {source}", text)
+            self.assertIn("Do not separately", text)
+        for text in (workers, headless):
+            self.assertIn("concurrent_plan_change", text)
+            self.assertIn("do not auto-retry", text.lower())
+        reference_text = read(reference)
+        self.assertIn("not runtime proof", reference_text)
+        self.assertIn("first-unchecked-task", reference_text)
+        self.assertIn("exactly one unchecked task per accepted finding",
+                      reference_text)
+        self.assertIn("not automatically a rework-cap refusal",
+                      reference_text)
+        self.assertIn("review rejected too many times", review)
+
+    def test_compact_dispatch_resume_completed_and_disabled_journeys(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            _item_dir, _spec, plan = make_feasibility_repo(repo)
+            claim = ownership.acquire(repo, FEASIBILITY_ITEM)
+            try:
+                dispatch = feasibility.prepare_dispatch(
+                    repo, FEASIBILITY_ITEM,
+                    config=config_state.capture(repo),
+                    owner_token=claim.token, tasks=1)
+                self.assertEqual(dispatch.tasks, ("implement AC-1",))
+                self.assertEqual(
+                    json.loads(dispatch.handoff)["cursor"], "implement AC-1")
+            finally:
+                claim.release()
+            self.assertEqual(
+                (repo / ".factory/items" / FEASIBILITY_ITEM /
+                 "plan.md").read_bytes(), plan)
+
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            item_dir, _spec, plan = make_feasibility_repo(
+                repo, stage="waiting-human")
+            machine.advance(repo, FEASIBILITY_ITEM, "implement")
+            self.assertEqual((item_dir / "plan.md").read_bytes(), plan)
+            self.assertEqual(
+                items.load_item(repo, FEASIBILITY_ITEM)[0]["stage"],
+                "implement")
+
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            complete = b"# Compact plan\n- [x] implement AC-1\n"
+            item_dir, _spec, _plan = make_feasibility_repo(
+                repo, plan=complete)
+            code, result = work.run_work(
+                repo, FEASIBILITY_ITEM, backend="stub")
+            self.assertEqual(code, 2, result)
+            self.assertIn("unchecked task", result["error"])
+            self.assertFalse((item_dir / "worker").exists())
+
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            item_dir, _spec, plan = make_feasibility_repo(
+                repo, stage="plan", enabled=False)
+            machine.advance(repo, FEASIBILITY_ITEM, "implement")
+            self.assertEqual((item_dir / "plan.md").read_bytes(), plan)
+            self.assertEqual(
+                list((item_dir / "control").glob("operations/*/commit.json")),
+                [])
+
+    def test_rejecting_stages_install_source_linked_rework_atomically(self):
+        source_names = {
+            "review": "reviews/synthesis.md",
+            "verify": "verify.md",
+            "assure": "assurance/verdicts.json",
+        }
+        event_names = {
+            "review": "review.rejected",
+            "verify": "verify.rejected",
+            "assure": "assure.rejected",
+        }
+        for source in ("review", "verify", "assure"):
+            with self.subTest(source=source), tempfile.TemporaryDirectory() as directory:
+                repo = Path(directory)
+                old_plan = b"# Plan\n- [x] original implementation\n"
+                item_dir, spec, _plan = make_feasibility_repo(
+                    repo, stage=source, plan=old_plan)
+                finding = f"{source.upper()}-1"
+                source_path = item_dir / source_names[source]
+                source_path.parent.mkdir(parents=True, exist_ok=True)
+                if source == "assure":
+                    source_path.write_text(json.dumps({
+                        "item": FEASIBILITY_ITEM,
+                        "journeys": [{
+                            "id": "J-001", "surface": "cli",
+                            "scenarios": [{
+                                "id": finding, "verdict": "fail",
+                                "expected": "works", "actual": "broken",
+                                "attribution": "regression",
+                            }],
+                        }],
+                    }), encoding="utf-8")
+                else:
+                    source_path.write_text(
+                        f"# Blocking findings\n- {finding}: broken\n",
+                        encoding="utf-8")
+                proposals = repo / "proposals"
+                proposals.mkdir()
+                proposal_plan = old_plan + (
+                    f"- [ ] Fix {finding} from {source_names[source]}\n"
+                    .encode("utf-8"))
+                plan_path = proposals / "plan.md"
+                plan_path.write_bytes(proposal_plan)
+                source_snapshot = safeio.snapshot_path(
+                    repo, source_path.relative_to(repo))
+                proposed = feasibility_acceptance(spec, proposal_plan)
+                proposed["revision"] = {
+                    "reason": f"{source} rejection {source_snapshot.sha256}",
+                    "changed_sections": ["tasks"],
+                }
+                acceptance_path = proposals / "acceptance.json"
+                acceptance_path.write_text(
+                    json.dumps(proposed), encoding="utf-8")
+                prepared = feasibility.prepare_rework_entry(
+                    repo, FEASIBILITY_ITEM,
+                    config=config_state.capture(repo), source=source,
+                    source_snapshot=source_snapshot,
+                    finding_ids=[finding],
+                    plan_proposal=safeio.snapshot_path(
+                        repo, plan_path.relative_to(repo)),
+                    acceptance_proposal=safeio.snapshot_path(
+                        repo, acceptance_path.relative_to(repo)))
+                meta, _verdict, receipt = machine.commit_implement_entry(
+                    prepared)
+                self.assertEqual(meta["stage"], "implement")
+                self.assertEqual(
+                    (item_dir / "plan.md").read_bytes(), proposal_plan)
+                events = [
+                    event["event"] for event in logs.read_events(
+                        repo, FEASIBILITY_ITEM)
+                    if event.get("operation_id") == receipt.operation_id]
+                self.assertEqual(
+                    events, [event_names[source], "stage.advance"])
 
     def test_decision_page_wiring_present(self):
         ref = ROOT / "skills/capabilities/references/decision-pages.md"

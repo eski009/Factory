@@ -116,6 +116,8 @@ def validate_tree(repo):
     config_path = paths.config_path(repo)
     if not config_path.exists():
         return [f"{config_path.relative_to(repo)}: missing (run init)"]
+    config_snapshot = None
+    config_start_errors = len(errors)
     try:
         # errors="replace" (matching the log/ledger reads below): byte
         # corruption lands in the JSONDecodeError flag path, never a
@@ -128,6 +130,12 @@ def validate_tree(repo):
             errors.extend(validate(config, load_schema("config"), "config"))
     except json.JSONDecodeError as exc:
         errors.append(f"config.json: invalid JSON ({exc})")
+    if len(errors) == config_start_errors:
+        from . import config_state
+        try:
+            config_snapshot = config_state.capture(repo)
+        except config_state.ConfigStateError as exc:
+            errors.append(str(exc))
     schema = load_schema("work-item")
     items_root = paths.items_dir(repo)
     if items_root.exists():
@@ -210,6 +218,26 @@ def validate_tree(repo):
                         continue
                     errors.extend(validate(judgement, judgement_schema, rel))
             if meta is not None and not schema_errors and log_valid:
+                acceptance_path = sub / "acceptance.json"
+                acceptance_present = (
+                    acceptance_path.exists() or acceptance_path.is_symlink())
+                feasibility_enabled = bool(
+                    config_snapshot is not None and
+                    "feasibility" in config_snapshot.value["gates"])
+                if (feasibility_enabled and meta["stage"] in {"plan", "implement"}
+                        and not acceptance_present):
+                    errors.append(
+                        f"{sub.name}/acceptance.json: required while "
+                        f"feasibility is enabled at stage {meta['stage']}")
+                elif acceptance_present and config_snapshot is not None:
+                    from . import feasibility
+                    try:
+                        feasibility.validate_present(
+                            repo, sub.name, config=config_snapshot)
+                    except feasibility.FeasibilityError as exc:
+                        errors.extend(
+                            f"{sub.name}/acceptance.json: {message}"
+                            for message in exc.errors)
                 expected = "idea"
                 for event in log_events:
                     if event.get("event") == "stage.advance":

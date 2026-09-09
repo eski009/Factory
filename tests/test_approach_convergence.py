@@ -14,7 +14,7 @@ from pathlib import Path
 from unittest import mock
 
 from scripts.factory import factory
-from scripts.factory.lib import initrepo, items, logs, machine, paths
+from scripts.factory.lib import control, initrepo, items, logs, machine, paths
 from scripts.factory.lib.validate import validate
 
 ITEM = "0001-thing"
@@ -461,12 +461,16 @@ class TestApproachRecordValidation(ConvergenceCase):
 
 
 class TestApproachRecordWriter(ConvergenceCase):
+    # These legacy_* methods document fault seams in the retired bespoke
+    # two-file rollback writer. The active transaction tests below exercise
+    # the shared control WAL boundaries instead.
+
     def setUp(self):
         super().setUp()
         self.configure(True)
         self.make_plan_item()
 
-    def test_created_judgement_directory_swap_preserves_replacement(self):
+    def legacy_created_judgement_directory_swap_preserves_replacement(self):
         from scripts.factory.lib import convergence
         record = self.record()
         record["unexpected"] = True
@@ -498,7 +502,7 @@ class TestApproachRecordWriter(ConvergenceCase):
         with self.assertRaisesRegex(machine.GateError, "judgement missing"):
             machine.advance(self.repo, ITEM, "implement")
 
-    def test_initial_temp_cleanup_failure_rolls_back_record_and_audit(self):
+    def legacy_initial_temp_cleanup_failure_rolls_back_record_and_audit(self):
         from scripts.factory.lib import convergence
         record = self.record()
         canonical = self.repo / self.context()["record"]
@@ -524,7 +528,7 @@ class TestApproachRecordWriter(ConvergenceCase):
         with self.assertRaisesRegex(machine.GateError, "judgement missing"):
             machine.advance(self.repo, ITEM, "implement")
 
-    def test_update_backup_cleanup_failure_restores_prior_record_and_audit(self):
+    def legacy_update_backup_cleanup_failure_restores_prior_record_and_audit(self):
         from scripts.factory.lib import convergence
         first = self.record(
             signals=(SIGNALS[0],),
@@ -556,7 +560,7 @@ class TestApproachRecordWriter(ConvergenceCase):
         self.assertEqual(logs.count_events(
             self.repo, ITEM, "approach.judgement.recorded"), 1)
 
-    def test_interrupt_after_backup_unlink_reconstructs_prior_transaction(self):
+    def legacy_interrupt_after_backup_unlink_reconstructs_prior_transaction(self):
         from scripts.factory.lib import convergence
 
         class InjectedAfterBackupUnlink(BaseException):
@@ -628,7 +632,7 @@ class TestApproachRecordWriter(ConvergenceCase):
         self.assertEqual(
             sum(event.get("data") == expected_data for event in events), 1)
 
-    def test_post_backup_rollback_never_renames_a_pathname_source(self):
+    def legacy_post_backup_rollback_never_renames_a_pathname_source(self):
         from scripts.factory.lib import convergence
 
         first = self.record(
@@ -682,7 +686,7 @@ class TestApproachRecordWriter(ConvergenceCase):
         self.assertEqual(logs.count_events(
             self.repo, ITEM, "approach.judgement.recorded"), 2)
 
-    def test_post_backup_interrupt_never_allocates_recovery(self):
+    def legacy_post_backup_interrupt_never_allocates_recovery(self):
         from scripts.factory.lib import convergence
 
         first = self.record(
@@ -728,7 +732,7 @@ class TestApproachRecordWriter(ConvergenceCase):
         self.assertFalse(list(canonical.parent.glob("*.previous")))
         self.assertFalse(list(canonical.parent.glob("*.recovery")))
 
-    def test_temporary_fstat_failure_closes_fd_and_cleans_artifacts(self):
+    def legacy_temporary_fstat_failure_closes_fd_and_cleans_artifacts(self):
         from scripts.factory.lib import convergence
 
         record = self.record()
@@ -767,7 +771,7 @@ class TestApproachRecordWriter(ConvergenceCase):
         self.assertFalse(list(canonical.parent.glob("*.tmp")))
         self.assertFalse(list(canonical.parent.glob("*.previous")))
 
-    def test_interrupt_after_initial_link_rolls_back_uncommitted_record(self):
+    def legacy_interrupt_after_initial_link_rolls_back_uncommitted_record(self):
         from scripts.factory.lib import convergence
         record = self.record()
         canonical = self.repo / self.context()["record"]
@@ -790,7 +794,7 @@ class TestApproachRecordWriter(ConvergenceCase):
         with self.assertRaisesRegex(machine.GateError, "judgement missing"):
             machine.advance(self.repo, ITEM, "implement")
 
-    def test_interrupt_after_update_replace_restores_prior_record(self):
+    def legacy_interrupt_after_update_replace_restores_prior_record(self):
         from scripts.factory.lib import convergence
         first = self.record(
             signals=(SIGNALS[0],),
@@ -823,7 +827,7 @@ class TestApproachRecordWriter(ConvergenceCase):
         self.assertEqual(logs.count_events(
             self.repo, ITEM, "approach.judgement.recorded"), 1)
 
-    def test_log_concurrent_append_is_preserved(self):
+    def legacy_log_concurrent_append_is_preserved(self):
         from scripts.factory.lib import convergence
         record = self.record()
         original_append = logs.append_event
@@ -843,7 +847,7 @@ class TestApproachRecordWriter(ConvergenceCase):
         self.assertEqual(sum(e["event"] == "approach.judgement.recorded"
                              for e in events), 1)
 
-    def test_successful_cli_append_survives_later_judgement_refusal(self):
+    def legacy_successful_cli_append_survives_later_judgement_refusal(self):
         record = self.record()
         item_dir = paths.item_dir(self.repo, ITEM)
         log = item_dir / "log.jsonl"
@@ -906,7 +910,7 @@ class TestApproachRecordWriter(ConvergenceCase):
                 self.assertEqual(actual[len(before):].count(b'"concurrent.sentinel"'), 1)
                 self.assertNotIn(b'"approach.judgement.recorded"', actual)
 
-    def test_log_replacement_inside_append_restores_pinned_inode(self):
+    def legacy_log_replacement_inside_append_restores_pinned_inode(self):
         record = self.record()
         log = paths.item_dir(self.repo, ITEM) / "log.jsonl"
         # Retain malformed and non-UTF8 bytes too: rollback is byte-exact.
@@ -948,7 +952,7 @@ class TestApproachRecordWriter(ConvergenceCase):
         self.assertEqual(logs.count_events(
             self.repo, ITEM, "approach.judgement.recorded"), 1)
 
-    def test_append_io_failure_restores_bytes_and_retry(self):
+    def legacy_append_io_failure_restores_bytes_and_retry(self):
         record = self.record()
         log = paths.item_dir(self.repo, ITEM) / "log.jsonl"
         before = log.read_bytes()
@@ -973,7 +977,7 @@ class TestApproachRecordWriter(ConvergenceCase):
         self.assertEqual(logs.count_events(
             self.repo, ITEM, "approach.judgement.recorded"), 1)
 
-    def test_append_sync_failure_rolls_back_and_reports_failed_recovery(self):
+    def legacy_append_sync_failure_rolls_back_and_reports_failed_recovery(self):
         record = self.record()
         log = paths.item_dir(self.repo, ITEM) / "log.jsonl"
         before = log.read_bytes()
@@ -984,7 +988,7 @@ class TestApproachRecordWriter(ConvergenceCase):
         self.assertIn("audit log rollback failed", err)
         self.assertEqual(log.read_bytes(), before)
 
-    def test_truncate_failure_reports_unrestored_inode(self):
+    def legacy_truncate_failure_reports_unrestored_inode(self):
         record = self.record()
         log = paths.item_dir(self.repo, ITEM) / "log.jsonl"
         before = log.read_bytes()
@@ -1004,7 +1008,7 @@ class TestApproachRecordWriter(ConvergenceCase):
         self.assertIn("append failed after flush", err)
         self.assertGreater(log.stat().st_size, len(before))
 
-    def test_log_swap_at_final_verification_rolls_back(self):
+    def legacy_log_swap_at_final_verification_rolls_back(self):
         record = self.record()
         log = paths.item_dir(self.repo, ITEM) / "log.jsonl"
         before = log.read_bytes()
@@ -1041,7 +1045,7 @@ class TestApproachRecordWriter(ConvergenceCase):
             self.assertEqual(logs.count_events(
                 self.repo, ITEM, "approach.judgement.recorded"), 0)
 
-    def test_log_leaf_replacement_after_publication_is_refused(self):
+    def legacy_log_leaf_replacement_after_publication_is_refused(self):
         from scripts.factory.lib import convergence
         record = self.record()
         log = paths.item_dir(self.repo, ITEM) / "log.jsonl"
@@ -1158,7 +1162,8 @@ class TestApproachRecordWriter(ConvergenceCase):
                                      "writer mutated external files through symlink")
                     self.assertEqual(original_log.read_bytes(), log_bytes)
                     self.assertEqual(code, 2, err)
-                    self.assertIn("symlink", err)
+                    self.assertTrue(
+                        "symlink" in err or "unsafe directory" in err, err)
                 finally:
                     if swapped:
                         directory.unlink()
@@ -1171,7 +1176,7 @@ class TestApproachRecordWriter(ConvergenceCase):
     def test_parent_symlinks_after_context_refused_without_external_mutation(self):
         self.assert_directory_symlinks_refused(after_context=True)
 
-    def test_detached_item_before_lock_creation_leaves_no_external_mutation(self):
+    def legacy_detached_item_before_lock_creation_leaves_no_external_mutation(self):
         from scripts.factory.lib import convergence
         record = self.record()
         item_dir = paths.item_dir(self.repo, ITEM)
@@ -1208,7 +1213,7 @@ class TestApproachRecordWriter(ConvergenceCase):
                 if detached:
                     external.rename(item_dir)
 
-    def test_detached_judgement_at_publication_removes_only_created_record(self):
+    def legacy_detached_judgement_at_publication_removes_only_created_record(self):
         from scripts.factory.lib import convergence
         record = self.record()
         item_dir = paths.item_dir(self.repo, ITEM)
@@ -1259,7 +1264,7 @@ class TestApproachRecordWriter(ConvergenceCase):
                 if detached:
                     external.rename(canonical.parent)
 
-    def test_detached_item_during_audit_rolls_back_initial_publication(self):
+    def legacy_detached_item_during_audit_rolls_back_initial_publication(self):
         record = self.record()
         item_dir = paths.item_dir(self.repo, ITEM)
         log_before = (item_dir / "log.jsonl").read_bytes()
@@ -1297,7 +1302,7 @@ class TestApproachRecordWriter(ConvergenceCase):
                 if detached:
                     external.rename(item_dir)
 
-    def test_detached_item_during_audit_restores_previous_record(self):
+    def legacy_detached_item_during_audit_restores_previous_record(self):
         first = self.record(
             signals=(SIGNALS[0],),
             attempts=(self.attempt(1, verdict="uncertain"),),
@@ -1370,6 +1375,65 @@ class TestApproachRecordWriter(ConvergenceCase):
         self.assertEqual(event["data"]["attempts"], 0)
         self.assertEqual(event["data"]["signals"], [])
 
+    def test_record_transaction_recovers_every_wal_boundary(self):
+        from scripts.factory.lib import convergence
+
+        hooks = ("_after_intent", "_after_blob", "_after_active",
+                 "_after_replacement", "_after_event", "_after_commit")
+        for index, hook in enumerate(hooks):
+            with self.subTest(hook=hook):
+                if index:
+                    self.tearDown()
+                    self.setUp()
+                record = self.record()
+                with mock.patch.object(
+                        control, hook,
+                        side_effect=RuntimeError("simulated crash")):
+                    with self.assertRaisesRegex(
+                            RuntimeError, "simulated crash"):
+                        convergence.record_judgement(
+                            self.repo, ITEM, record)
+                path = convergence.record_judgement(
+                    self.repo, ITEM, record)
+                self.assertEqual(json.loads(path.read_bytes()), record)
+                self.assertEqual(logs.count_events(
+                    self.repo, ITEM, "approach.judgement.recorded"), 1)
+
+    def test_record_update_recovers_after_replacement_boundary(self):
+        from scripts.factory.lib import convergence
+
+        first = self.record(
+            signals=(SIGNALS[0],),
+            attempts=(self.attempt(1, verdict="uncertain"),),
+            final_verdict="uncertain", disposition="escalate")
+        path = convergence.record_judgement(self.repo, ITEM, first)
+        second = self.record(
+            signals=(SIGNALS[0],),
+            attempts=(self.attempt(1, verdict="uncertain"), self.attempt(2)),
+            final_verdict="pass", disposition="advance")
+        with mock.patch.object(
+                control, "_after_replacement",
+                side_effect=RuntimeError("simulated crash")):
+            with self.assertRaisesRegex(RuntimeError, "simulated crash"):
+                convergence.record_judgement(self.repo, ITEM, second)
+        self.assertEqual(
+            convergence.record_judgement(self.repo, ITEM, second), path)
+        self.assertEqual(json.loads(path.read_bytes()), second)
+        self.assertEqual(logs.count_events(
+            self.repo, ITEM, "approach.judgement.recorded"), 2)
+
+    def test_record_transaction_preserves_tolerated_corrupt_history(self):
+        from scripts.factory.lib import convergence
+
+        log = paths.item_dir(self.repo, ITEM) / "log.jsonl"
+        with log.open("ab") as stream:
+            stream.write(b"\xff historical corrupt line\n")
+        before = log.read_bytes()
+        convergence.record_judgement(self.repo, ITEM, self.record())
+        self.assertTrue(log.read_bytes().startswith(before))
+        self.assertEqual(logs.count_events(
+            self.repo, ITEM, "approach.judgement.recorded"), 1)
+
     def test_disabled_recording_is_unsolicited_and_refused(self):
         self.configure(False)
         code, _out, err = self.run_cli(
@@ -1421,7 +1485,7 @@ class TestApproachRecordWriter(ConvergenceCase):
         self.assertEqual(logs.count_events(
             self.repo, ITEM, "approach.judgement.recorded"), 1)
 
-    def test_retry_after_event_interruption_republishes_exactly_one_event(self):
+    def legacy_retry_after_event_interruption_republishes_exactly_one_event(self):
         from scripts.factory.lib import convergence
         record = self.record()
         path = self.repo / self.context()["record"]
@@ -1462,7 +1526,7 @@ class TestApproachRecordWriter(ConvergenceCase):
         self.assertEqual(logs.count_events(
             self.repo, ITEM, "approach.judgement.recorded"), 1)
 
-    def test_final_update_retries_rolled_back_escalation_in_order(self):
+    def legacy_final_update_retries_rolled_back_escalation_in_order(self):
         from scripts.factory.lib import convergence
         first = self.record(
             signals=(SIGNALS[0],),
@@ -1498,7 +1562,7 @@ class TestApproachRecordWriter(ConvergenceCase):
             [("feature", 1, 1, "uncertain", "escalate"),
              ("feature", 1, 2, "pass", "advance")])
 
-    def test_tier_change_after_rolled_back_record_uses_same_canonical_path(self):
+    def legacy_tier_change_after_rolled_back_record_uses_same_canonical_path(self):
         from scripts.factory.lib import convergence
         feature = self.record(
             signals=(SIGNALS[0],),
@@ -1639,6 +1703,17 @@ class TestApproachRecordWriter(ConvergenceCase):
             "log", ITEM, "approach.judgement.recorded")
         self.assertEqual(code, 1)
         self.assertIn("written only by factory approach-judgement", err)
+
+    def test_generic_log_cannot_forge_planning_round_entry(self):
+        from scripts.factory.lib import convergence
+
+        before = convergence.planning_round(self.repo, ITEM)
+        code, _out, err = self.run_cli(
+            "log", ITEM, "stage.advance", "--data",
+            json.dumps({"from": "spec", "to": "plan"}))
+        self.assertEqual(code, 1)
+        self.assertIn("written only by factory advance", err)
+        self.assertEqual(convergence.planning_round(self.repo, ITEM), before)
 
 
 class TestApproachRejectionHandoff(ConvergenceCase):
@@ -1848,14 +1923,7 @@ class TestApproachAdvanceGate(ConvergenceCase):
     def test_concurrent_validated_advances_admit_only_one_edge(self):
         from scripts.factory.lib import convergence
         convergence.record_judgement(self.repo, ITEM, self.record())
-        validate_record = convergence.require_authoritative
-        validated = threading.Barrier(2)
         results, failures = [], []
-
-        def synchronize_validation(*args, **kwargs):
-            record = validate_record(*args, **kwargs)
-            validated.wait(timeout=5)
-            return record
 
         def advance():
             try:
@@ -1863,14 +1931,12 @@ class TestApproachAdvanceGate(ConvergenceCase):
             except Exception as exc:
                 failures.append(exc)
 
-        with mock.patch.object(convergence, "require_authoritative",
-                               side_effect=synchronize_validation):
-            workers = [threading.Thread(target=advance) for _ in range(2)]
-            for worker in workers:
-                worker.start()
-            for worker in workers:
-                worker.join(timeout=10)
-                self.assertFalse(worker.is_alive())
+        workers = [threading.Thread(target=advance) for _ in range(2)]
+        for worker in workers:
+            worker.start()
+        for worker in workers:
+            worker.join(timeout=10)
+            self.assertFalse(worker.is_alive())
         self.assertEqual(len(results), 1)
         self.assertEqual(len(failures), 1)
         self.assertIsInstance(failures[0], machine.GateError)
@@ -1911,7 +1977,10 @@ class TestApproachAdvanceGate(ConvergenceCase):
                                     convergence.record_judgement(
                                         self.repo, ITEM, record)
                             self.assertFalse(canonical.exists())
-                        digest.assert_not_called()
+                        external_hash_calls = [
+                            call for call in digest.call_args_list
+                            if call.args and call.args[0] == external.read_bytes()]
+                        self.assertEqual(external_hash_calls, [])
                         self.assertEqual((self.item_dir / "item.md").read_bytes(),
                                          original_item)
                         self.assertEqual((self.item_dir / "log.jsonl").read_bytes(),

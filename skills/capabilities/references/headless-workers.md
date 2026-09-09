@@ -16,7 +16,8 @@ factory work <id> [--backend claude|codex|stub] [--model M]
 Exit codes: `0` succeeded (result `done`, `implement.completed` logged);
 `1` usage/internal — includes `reason: auth` (a bad/expired key or, in
 `chatgpt` mode, an expired login); `2` precondition refusal (not at
-`implement`, or no unticked plan tasks); `3` worker attempted but failed —
+`implement`, no unticked plan tasks, or a terminal feasibility safety refusal);
+`3` worker attempted but failed —
 read `result.json`'s typed `reason`:
 `crash|timeout|no_changes|red_tests|rate_limited|blocked`. `prep_failed` is a
 `factory provision` outcome, not a `factory work` one — see Scheduler below.
@@ -77,6 +78,23 @@ implement station has a real green-check: without it, a worker's plan-tick
 happens with no independent test gate at this stage, and partial or broken
 work is only caught later at the review/verify gates — `verify.green`
 remains authoritative.
+
+When the opt-in `feasibility` gate is enabled, `factory work` captures config
+once, acquires ownership before plan inputs, issues an owner-bound
+`plan-dispatch` ticket, and gives the worker the ticket's immutable
+owner-limited handoff. It revalidates a clean recorded HEAD before attempt and
+backend launch. A successful result carries `dispatch_ticket`; before ticking
+the selected marker, Factory inventories committed history (including reverted
+changes and both sides of renames/copies), index, worktree, and untracked paths,
+then finalizes through the control WAL. Only the final task emits completion.
+See `plan-feasibility.md` for the producer/rework contract.
+
+The safety reasons `scope_inspection_failed`, `history_rewrite`,
+`dirty_checkout`, `scope_violation`, and `concurrent_plan_change` use exit 2
+but are not ordinary selection drift. Preserve their branch/result diagnostics
+and do not auto-retry. The declaration proves graph completeness, not that
+tests, devices, routes, or runtime behavior work; downstream gates remain
+unchanged.
 
 ## `stub` backend
 

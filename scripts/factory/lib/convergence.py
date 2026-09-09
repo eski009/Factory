@@ -13,9 +13,10 @@ import os
 import secrets
 import stat
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
-from . import initrepo, items, logs, paths
+from . import control, initrepo, items, logs, paths, safeio
 from .validate import validate as validate_schema
 
 SIGNAL_IDS = (
@@ -1010,6 +1011,64 @@ def _validate_prior_tier_replacement(existing, record):
             + "; ".join(problems))
 
 
+def _record_bytes(record):
+    return (json.dumps(
+        record, indent=2, sort_keys=True, allow_nan=False) + "\n").encode(
+            "utf-8")
+
+
+def _record_operation_key(record_bytes):
+    return "approach-judgement:" + control._digest_bytes(record_bytes)
+
+
+def _record_event_timestamp(record, plan_snapshot):
+    attempts = record.get("attempts")
+    if isinstance(attempts, list) and attempts:
+        return attempts[-1]["timestamp"]
+    seconds = plan_snapshot.file_identity[3] / 1_000_000_000
+    return (datetime.fromtimestamp(seconds, timezone.utc)
+            .isoformat(timespec="microseconds").replace("+00:00", "Z"))
+
+
+def _snapshot_has_recorded_event(snapshot, data):
+    if isinstance(snapshot, safeio.MissingSnapshot):
+        return False
+    text = snapshot.data.decode("utf-8", errors="replace")
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if (isinstance(event, dict)
+                and event.get("event") == "approach.judgement.recorded"
+                and event.get("data") == data):
+            return True
+    return False
+
+
+def _record_input_relatives(item_id, record):
+    relatives = {
+        PurePosixPath(".factory", "config.json"),
+        PurePosixPath(".factory", "items", item_id, "item.md"),
+        PurePosixPath(".factory", "items", item_id, "plan.md"),
+    }
+    for signal in record.get("signals", ()):
+        for citation in signal.get("evidence", ()):
+            relatives.add(PurePosixPath(citation["path"]))
+    for attempt in record.get("attempts", ()):
+        for finding in attempt.get("findings", ()):
+            relatives.add(PurePosixPath(finding["path"]))
+    return tuple(sorted(relatives, key=lambda value: value.as_posix()))
+
+
+def _restore_missing_snapshot(intent, record, *, repo):
+    if record.get("state") != "missing":
+        return None
+    return control._snapshot_from_record(record, {}, expected_repo=repo)
+
+
 def record_judgement(repo, item_id, record):
     meta, _body = items.load_item(repo, item_id)
     if not enabled(repo):
@@ -1018,52 +1077,128 @@ def record_judgement(repo, item_id, record):
             "is not true")
     context = current_context(repo, item_id)
     path = Path(repo) / context["record"]
-    with _record_lock(repo, path) as (directory_fd, log_fd, verify):
-        attempts = record.get("attempts") if isinstance(record, dict) else None
-        if (not path.exists() and isinstance(attempts, list)
-                and len(attempts) > 1):
+    attempts = record.get("attempts") if isinstance(record, dict) else None
+    validate_current(repo, meta, record)
+    encoded = _record_bytes(record)
+    operation_key = _record_operation_key(encoded)
+    try:
+        adopted = control.adopt_operation(
+            repo, item_id, kind="approach-judgement", key=operation_key)
+        if adopted is not None:
+            return path
+
+        inputs = safeio.snapshot_many(
+            repo, _record_input_relatives(item_id, record))
+        plan_relative = PurePosixPath(
+            ".factory", "items", item_id, "plan.md")
+        plan_snapshot = next(
+            snapshot for snapshot in inputs
+            if snapshot.relative == plan_relative)
+        record_relative = PurePosixPath(context["record"])
+        record_snapshot = safeio.snapshot_path(
+            repo, record_relative, allow_missing=True)
+        log_snapshot = safeio.snapshot_path(
+            repo, PurePosixPath(
+                ".factory", "items", item_id, "log.jsonl"),
+            limit=control._LOG_IMAGE_LIMIT, allow_missing=True)
+
+        existing_intent = control.operation_intent(
+            repo, item_id, kind="approach-judgement", key=operation_key)
+        if existing_intent is not None:
+            restored = _restore_missing_snapshot(
+                existing_intent, existing_intent.get("log_snapshot", {}),
+                repo=plan_snapshot.root)
+            if restored is not None:
+                log_snapshot = restored
+            matching = [
+                replacement["before"]
+                for replacement in existing_intent["replacements"]
+                if replacement["before"]["relative"] ==
+                record_relative.as_posix()]
+            if len(matching) != 1:
+                raise control.ControlRefusal(
+                    "existing approach judgement operation is invalid")
+            restored = _restore_missing_snapshot(
+                existing_intent, matching[0], repo=plan_snapshot.root)
+            if restored is not None:
+                record_snapshot = restored
+
+        existing = None
+        if isinstance(record_snapshot, safeio.FileSnapshot):
+            try:
+                existing = json.loads(
+                    record_snapshot.data.decode("utf-8", errors="strict"))
+            except (UnicodeError, json.JSONDecodeError) as exc:
+                raise ConvergenceError(
+                    "existing approach judgement malformed") from exc
+            _validate_existing_structure(existing)
+        elif isinstance(attempts, list) and len(attempts) > 1:
             raise ConvergenceError(
                 "approach judgement initial write may contain at most one "
                 "reviewer attempt")
-        validate_current(repo, meta, record)
-        data = _event_data(repo, path, record)
-        if path.exists():
-            existing = _load_authoritative_record(repo, context["record"])
-            _validate_existing_structure(existing)
+
+        events = []
+        if existing is not None:
             existing_data = _event_data(repo, path, existing)
             if _is_prior_tier_context(existing, record):
-                # Tier/bound are mutable context but do not participate in the
-                # canonical round/hash path. Reconcile the accepted historical
-                # state before replacing it with the freshly validated current
-                # tier, so an interruption cannot erase its audit event.
                 _validate_prior_tier_replacement(existing, record)
-                _append_recorded_event_if_missing(
-                    repo, item_id, existing_data, log_fd, verify)
-                with _write_record(path, record, directory_fd, verify):
-                    _append_recorded_event_if_missing(
-                        repo, item_id, data, log_fd, verify)
-                return path
-            validate_current(repo, meta, existing)
-            _append_recorded_event_if_missing(
-                repo, item_id, existing_data, log_fd, verify)
-            if existing == record:
-                return path
-            changed = [key for key in IMMUTABLE_FIELDS
-                       if existing.get(key) != record.get(key)]
-            if changed:
-                raise ConvergenceError(
-                    "approach judgement immutable judgement fields changed: "
-                    + ", ".join(changed))
-            if existing["disposition"] != "escalate":
-                raise ConvergenceError(
-                    "approach judgement is final; only an escalate record may "
-                    "append a reviewer attempt")
-            if (len(record["attempts"]) != len(existing["attempts"]) + 1
-                    or record["attempts"][:-1] != existing["attempts"]):
-                raise ConvergenceError(
-                    "approach judgement update must append exactly one reviewer "
-                    "attempt and preserve prior attempts byte-for-byte")
-        with _write_record(path, record, directory_fd, verify):
-            _append_recorded_event_if_missing(
-                repo, item_id, data, log_fd, verify)
+            else:
+                validate_current(repo, meta, existing)
+                if existing != record:
+                    changed = [
+                        key for key in IMMUTABLE_FIELDS
+                        if existing.get(key) != record.get(key)]
+                    if changed:
+                        raise ConvergenceError(
+                            "approach judgement immutable judgement fields "
+                            "changed: " + ", ".join(changed))
+                    if existing["disposition"] != "escalate":
+                        raise ConvergenceError(
+                            "approach judgement is final; only an escalate "
+                            "record may append a reviewer attempt")
+                    if (len(record["attempts"]) !=
+                            len(existing["attempts"]) + 1 or
+                            record["attempts"][:-1] != existing["attempts"]):
+                        raise ConvergenceError(
+                            "approach judgement update must append exactly one "
+                            "reviewer attempt and preserve prior attempts "
+                            "byte-for-byte")
+            if not _snapshot_has_recorded_event(log_snapshot, existing_data):
+                events.append({
+                    "event": "approach.judgement.recorded",
+                    "ts": _record_event_timestamp(existing, plan_snapshot),
+                    "data": existing_data,
+                })
+
+        data = _event_data(repo, path, record)
+        if (existing != record and
+                not _snapshot_has_recorded_event(log_snapshot, data)):
+            events.append({
+                "event": "approach.judgement.recorded",
+                "ts": _record_event_timestamp(record, plan_snapshot),
+                "data": data,
+            })
+        if existing == record and not events:
+            return path
+
+        if existing_intent is not None:
+            events = [
+                {key: value for key, value in event.items()
+                 if key != "operation_id"}
+                for event in existing_intent["events"]]
+        request = {
+            "version": 1,
+            "record": record_relative.as_posix(),
+            "record_sha256": control._digest_bytes(encoded),
+        }
+        control.commit_operation(
+            repo, item_id, kind="approach-judgement", key=operation_key,
+            request=request, prerequisites=inputs,
+            replacements=((record_snapshot, encoded),),
+            events=events, log_snapshot=log_snapshot)
         return path
+    except ConvergenceError:
+        raise
+    except (control.ControlError, safeio.SafeIOError, OSError,
+            UnicodeError, ValueError) as exc:
+        raise ConvergenceError(str(exc)) from exc

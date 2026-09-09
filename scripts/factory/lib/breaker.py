@@ -14,7 +14,7 @@ exists only so a park with no recorded answer cannot ping-pong forever
 
 import re
 
-from . import cost, dispatch, items, logs, paths
+from . import config_state, cost, dispatch, items, logs, paths
 from .machine import GateError, _config_gates
 
 REWORK_THRESHOLD = 2
@@ -25,6 +25,7 @@ PAUSE_PREFIX = "cost breaker:"
 
 _ANSWER_RE = re.compile(r"^-\s*answer:\s*(\S+)\s*$", re.MULTILINE)
 _EDGES_RE = re.compile(r"^-\s*rework-edges:\s*(\d+)\s*$", re.MULTILINE)
+_UNSUPPLIED = object()
 
 
 def answer_path(repo, item_id):
@@ -38,9 +39,23 @@ def read_answer(repo, item_id):
     judges — the precondition decides what to refuse, so every refusal
     message lives in one place."""
     try:
-        text = answer_path(repo, item_id).read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
+        data = answer_path(repo, item_id).read_bytes()
+    except OSError:
         return None
+    return parse_answer(data)
+
+
+def parse_answer(data):
+    """Parse captured cost-answer bytes without reading the filesystem."""
+    if data is None:
+        return None
+    try:
+        text = data.decode("utf-8", errors="strict")
+    except (AttributeError, UnicodeDecodeError):
+        return None
+    # Path.read_text uses universal-newline translation. Preserve that exact
+    # legacy parsing behavior now that the read and parse steps are separate.
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
     if not text.strip():
         return None
     answer = _ANSWER_RE.search(text)
@@ -59,6 +74,28 @@ def read_answer(repo, item_id):
 
 def rework_edges(repo, item_id):
     return cost.summarize(repo, item_id)["rework_edges"]
+
+
+def _rework_edges_from_state(repo, item_id, events, now,
+                             corrupt_log_lines):
+    if events is _UNSUPPLIED and now is _UNSUPPLIED:
+        return rework_edges(repo, item_id)
+    if events is _UNSUPPLIED or now is _UNSUPPLIED:
+        raise TypeError("events and now must be supplied together")
+    return cost.summarize_events(
+        item_id, events, now, corrupt_log_lines)["rework_edges"]
+
+
+def _cost_gate_enabled(repo, config):
+    if config is _UNSUPPLIED:
+        return "cost" in _config_gates(repo)
+    return config_state.enabled(config, "cost")
+
+
+def _answer_from_state(repo, item_id, answer_bytes):
+    if answer_bytes is _UNSUPPLIED:
+        return read_answer(repo, item_id)
+    return parse_answer(answer_bytes)
 
 
 def backlog_counts(repo, meta):
@@ -94,7 +131,9 @@ def backlog_counts(repo, meta):
                             if not isinstance(m.get("priority"), int))}
 
 
-def verdict(repo, item_id, meta, to, summary=None, *, backlog=True):
+def verdict(repo, item_id, meta, to, summary=None, *, backlog=True,
+            events=_UNSUPPLIED, now=_UNSUPPLIED, corrupt_log_lines=0,
+            config=_UNSUPPLIED, answer_bytes=_UNSUPPLIED):
     """A plain dict, always, for every advance. Never raises for a
     missing or malformed answer artifact: the verdict reports, the
     precondition refuses.
@@ -107,21 +146,22 @@ def verdict(repo, item_id, meta, to, summary=None, *, backlog=True):
     zero. A caller needing the populated sub-dict must call `verdict` itself,
     as `packet.cost_decision_lines` does, rather than reading it from an
     advance's return value."""
-    edges = (summary["rework_edges"] if summary is not None
-             else rework_edges(repo, item_id))
-    gates = _config_gates(repo)
-    answer = read_answer(repo, item_id)
+    edges = (summary["rework_edges"] if summary is not None else
+             _rework_edges_from_state(
+                 repo, item_id, events, now, corrupt_log_lines))
+    gate = _cost_gate_enabled(repo, config)
+    answer = _answer_from_state(repo, item_id, answer_bytes)
     answered_at = answer["rework_edges"] if answer else None
     over = edges >= REWORK_THRESHOLD
     covered = isinstance(answered_at, int) and answered_at >= edges
     return {
         "over_threshold": over,
-        "fired": bool(over and "cost" in gates and to == "implement"
+        "fired": bool(over and gate and to == "implement"
                       and not covered),
         "reason": "rework-threshold",
         "rework_edges": edges,
         "threshold": REWORK_THRESHOLD,
-        "gate": "cost" in gates,
+        "gate": gate,
         "answered_at": answered_at,
         "priority": meta.get("priority"),
         "backlog": backlog_counts(repo, meta) if backlog else None,
@@ -159,7 +199,9 @@ def record_answer(repo, item_id, answer, notes=None):
     return path
 
 
-def precondition(repo, item_id, meta, to):
+def precondition(repo, item_id, meta, to, *, events=_UNSUPPLIED,
+                 now=_UNSUPPLIED, corrupt_log_lines=0,
+                 config=_UNSUPPLIED, answer_bytes=_UNSUPPLIED):
     """One ordered rule, run before the branch dispatch in
     machine.advance(). An implement entry past the threshold requires a
     recorded answer covering the *pre-transition* edge count.
@@ -171,14 +213,15 @@ def precondition(repo, item_id, meta, to):
     the artifact, never paused-reason, so a mistyped reason string
     degrades packet copy and never the gate. `meta` is accepted for
     symmetry with verdict() and deliberately unread."""
-    if to != "implement" or "cost" not in _config_gates(repo):
+    if to != "implement" or not _cost_gate_enabled(repo, config):
         return
-    edges = rework_edges(repo, item_id)
+    edges = _rework_edges_from_state(
+        repo, item_id, events, now, corrupt_log_lines)
     if edges < REWORK_THRESHOLD:
         return
     retry = (f"re-record with factory cost-answer {item_id} "
              "<continue|narrow|defer>")
-    answer = read_answer(repo, item_id)
+    answer = _answer_from_state(repo, item_id, answer_bytes)
     if answer is None:
         raise GateError(
             f"cost breaker unanswered: {edges} rework edges "

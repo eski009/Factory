@@ -3,7 +3,6 @@
 refusal or validation errors. Skills call this; humans can too."""
 
 import argparse
-import hmac
 import json
 import os
 import sys
@@ -11,9 +10,9 @@ from pathlib import Path
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod, breaker, approach, ownership, convergence
+    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod, breaker, approach, ownership, convergence, config_state, control, feasibility, safeio
 else:
-    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod, breaker, approach, ownership, convergence
+    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod, breaker, approach, ownership, convergence, config_state, control, feasibility, safeio
 
 
 IMPLEMENTATION_OWNER_ENV = "FACTORY_IMPLEMENTATION_OWNER"
@@ -174,6 +173,132 @@ def cmd_work(args):
     return code
 
 
+def cmd_plan_check(args):
+    # A present but hostile/missing config inside an initialized namespace is
+    # a structured plan-check failure, not a misleading "not a repo" result.
+    if not paths.factory_root(args.repo).is_dir():
+        _require_factory_repo(args.repo)
+        return 2
+    try:
+        config = config_state.capture(args.repo)
+        report = feasibility.inspect(args.repo, args.item, config=config)
+    except config_state.ConfigStateError as exc:
+        report = {
+            "status": "fail", "item": args.item,
+            "spec_sha256": None, "plan_structure_sha256": None,
+            "cursor": None, "task": None, "owned_paths": [],
+            "delivery": None, "errors": [str(exc)], "handoff": None,
+        }
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    elif report["status"] == "pass":
+        print(f"{args.item}: feasible ({report['cursor']})")
+    elif report["status"] == "disabled":
+        print(f"{args.item}: feasibility disabled")
+    else:
+        for error in report["errors"]:
+            print(f"refused: {error}", file=sys.stderr)
+    return 2 if report["status"] == "fail" else 0
+
+
+def cmd_plan_dispatch(args):
+    if not paths.factory_root(args.repo).is_dir():
+        _require_factory_repo(args.repo)
+        return 2
+    token = os.environ.get(IMPLEMENTATION_OWNER_ENV)
+    try:
+        config = config_state.capture(args.repo)
+        dispatch_snapshot = feasibility.prepare_dispatch(
+            args.repo, args.item, config=config, owner_token=token,
+            tasks=args.task)
+    except (config_state.ConfigStateError,
+            feasibility.FeasibilityError) as exc:
+        if args.json:
+            print(json.dumps({
+                "status": "fail", "item": args.item, "error": str(exc),
+            }, indent=2, sort_keys=True))
+        else:
+            print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    result = {
+        "status": "pass",
+        "item": args.item,
+        "ticket_id": dispatch_snapshot.ticket.ticket_id,
+        "tasks": list(dispatch_snapshot.tasks),
+        "handoff": dispatch_snapshot.handoff,
+    }
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(f"{args.item}: dispatch ticket {result['ticket_id']}")
+    return 0
+
+
+def cmd_plan_finalize(args):
+    if not paths.factory_root(args.repo).is_dir():
+        _require_factory_repo(args.repo)
+        return 2
+    token = os.environ.get(IMPLEMENTATION_OWNER_ENV)
+    try:
+        result = feasibility.finalize_tasks(
+            args.repo, args.item, ticket_id=args.ticket,
+            owner_token=token)
+    except feasibility.FeasibilityError as exc:
+        if args.json:
+            print(json.dumps({
+                "status": "fail", "item": args.item, "error": str(exc),
+            }, indent=2, sort_keys=True))
+        else:
+            print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(f"{args.item}: finalized {result['cursor']}")
+    return 0
+
+
+def cmd_plan_rework(args):
+    if not paths.factory_root(args.repo).is_dir():
+        _require_factory_repo(args.repo)
+        return 2
+    try:
+        config = config_state.capture(args.repo)
+        source_snapshot = safeio.snapshot_path(args.repo, args.source_file)
+        plan_proposal = safeio.snapshot_path(args.repo, args.plan_proposal)
+        acceptance_proposal = safeio.snapshot_path(
+            args.repo, args.acceptance_proposal)
+        key = feasibility.rework_operation_key(
+            args.source, source_snapshot, args.finding)
+        receipt = control.adopt_operation(
+            args.repo, args.item, kind="implement-entry", key=key)
+        if receipt is None:
+            prepared = feasibility.prepare_rework_entry(
+                args.repo, args.item, config=config, source=args.source,
+                source_snapshot=source_snapshot,
+                finding_ids=args.finding, plan_proposal=plan_proposal,
+                acceptance_proposal=acceptance_proposal)
+            _meta, _verdict, receipt = machine.commit_implement_entry(prepared)
+    except (config_state.ConfigStateError, control.ControlError,
+            feasibility.FeasibilityError, safeio.SafeIOError) as exc:
+        if args.json:
+            print(json.dumps({
+                "status": "fail", "item": args.item, "error": str(exc),
+            }, indent=2, sort_keys=True))
+        else:
+            print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    result = {
+        "status": "pass", "item": args.item,
+        "operation_id": receipt.operation_id,
+    }
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(f"{args.item}: rework prepared {receipt.operation_id}")
+    return 0
+
+
 def cmd_provision(args):
     if not _require_factory_repo(args.repo):
         return 2
@@ -248,16 +373,9 @@ def _acquire_ownership(args):
 
 def _check_ownership(args):
     token = _required_owner_token(args.item, "check")
-    checkout = ownership.canonical_worktree(
-        args.repo, args.item, args.worktree)
-    state = ownership.owner_state_path(args.repo, args.item)
-    ownership._guard_exists(state, args.item, checkout)
-    record = ownership._read_valid_record(state, args.item, checkout)
-    if not hmac.compare_digest(
-            record["owner_sha256"], ownership._digest(token)):
-        raise ownership.OwnershipRefusal(
-            f"{args.item}: ownership check refused")
-    ownership._guard_exists(state, args.item, checkout)
+    verified = ownership.verify(
+        args.repo, args.item, token, supplied=args.worktree)
+    checkout = verified.checkout
     if args.json:
         print(json.dumps({
             "canonical_worktree": str(checkout),
@@ -331,11 +449,21 @@ def cmd_log(args):
         print("approach.judgement.recorded is written only by factory "
               "approach-judgement", file=sys.stderr)
         return 1
+    if args.event == "stage.advance":
+        print("stage.advance is written only by factory advance",
+              file=sys.stderr)
+        return 1
     if args.event in ("assure.waived", "assure.confirmed", "cost.answered",
                       "approach.answered"):
         print(f"{args.event} is written only by its human verb "
               "(factory waive / factory confirm / factory cost-answer / "
               "factory approach-answer)",
+              file=sys.stderr)
+        return 1
+    if (args.event in ("stage.advance", "verify.green") or
+            args.event.startswith("evidence.") or
+            args.event.startswith("control.")):
+        print(f"{args.event} is written only by the Factory engine",
               file=sys.stderr)
         return 1
     try:
@@ -717,6 +845,38 @@ def main(argv=None):
     p.add_argument("--worktree")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_work)
+
+    p = sub.add_parser(
+        "plan-check", help="validate an item's declared implementation plan")
+    p.add_argument("item")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_plan_check)
+
+    p = sub.add_parser(
+        "plan-dispatch", help="issue an owner-bound implementation ticket")
+    p.add_argument("item")
+    p.add_argument("--task", type=int)
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_plan_dispatch)
+
+    p = sub.add_parser(
+        "plan-finalize", help="atomically finalize a plan dispatch")
+    p.add_argument("item")
+    p.add_argument("--ticket", required=True)
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_plan_finalize)
+
+    p = sub.add_parser(
+        "plan-rework", help="atomically install source-linked rework")
+    p.add_argument("item")
+    p.add_argument("--source", required=True,
+                   choices=["review", "verify", "assure"])
+    p.add_argument("--source-file", required=True)
+    p.add_argument("--finding", action="append", required=True)
+    p.add_argument("--plan-proposal", required=True)
+    p.add_argument("--acceptance-proposal", required=True)
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_plan_rework)
 
     p = sub.add_parser("provision",
                        help="prepare an item's worktree for a headless worker")

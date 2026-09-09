@@ -1,5 +1,7 @@
 import json
 import os
+import shutil
+import stat
 import subprocess
 import tempfile
 import threading
@@ -7,7 +9,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from scripts.factory.lib import initrepo, items, logs, ownership
+from scripts.factory.lib import initrepo, items, logs, ownership, safeio
 
 
 def _git(repo, *args):
@@ -140,6 +142,197 @@ class CanonicalWorktreeTest(OwnershipFixture):
 
 
 class OwnershipPrimitiveTest(OwnershipFixture):
+    def test_public_read_only_verifier_returns_canonical_owner_identity(self):
+        claim = ownership.acquire(self.repo, self.item)
+        try:
+            before = self.state_path.read_bytes()
+            verified = ownership.verify(
+                self.repo, self.item, claim.token, supplied=self.repo)
+            self.assertEqual(verified.checkout, claim.checkout)
+            self.assertEqual(verified.owner_sha256,
+                             ownership.owner_digest(claim.token))
+            self.assertEqual(self.state_path.read_bytes(), before)
+            with self.assertRaises(ownership.OwnershipRefusal):
+                ownership.verify(self.repo, self.item, "wrong")
+            self.assertEqual(self.state_path.read_bytes(), before)
+        finally:
+            claim.release()
+
+    def test_owner_state_symlink_is_never_followed_by_any_public_operation(self):
+        claim = ownership.acquire(self.repo, self.item)
+        backing = self.state_path.with_name("owner-state-backing.json")
+        verified = ownership.verify(self.repo, self.item, claim.token)
+        try:
+            operations = {
+                "acquire": lambda: ownership.acquire(
+                    self.repo, self.item, owner_token=claim.token),
+                "verify": lambda: ownership.verify(
+                    self.repo, self.item, claim.token),
+                "revalidate": lambda: ownership.revalidate(verified),
+                "release": lambda: ownership.release(
+                    self.repo, self.item, claim.checkout, claim.token),
+            }
+            for label, operation in operations.items():
+                with self.subTest(operation=label):
+                    self.state_path.rename(backing)
+                    self.state_path.symlink_to(backing.name)
+                    try:
+                        with self.assertRaisesRegex(
+                                ownership.OwnershipRefusal, "owner state"):
+                            operation()
+                    finally:
+                        self.state_path.unlink()
+                        backing.rename(self.state_path)
+        finally:
+            if self.state_path.is_symlink():
+                self.state_path.unlink()
+            if backing.exists():
+                backing.rename(self.state_path)
+            claim.release()
+
+    def test_owner_state_fifo_refuses_without_blocking(self):
+        os.mkfifo(self.state_path)
+        source = r'''
+import sys
+from pathlib import Path
+from scripts.factory.lib import ownership
+try:
+    ownership.acquire(Path(sys.argv[1]), sys.argv[2])
+except ownership.OwnershipRefusal:
+    raise SystemExit(0)
+raise SystemExit(2)
+'''
+        environment = os.environ.copy()
+        environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
+        try:
+            completed = subprocess.run(
+                ["python3", "-c", source, str(self.repo), self.item],
+                cwd=Path(__file__).resolve().parents[1], env=environment,
+                capture_output=True, text=True, timeout=1)
+        except subprocess.TimeoutExpired:
+            self.fail("owner-state FIFO inspection blocked")
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def test_dangling_release_guard_refuses_acquire(self):
+        guard = ownership._release_guard_path(self.state_path)
+        guard.symlink_to("missing-release-guard-target")
+        try:
+            with self.assertRaisesRegex(
+                    ownership.OwnershipRefusal, "owner state"):
+                ownership.acquire(self.repo, self.item)
+            self.assertFalse(self.state_path.exists())
+        finally:
+            if self.state_path.exists():
+                self.state_path.unlink()
+            guard.unlink()
+
+    def test_release_guard_fifo_refuses_without_opening_payload(self):
+        guard = ownership._release_guard_path(self.state_path)
+        os.mkfifo(guard)
+        real_open = ownership.os.open
+
+        def reject_guard_open(path, *args, **kwargs):
+            if path == "implementation-owner.release-pending":
+                raise AssertionError("release guard payload was opened")
+            return real_open(path, *args, **kwargs)
+
+        with (mock.patch.object(
+                ownership.os, "open", side_effect=reject_guard_open),
+              self.assertRaisesRegex(
+                  ownership.OwnershipRefusal, "owner state")):
+            ownership.acquire(self.repo, self.item)
+        self.assertFalse(self.state_path.exists())
+
+    def test_owner_state_read_is_bounded_before_any_payload_read(self):
+        self.state_path.write_bytes(b"{" + b" " * 65536)
+        checkout = ownership.canonical_worktree(self.repo, self.item)
+        with (mock.patch.object(
+                ownership, "canonical_worktree", return_value=checkout),
+              mock.patch.object(
+                Path, "read_bytes",
+                side_effect=AssertionError("unbounded pathname read")),
+              mock.patch.object(
+                  ownership.os, "read",
+                  side_effect=AssertionError("oversized record was read")) as read,
+              self.assertRaisesRegex(
+                  ownership.OwnershipRefusal, "owner state")):
+            ownership.acquire(self.repo, self.item)
+        read.assert_not_called()
+
+    def test_owner_state_leaf_and_ancestor_replacement_refuse(self):
+        for attack in ("leaf", "ancestor"):
+            with self.subTest(attack=attack):
+                claim = ownership.acquire(self.repo, self.item)
+                raw = self.state_path.read_bytes()
+                item_dir = self.state_path.parent
+                detached = item_dir.with_name(item_dir.name + "-detached")
+                replacement = self.state_path.with_name("owner-copy.json")
+                if attack == "leaf":
+                    replacement.write_bytes(raw)
+                owner_inode = self.state_path.stat().st_ino
+                real_read = ownership.os.read
+                attacked = False
+
+                def substitute(fd, size):
+                    nonlocal attacked
+                    if (not attacked and
+                            os.fstat(fd).st_ino == owner_inode):
+                        attacked = True
+                        if attack == "leaf":
+                            os.replace(replacement, self.state_path)
+                        else:
+                            item_dir.rename(detached)
+                            shutil.copytree(detached, item_dir)
+                    return real_read(fd, size)
+
+                try:
+                    with (mock.patch.object(
+                            ownership.os, "read", side_effect=substitute),
+                          self.assertRaisesRegex(
+                              ownership.OwnershipRefusal, "owner state")):
+                        ownership.verify(self.repo, self.item, claim.token)
+                    self.assertTrue(attacked)
+                finally:
+                    if attack == "ancestor" and detached.exists():
+                        shutil.rmtree(item_dir)
+                        detached.rename(item_dir)
+                    claim.release()
+
+    def test_owner_namespace_open_failure_closes_every_acquired_fd_once(self):
+        claim = ownership.acquire(self.repo, self.item)
+        real_append = ownership.safeio._append_directory
+        real_close = ownership.os.close
+        acquired = []
+        closed = []
+
+        def append_then_refuse(chain, name):
+            real_append(chain, name)
+            if name == "items":
+                closed.clear()
+                acquired.extend(handle.fd for handle in chain)
+                raise ownership.safeio.SafeIOError("simulated refusal")
+
+        def record_close(fd):
+            closed.append(fd)
+            return real_close(fd)
+
+        try:
+            with (mock.patch.object(
+                    ownership.safeio, "_append_directory",
+                    side_effect=append_then_refuse),
+                  mock.patch.object(
+                      ownership.os, "close", side_effect=record_close),
+                  self.assertRaisesRegex(
+                      ownership.OwnershipRefusal, "owner state")):
+                ownership.verify(self.repo, self.item, claim.token)
+            self.assertTrue(acquired)
+            for fd in acquired:
+                self.assertEqual(closed.count(fd), 1)
+                with self.assertRaises(OSError):
+                    os.fstat(fd)
+        finally:
+            claim.release()
+
     def test_repeated_short_writes_persist_exact_canonical_record(self):
         real_write = ownership.os.write
         write_sizes = []
@@ -508,6 +701,95 @@ class ReleaseFailureTest(OwnershipFixture):
             self.state_path).is_file())
         self.assertEqual(evidence.read_bytes(), b"completed\n")
         self._assert_later_acquire_refuses_without_mutation(before)
+
+    def test_release_preserves_owner_mutated_during_guard_creation(self):
+        outer = ownership.acquire(self.repo, self.item)
+        foreign = b"foreign owner evidence after guard creation\n"
+        owner_inode = self.state_path.stat().st_ino
+        guard = ownership._release_guard_path(self.state_path)
+        real_write_exclusive = ownership._write_exclusive_at
+
+        def create_guard_then_mutate(directory_fd, name, payload):
+            identity = real_write_exclusive(directory_fd, name, payload)
+            if name == ownership._RELEASE_GUARD_NAME:
+                self.state_path.write_bytes(foreign)
+            return identity
+
+        with (mock.patch.object(
+                ownership, "_write_exclusive_at",
+                side_effect=create_guard_then_mutate),
+              self.assertRaisesRegex(
+                  ownership.OwnershipReleaseError,
+                  "release could not be verified")):
+            ownership.release(
+                self.repo, self.item, outer.checkout, outer.token)
+
+        self.assertEqual(self.state_path.read_bytes(), foreign)
+        self.assertEqual(self.state_path.stat().st_ino, owner_inode)
+        self.assertEqual(guard.read_bytes(), b"release-pending\n")
+
+    def test_release_preserves_owner_mutated_during_guard_directory_fsync(self):
+        outer = ownership.acquire(self.repo, self.item)
+        foreign = b"foreign owner evidence during guard sync\n"
+        owner_inode = self.state_path.stat().st_ino
+        item_identity = (
+            self.state_path.parent.stat().st_dev,
+            self.state_path.parent.stat().st_ino,
+        )
+        guard = ownership._release_guard_path(self.state_path)
+        real_fsync = ownership.os.fsync
+        mutated = False
+
+        def sync_guard_then_mutate(fd):
+            nonlocal mutated
+            details = os.fstat(fd)
+            result = real_fsync(fd)
+            if (not mutated and stat.S_ISDIR(details.st_mode) and
+                    (details.st_dev, details.st_ino) == item_identity and
+                    guard.is_file()):
+                self.state_path.write_bytes(foreign)
+                mutated = True
+            return result
+
+        with (mock.patch.object(
+                ownership.os, "fsync", side_effect=sync_guard_then_mutate),
+              self.assertRaisesRegex(
+                  ownership.OwnershipReleaseError,
+                  "release could not be verified")):
+            ownership.release(
+                self.repo, self.item, outer.checkout, outer.token)
+
+        self.assertTrue(mutated)
+        self.assertEqual(self.state_path.read_bytes(), foreign)
+        self.assertEqual(self.state_path.stat().st_ino, owner_inode)
+        self.assertEqual(guard.read_bytes(), b"release-pending\n")
+
+    def test_release_preserves_guard_mutated_before_guard_unlink(self):
+        outer = ownership.acquire(self.repo, self.item)
+        foreign = b"foreign release guard evidence\n"
+        guard = ownership._release_guard_path(self.state_path)
+        observed = {}
+        real_unlink_if_identity = safeio._unlink_if_identity
+
+        def unlink_owner_then_mutate_guard(directory_fd, name, identity):
+            removed = real_unlink_if_identity(directory_fd, name, identity)
+            if name == ownership._OWNER_STATE_NAME and removed:
+                observed["inode"] = guard.stat().st_ino
+                guard.write_bytes(foreign)
+            return removed
+
+        with (mock.patch.object(
+                safeio, "_unlink_if_identity",
+                side_effect=unlink_owner_then_mutate_guard),
+              self.assertRaisesRegex(
+                  ownership.OwnershipReleaseError,
+                  "release could not be verified")):
+            ownership.release(
+                self.repo, self.item, outer.checkout, outer.token)
+
+        self.assertFalse(self.state_path.exists())
+        self.assertEqual(guard.read_bytes(), foreign)
+        self.assertEqual(guard.stat().st_ino, observed["inode"])
 
     def test_release_post_delete_verification_failure_is_retained_fail_closed(
             self):

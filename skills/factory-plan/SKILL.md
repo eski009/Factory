@@ -10,8 +10,8 @@ Run this skill in a fresh context using the capabilities skill's `references/hos
 ## Contract
 
 - **Entry stage:** `plan`. The gate into `plan` already required `spec.md` non-empty, and (for `ui`/`mixed` items) `design/choice.md` — both are readable inputs here.
-- **Artifacts produced:** `items/<id>/plan.md`; when approach convergence is enabled, the engine-owned judgement record and, on rejection, a cited entry in `items/<id>/approaches/forbidden.md`.
-- **Exit:** the Approach convergence protocol selects `factory advance ITEM implement` or the shared rejection edge to `spec`. The gate requires `plan.md` to exist and contain at least one `- [ ]` checkbox — a plan with no checkbox tasks cannot advance.
+- **Artifacts produced:** `items/<id>/plan.md`; when the `feasibility` gate is enabled, also `items/<id>/acceptance.json`; when approach convergence is enabled, also the engine-owned judgement record and, on rejection, a cited entry in `items/<id>/approaches/forbidden.md`.
+- **Exit:** feasibility must pass first when enabled, then the Approach convergence protocol selects `factory advance ITEM implement` or the shared rejection edge to `spec`. The implementation gate requires at least one `- [ ]` checkbox in either mode.
 
 ## REQUIRED SUB-SKILL: superpowers:writing-plans
 
@@ -22,7 +22,8 @@ Use `superpowers:writing-plans` to build the plan. Read `items/<id>/spec.md` (an
 - **Test commands:** every task must name the exact files it touches, the exact tests it adds or runs, and the exact test command to run them (e.g. `python3 -m unittest tests.test_foo -v`) — no "run the tests" without the command.
 - **Acceptance-criteria references:** every task cites which numbered item in the spec's `## Acceptance criteria` it satisfies, so a reviewer can trace task back to requirement without re-reading the whole spec.
 - **One-subagent-sized tasks:** size each task so a single subagent dispatch can complete it standalone (the writing-plans skill's "Task Right-Sizing" section) — this factory always executes plans one task per subagent, never inline batches.
-- **Complete code, not descriptions:** every task carries the exact code, exact tests, and exact commands (with expected output) it needs — a task is done when the implementer's job is transcription, never invention. This is what makes implementer output correct-by-construction rather than correct-by-judgment: see the capabilities skill's `references/orchestration-patterns.md`, pattern 1. A task that says "add appropriate handling for X" instead of showing the handling is not plan-complete.
+- **Disabled-mode complete code:** when `feasibility` is absent, retain the existing rule: every task carries the exact code, tests, commands, and expected output it needs, so implementation is transcription rather than invention. A task that says "add appropriate handling for X" is not complete.
+- **Enabled contract-first branch:** when `feasibility` is present, read the capabilities skill's `references/plan-feasibility.md`. Freeze interfaces, decisions, task boundaries, exact commands, acceptance links, ownership, providers, and integrated gates in a compact plan plus closed sidecar. Do not prescribe every implementation line or add generated code merely to make the plan longer. There is no subjective compactness score or length cap.
 - Skip writing-plans' "Execution Handoff" section — this factory has one execution path (the `implement` stage skill), not a choice between subagent-driven and inline execution.
 - **Plan header "For agentic workers" line:** replace the REQUIRED SUB-SKILL boilerplate with `> **For agentic workers:** Executed by the factory-implement skill — one fresh subagent per task. Steps use checkbox (- [ ]) syntax for tracking.`
 
@@ -51,13 +52,13 @@ Interrupted review or missing evidence leaves the item at `plan`; report the mis
 ## Steps
 
 1. Read `items/<id>/spec.md` and, for `ui`/`mixed` items, `items/<id>/design/choice.md`.
-2. Follow `superpowers:writing-plans` with the adaptations above to produce `items/<id>/plan.md`.
+2. Follow `superpowers:writing-plans` with the adaptations above to produce `items/<id>/plan.md`. If feasibility is enabled, use its contract-first branch and produce the exact closed `items/<id>/acceptance.json` described by `references/plan-feasibility.md` and `schemas/acceptance-plan.schema.json`.
 3. Self-review the plan against the spec's acceptance criteria (writing-plans' own self-review step): every criterion should trace to at least one task; every task should cite the criteria it covers.
-4. Confirm `plan.md` contains at least one `- [ ]` line — the gate will refuse otherwise.
-5. Execute Approach convergence above against the finished plan. Its recorded disposition selects `implement` or `spec`; disabled mode uses the ordinary advance.
+4. Confirm `plan.md` contains at least one `- [ ]` line. When feasibility is enabled, run `factory plan-check ITEM --json`; fix only reported declaration defects and require `status: pass` before continuing.
+5. Execute Approach convergence above against the finished, feasibility-valid plan. Its recorded disposition selects `implement` or `spec`; disabled mode uses the ordinary advance.
 
 ## Exit
 
-Use the exit selected by Approach convergence: `factory advance ITEM implement`, or append the cited forbidden entry and run `factory advance ITEM spec --reason "approach.rejected: <one line>"`. If the gate refuses (missing checkbox, wrong stage, stale or incomplete evidence), report the refusal message verbatim, resolve the stated cause, and rerun the context before retrying. An interrupted or incomplete review remains at `plan`.
+Use the exit selected by Approach convergence: `factory advance ITEM implement`, or append the cited forbidden entry and run `factory advance ITEM spec --reason "approach.rejected: <one line>"`. If `plan-check` or advance refuses, report the refusal verbatim, resolve the stated cause, and rerun the context before retrying. An interrupted or incomplete review remains at `plan`.
 
-Report the resulting stage (`implement` or `spec`) and the key plan/judgement/forbidden paths written. Never re-attempt with a guessed record mutation.
+Report the resulting stage (`implement` or `spec`) and the key plan, acceptance, judgement, or forbidden paths written. Never weaken a declaration or re-attempt with a guessed record mutation.
