@@ -577,6 +577,27 @@ class DispatchAndScopeTest(unittest.TestCase):
                 owner_token=self.claim.token)
         self.assertEqual((self.item_dir / "plan.md").read_bytes(), self.plan)
 
+    def test_finalize_rejects_done_result_with_failing_tests(self):
+        dispatch = self.dispatch()
+        self.commit_path()
+        self.write_result(dispatch)
+        result_path = self.item_dir / "worker/result.json"
+        result = json.loads(result_path.read_text(encoding="utf-8"))
+        result["test"] = {
+            "command": "python3 -m unittest",
+            "passed": False,
+            "summary": "one failure",
+        }
+        result_path.write_text(json.dumps(result), encoding="utf-8")
+        with self.assertRaisesRegex(
+                feasibility.FeasibilityError, "failing tests"):
+            feasibility.finalize_tasks(
+                self.repo, ITEM, ticket_id=dispatch.ticket.ticket_id,
+                owner_token=self.claim.token)
+        self.assertEqual((self.item_dir / "plan.md").read_bytes(), self.plan)
+        self.assertFalse(any(event["event"] == "implement.completed"
+                             for event in logs.read_events(self.repo, ITEM)))
+
     def test_post_backend_plan_change_preserves_result_and_suppresses_completion(self):
         dispatch = self.dispatch()
         self.commit_path()
@@ -706,39 +727,48 @@ class DispatchAndScopeTest(unittest.TestCase):
         self.assertFalse((self.item_dir / "worker").exists())
         self.assertFalse((self.item_dir / "implementation-owner.json").exists())
 
-    def test_real_backend_attempt_is_created_only_after_both_launch_checks(self):
+    def test_real_backend_rechecks_after_attempt_and_brief_preparation(self):
         dispatch = self.dispatch()
         checks = 0
         attempts = 0
+        backend_calls = 0
         real_revalidate = feasibility.revalidate_dispatch
+        attempt = mock.Mock()
 
-        def second_check_refuses(ticket):
+        def count_checks(ticket):
             nonlocal checks
             checks += 1
-            if checks == 2:
-                raise feasibility.FeasibilityError("concurrent_plan_change")
             return real_revalidate(ticket)
 
-        def count_attempt(*args, **kwargs):
+        def prepare_attempt(*args, **kwargs):
             nonlocal attempts
             attempts += 1
-            raise AssertionError("attempt created before final launch check")
+            plan = self.item_dir / "plan.md"
+            plan.write_bytes(plan.read_bytes() + b"changed\n")
+            return attempt
+
+        def count_backend(*args, **kwargs):
+            nonlocal backend_calls
+            backend_calls += 1
+            raise AssertionError("backend launched with a stale ticket")
 
         with (mock.patch.object(
                 feasibility, "revalidate_dispatch",
-                side_effect=second_check_refuses),
+                side_effect=count_checks),
               mock.patch.object(
                   work.worker_attempts, "create_attempt",
-                  side_effect=count_attempt)):
+                  side_effect=prepare_attempt),
+              mock.patch.dict(work.BACKENDS, {"codex": count_backend})):
             code, result = work._run_owned_work(
-                self.repo, ITEM, self.repo, work.worker_config(self.repo),
-                "codex", None, 30, "off", "workspace-write", "medium",
-                list(dispatch.tasks), dispatch_snapshot=dispatch,
-                owner_token=self.claim.token)
+                    self.repo, ITEM, self.repo, work.worker_config(self.repo),
+                    "codex", None, 30, "off", "workspace-write", "medium",
+                    list(dispatch.tasks), dispatch_snapshot=dispatch,
+                    owner_token=self.claim.token)
         self.assertEqual(code, 2, result)
         self.assertEqual(result["reason"], "concurrent_plan_change")
-        self.assertEqual((checks, attempts), (2, 0))
-        self.assertFalse((self.item_dir / "worker").exists())
+        self.assertEqual((checks, attempts, backend_calls), (2, 1, 0))
+        attempt.close.assert_called_once_with()
+        self.assertTrue((self.item_dir / "worker/brief.md").exists())
 
 
 class ReworkTest(unittest.TestCase):
@@ -935,6 +965,29 @@ class ReworkTest(unittest.TestCase):
                     fixture["repo"], ITEM)
                     if event.get("operation_id") == receipt.operation_id]
                 self.assertEqual(len(matching), 2)
+
+    def test_rework_fresh_prepare_restores_missing_snapshot_authority(self):
+        fixture = self.fixture("review")
+        prepared = self.prepare(fixture)
+        with (mock.patch.object(
+                control, "_after_intent",
+                side_effect=RuntimeError("simulated crash")),
+              self.assertRaisesRegex(RuntimeError, "simulated crash")):
+            machine.commit_implement_entry(prepared)
+        self.assertEqual(
+            items.load_item(fixture["repo"], ITEM)[0]["stage"], "review")
+
+        retried = self.prepare(fixture)
+        self.assertEqual(
+            retried.log_snapshot.transaction_nonce,
+            prepared.log_snapshot.transaction_nonce)
+        self.assertEqual(
+            retried.cost_answer_snapshot.transaction_nonce,
+            prepared.cost_answer_snapshot.transaction_nonce)
+        _meta, _verdict, receipt = machine.commit_implement_entry(retried)
+        self.assertIsNotNone(receipt)
+        self.assertEqual(
+            items.load_item(fixture["repo"], ITEM)[0]["stage"], "implement")
 
     def test_plan_rework_cli_is_idempotent_and_never_uses_proposals_as_authority(self):
         fixture = self.fixture("review")

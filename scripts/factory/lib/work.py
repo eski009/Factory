@@ -489,14 +489,6 @@ def _run_owned_work(repo, item_id, work_tree, cfg, backend, model, timeout,
             return 2, {"error": str(exc),
                        "reason": str(exc),
                        "detail": str(exc)}
-    if dispatch_snapshot is not None:
-        try:
-            feasibility.revalidate_dispatch(dispatch_snapshot.ticket)
-        except feasibility.FeasibilityError as exc:
-            return 2, {"error": str(exc),
-                       "reason": str(exc),
-                       "detail": str(exc)}
-
     if backend in ("claude", "codex"):
         try:
             attempt = worker_attempts.create_attempt(
@@ -508,6 +500,13 @@ def _run_owned_work(repo, item_id, work_tree, cfg, backend, model, timeout,
         worker_dir = paths.item_dir(repo, item_id) / "worker"
         worker_dir.mkdir(parents=True, exist_ok=True)
         (worker_dir / "brief.md").write_text(brief, encoding="utf-8")
+        if dispatch_snapshot is not None:
+            try:
+                feasibility.revalidate_dispatch(dispatch_snapshot.ticket)
+            except feasibility.FeasibilityError as exc:
+                return 2, {"error": str(exc),
+                           "reason": str(exc),
+                           "detail": str(exc)}
 
         started = time.monotonic()
         if attempt is None:

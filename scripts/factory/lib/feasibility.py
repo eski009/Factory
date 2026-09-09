@@ -533,6 +533,9 @@ def finalize_tasks(repo, item_id, *, ticket_id, owner_token):
             raise FeasibilityError(result_errors)
         if result["status"] != "done":
             raise FeasibilityError("worker result is not successful")
+        if (type(result.get("test")) is dict and
+                result["test"].get("passed") is False):
+            raise FeasibilityError("worker result records failing tests")
         if result.get("dispatch_ticket") != ticket.ticket_id:
             raise FeasibilityError(
                 "worker result does not match the dispatch ticket")
@@ -710,15 +713,48 @@ def prepare_rework_entry(repo, item_id, *, config, source, source_snapshot,
             "source_sha256": source_snapshot.sha256,
         },
     }
+    operation_key = rework_operation_key(
+        source, source_snapshot, findings)
+    log_snapshot = None
+    cost_answer_snapshot = None
     try:
+        existing = control.operation_intent(
+            repo, item_id, kind="implement-entry", key=operation_key)
+        if existing is not None:
+            stage_events = [
+                candidate for candidate in existing["events"]
+                if (candidate["event"] == "stage.advance" and
+                    candidate.get("data", {}).get("from") == source and
+                    candidate.get("data", {}).get("to") == "implement")]
+            if len(stage_events) != 1:
+                raise control.ControlRefusal(
+                    "existing rework entry is invalid")
+            timestamp = stage_events[0]["ts"]
+            if existing.get("log_snapshot", {}).get("state") == "missing":
+                log_snapshot = control._snapshot_from_record(
+                    existing["log_snapshot"], {},
+                    expected_repo=item_snapshot.root)
+            answer_relative = str(PurePosixPath(
+                ".factory", "items", item_id, "cost", "answer.md"))
+            missing_answers = [
+                record for record in existing["prerequisites"]
+                if (record["relative"] == answer_relative and
+                    record["state"] == "missing")]
+            if len(missing_answers) > 1:
+                raise control.ControlRefusal(
+                    "existing rework entry is invalid")
+            if missing_answers:
+                cost_answer_snapshot = control._snapshot_from_record(
+                    missing_answers[0], {},
+                    expected_repo=item_snapshot.root)
         return machine.prepare_implement_entry(
-            repo, item_id,
-            operation_key=rework_operation_key(
-                source, source_snapshot, findings),
+            repo, item_id, operation_key=operation_key,
             config=config, prerequisites=prerequisites,
             replacements=((old_plan, proposed_plan),
                           (old_acceptance, acceptance_proposal.data)),
             events=(event,), item_snapshot=item_snapshot,
+            log_snapshot=log_snapshot,
+            cost_answer_snapshot=cost_answer_snapshot,
             timestamp=timestamp)
     except (machine.GateError, control.ControlError,
             config_state.ConfigStateError) as exc:
