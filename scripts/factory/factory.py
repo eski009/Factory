@@ -10,9 +10,9 @@ from pathlib import Path
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod, breaker, approach, ownership, config_state, control, feasibility, safeio, reconciliation, convergence
+    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod, breaker, approach, ownership, config_state, control, feasibility, safeio, reconciliation, convergence, ledger as ledger_mod
 else:
-    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod, breaker, approach, ownership, config_state, control, feasibility, safeio, reconciliation, convergence
+    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod, breaker, approach, ownership, config_state, control, feasibility, safeio, reconciliation, convergence, ledger as ledger_mod
 
 
 IMPLEMENTATION_OWNER_ENV = "FACTORY_IMPLEMENTATION_OWNER"
@@ -151,6 +151,24 @@ def cmd_cost(args):
         print(json.dumps(summary, indent=2, sort_keys=True))
     else:
         print(cost.render_text(summary))
+    return 0
+
+
+def cmd_ledger(args):
+    if not _require_factory_repo(args.repo):
+        return 2
+    try:
+        summary = ledger_mod.summarize(
+            args.repo, args.base, args.head,
+            product_paths=args.product_path,
+            admin_paths=args.admin_path)
+    except ledger_mod.LedgerError as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(summary, indent=2, sort_keys=True))
+    else:
+        print(ledger_mod.render_text(summary))
     return 0
 
 
@@ -476,6 +494,19 @@ def cmd_log(args):
         items.load_item(args.repo, args.item)
     except items.ItemError as exc:
         print(str(exc), file=sys.stderr)
+        return 1
+    evidence_errors = initrepo.structured_event_errors(
+        args.event, data, "--data", repo=args.repo)
+    try:
+        existing_events = logs.read_events(args.repo, args.item)
+    except (OSError, UnicodeError) as exc:
+        print(f"cannot inspect existing event ids: {exc}", file=sys.stderr)
+        return 1
+    evidence_errors.extend(initrepo.structured_id_conflict_errors(
+        args.event, data, existing_events, "--data"))
+    if evidence_errors:
+        for error in evidence_errors:
+            print(error, file=sys.stderr)
         return 1
     logs.append_event(args.repo, args.item, args.event, data)
     return 0
@@ -861,6 +892,15 @@ def main(argv=None):
                    help="aggregate mode: every item, no cross-item totals")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_cost)
+
+    p = sub.add_parser(
+        "ledger", help="read-only run-bounded delivery and evidence ledger")
+    p.add_argument("--base", required=True)
+    p.add_argument("--head", required=True)
+    p.add_argument("--product-path", action="append", default=[])
+    p.add_argument("--admin-path", action="append", default=[])
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_ledger)
 
     p = sub.add_parser("advance", help="move an item to a stage (gate-checked)")
     p.add_argument("item")

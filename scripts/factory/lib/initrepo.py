@@ -4,8 +4,14 @@ init() only fills gaps — it never overwrites an existing file — and
 never touches product code, CLAUDE.md, or existing docs. Spec §2.
 """
 
+import hashlib
 import json
+import os
+import re
 import shutil
+import stat
+import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 
 from . import items, paths
@@ -28,6 +34,11 @@ def load_schema(name):
 
 
 SPEND_TOKEN_KEYS = ("input", "output", "total")
+STRUCTURED_EVENT_SCHEMAS = {
+    "test.wave": "test-wave",
+    "activity.span": "activity-span",
+}
+SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
 def spend_event_errors(data, path):
@@ -60,6 +71,193 @@ def spend_write_errors(data, path):
     if isinstance(data, dict) and "scope" not in data:
         errors.append(
             f"{path}: new spend event requires scope 'leaf' or 'fork'")
+    return errors
+
+
+def _event_time(value):
+    try:
+        return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return None
+
+
+def _relative_evidence_path(value):
+    if not isinstance(value, str) or not value or "\x00" in value or "\\" in value \
+            or value.startswith("/"):
+        return False
+    return all(part not in ("", ".", "..") for part in value.split("/"))
+
+
+def evidence_file_digest(repo, relative):
+    """Hash one contained regular file without following symlink components."""
+    if not _relative_evidence_path(relative):
+        return None, "must be a contained repository-relative path"
+    parts = relative.split("/")
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    directory_flags = flags | getattr(os, "O_DIRECTORY", 0) \
+        | getattr(os, "O_NOFOLLOW", 0)
+    file_flags = flags | getattr(os, "O_NOFOLLOW", 0) \
+        | getattr(os, "O_NONBLOCK", 0)
+    descriptors = []
+    try:
+        current = os.open(os.fspath(repo), directory_flags)
+        descriptors.append(current)
+        for component in parts[:-1]:
+            current = os.open(component, directory_flags, dir_fd=current)
+            descriptors.append(current)
+        file_descriptor = os.open(parts[-1], file_flags, dir_fd=current)
+        descriptors.append(file_descriptor)
+        if not stat.S_ISREG(os.fstat(file_descriptor).st_mode):
+            return None, "is not a regular file"
+        digest = hashlib.sha256()
+        while True:
+            chunk = os.read(file_descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+        return digest.hexdigest(), None
+    except (OSError, ValueError) as exc:
+        return None, f"is missing, unreadable, or crosses a symlink ({exc})"
+    finally:
+        for descriptor in reversed(descriptors):
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+
+def _commit_resolves(repo, sha):
+    try:
+        subprocess.run(
+            ["git", "-C", os.fspath(repo), "cat-file", "-e", f"{sha}^{{commit}}"],
+            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except (OSError, subprocess.CalledProcessError):
+        return False
+
+
+def structured_event_errors(event_name, data, path, repo=None):
+    """Validate the two closed FH-07 evidence event contracts.
+
+    Unknown events deliberately return no errors, preserving the historical
+    generic log surface.  Report-range and repository-identity checks belong
+    to the read-side ledger because they require a selected Git run.
+    """
+    if not isinstance(event_name, str):
+        return [f"{path}.event: must be a string"]
+    schema_name = STRUCTURED_EVENT_SCHEMAS.get(event_name)
+    if schema_name is None:
+        return []
+    if not isinstance(data, dict):
+        return [f"{path}: {event_name} data must be an object"]
+    errors = validate(data, load_schema(schema_name), path)
+    started = _event_time(data.get("started_at"))
+    finished = _event_time(data.get("finished_at"))
+    if started is None:
+        errors.append(f"{path}.started_at: invalid UTC timestamp")
+    if finished is None:
+        errors.append(f"{path}.finished_at: invalid UTC timestamp")
+    if started is not None and finished is not None and finished < started:
+        errors.append(f"{path}: finished_at precedes started_at")
+    if event_name == "activity.span":
+        return errors
+
+    command = data.get("command")
+    if isinstance(command, list) and not command:
+        errors.append(f"{path}.command: must not be empty")
+    tested_sha = data.get("tested_sha")
+    green_sha = data.get("green_sha")
+    shipping_ref = data.get("shipping_ref")
+    if not isinstance(tested_sha, str) or not SHA_RE.fullmatch(tested_sha):
+        errors.append(f"{path}.tested_sha: must be 40 lowercase hex characters")
+    if data.get("result") == "passed":
+        if green_sha != tested_sha:
+            errors.append(f"{path}.green_sha: passed wave must equal tested_sha")
+        tests = data.get("tests")
+        if isinstance(tests, dict) and tests.get("failed") != 0:
+            errors.append(f"{path}.tests.failed: passed wave must be zero")
+    elif green_sha is not None:
+        errors.append(f"{path}.green_sha: non-passed wave must be null")
+    if shipping_ref is not None and (
+            not isinstance(shipping_ref, str)
+            or not SHA_RE.fullmatch(shipping_ref)):
+        errors.append(f"{path}.shipping_ref: must be null or 40 lowercase hex characters")
+    flows = data.get("flows")
+    shipped = data.get("shipped_flows")
+    flows_valid = isinstance(flows, list) and all(
+        isinstance(value, str) for value in flows)
+    shipped_valid = isinstance(shipped, list) and all(
+        isinstance(value, str) for value in shipped)
+    if flows_valid and len(flows) != len(set(flows)):
+        errors.append(f"{path}.flows: duplicate flow id")
+    if shipped_valid and len(shipped) != len(set(shipped)):
+        errors.append(f"{path}.shipped_flows: duplicate flow id")
+    if flows_valid and shipped_valid and not set(shipped).issubset(flows):
+        errors.append(f"{path}.shipped_flows: must be a subset of flows")
+    if shipping_ref is None and shipped:
+        errors.append(f"{path}.shipped_flows: requires shipping_ref")
+    if data.get("purpose") == "component" and (shipping_ref is not None or shipped):
+        errors.append(f"{path}: component wave cannot claim shipping")
+    screenshots = data.get("screenshots")
+    if isinstance(screenshots, list):
+        for index, screenshot in enumerate(screenshots):
+            if not isinstance(screenshot, dict):
+                continue
+            if not _relative_evidence_path(screenshot.get("path")):
+                errors.append(
+                    f"{path}.screenshots[{index}].path: must be a contained "
+                    "repository-relative path")
+            if isinstance(flows, list) and screenshot.get("flow") not in flows:
+                errors.append(
+                    f"{path}.screenshots[{index}].flow: must be present in flows")
+    if repo is not None and not errors:
+        for field in ("tested_sha", "green_sha", "shipping_ref"):
+            sha = data.get(field)
+            if sha is not None and not _commit_resolves(repo, sha):
+                errors.append(f"{path}.{field}: commit does not resolve")
+        for index, screenshot in enumerate(data["screenshots"]):
+            digest, error = evidence_file_digest(repo, screenshot["path"])
+            if error:
+                errors.append(f"{path}.screenshots[{index}].path: {error}")
+            elif digest != screenshot["sha256"]:
+                errors.append(f"{path}.screenshots[{index}].sha256: hash mismatch")
+    return errors
+
+
+def structured_event_id(event_name, data):
+    if not isinstance(event_name, str):
+        return None
+    key = {"test.wave": "wave_id", "activity.span": "span_id"}.get(event_name)
+    if key is None or not isinstance(data, dict):
+        return None
+    value = data.get(key)
+    return (event_name, value) if isinstance(value, str) else None
+
+
+def structured_id_conflict_errors(event_name, data, existing_events, path):
+    identity = structured_event_id(event_name, data)
+    if identity is None:
+        return []
+    for event in existing_events:
+        if structured_event_id(event.get("event"), event.get("data")) == identity:
+            return [f"{path}: duplicate {identity[0]} id {identity[1]!r}"]
+    return []
+
+
+def structured_log_duplicate_errors(numbered_events, path):
+    grouped = {}
+    for lineno, event in numbered_events:
+        identity = structured_event_id(event.get("event"), event.get("data"))
+        if identity is not None:
+            grouped.setdefault(identity, []).append(lineno)
+    errors = []
+    for (event_name, event_id), lines in sorted(grouped.items()):
+        if len(lines) < 2:
+            continue
+        for lineno in lines:
+            errors.append(
+                f"{path}:{lineno}: duplicate {event_name} id {event_id!r}")
     return errors
 
 
@@ -176,14 +374,27 @@ def validate_tree(repo):
                     errors.append(f"{sub.name}/item.md: {exc}")
             log_path = sub / "log.jsonl"
             log_events = []
+            numbered_log_events = []
             log_valid = True
             if log_path.exists():
-                for lineno, line in enumerate(
-                        log_path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
-                    if not line.strip():
+                try:
+                    raw_lines = log_path.read_bytes().splitlines()
+                except OSError as exc:
+                    errors.append(f"{sub.name}/log.jsonl: unreadable ({exc})")
+                    raw_lines = []
+                    log_valid = False
+                for lineno, raw_line in enumerate(raw_lines, 1):
+                    if not raw_line.strip():
                         continue
                     try:
+                        line = raw_line.decode("utf-8", errors="strict")
                         event = json.loads(line)
+                    except UnicodeDecodeError:
+                        errors.append(
+                            f"{sub.name}/log.jsonl:{lineno}: "
+                            "invalid JSON (invalid UTF-8)")
+                        log_valid = False
+                        continue
                     except json.JSONDecodeError:
                         errors.append(f"{sub.name}/log.jsonl:{lineno}: invalid JSON")
                         log_valid = False
@@ -200,9 +411,15 @@ def validate_tree(repo):
                         log_valid = False
                         continue
                     log_events.append(event)
+                    numbered_log_events.append((lineno, event))
                     if event.get("event") == "spend":
                         errors.extend(spend_event_errors(
                             event.get("data"), f"{sub.name}/log.jsonl:{lineno}"))
+                    errors.extend(structured_event_errors(
+                        event.get("event"), event.get("data"),
+                        f"{sub.name}/log.jsonl:{lineno}", repo=repo))
+                errors.extend(structured_log_duplicate_errors(
+                    numbered_log_events, f"{sub.name}/log.jsonl"))
             for rel, schema_name in (("assurance/impact.json", "assurance-impact"),
                                      ("assurance/verdicts.json", "assurance-verdicts")):
                 apath = sub / rel

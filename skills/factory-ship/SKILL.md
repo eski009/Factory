@@ -3,7 +3,12 @@ name: factory-ship
 description: Use when a factory item is at stage ship - merges per policy and closes the loop on the brain
 ---
 
-First read the capabilities skill's `references/host-adapter.md` and resolve the plugin root for this host. Below, `factory` means `python3 "${FACTORY_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/factory/factory.py" --repo .`. Item paths like `items/<id>/...` live under `.factory/` — the full path is `.factory/items/<id>/...`.
+First read the capabilities skill's `references/host-adapter.md` and
+`references/derived-ledger.md`, then resolve the plugin root for this host.
+Below, `factory` means `python3
+"${FACTORY_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/factory/factory.py"
+--repo .`. Item paths like `items/<id>/...` live under `.factory/` — the full
+path is `.factory/items/<id>/...`.
 
 Run this skill in a fresh context using the capabilities skill's `references/host-adapter.md`; nothing from the invoking session may be treated as input. The item id arrives as the skill argument; everything else is read from disk — `factory status --json`, `.factory/items/<id>/...`, and the brain surfaces this skill names below. Your final message is the report the dispatcher acts on: state the outcome (the stage advanced to, or the failure/pause reason, verbatim where a gate refused), name the key artifact paths written, and keep it to a few lines — never paste file contents into it.
 
@@ -30,6 +35,13 @@ Read `merge` from `.factory/config.json` (`auto`, `queue`, or `tiered`):
 4. Update `docs/factory/roadmap.md`: move this item's line to reflect stage `done` (the file is one line per item with `(stage)` — update that parenthetical; there is no separate "Shipped" section to move it into unless the file already has one). The roadmap's flat one-line-per-item convention (see `factory-triage`) is why "move to Shipped" cashes out this way: with no separate section to move a line into, updating the stage tag to `done` in place *is* the move — a deliberate reading of the spec's "moves to shipped" wording against this file's actual shape, not a shortcut around it.
 5. Append one line to `docs/factory/brain/decisions.md` recording what shipped and how (mode, ref, item id). This is the one ship-log exception to the council-judgement bid firewall: a factual record of what happened, not a judgement — it still doesn't authorize any other brain edit, and durable *judgements* about the item still need their own bid/judge cycle.
 6. `factory packet ITEM`, then move that packet to `docs/factory/packets/reports/<id>-shipped.md` and hand back that path as the shipped report — reports live under the `reports/` subdirectory so they don't linger in the top-level packets listing the SessionStart hook treats as "awaiting human review."
+
+If this ship session records a `test.wave`, follow
+`references/derived-ledger.md`: use the tested commit as `tested_sha`, name the
+merge/release commit as `shipping_ref` only when it really bounds the shipped
+flows, and hash screenshot evidence at capture time. This evidence enriches a
+later ledger report; it does not replace `_gate_ship`, add a new delivery gate,
+or authorize a throughput/speed claim.
 
 ## Claude Design mirror (optional)
 
