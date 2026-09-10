@@ -1064,8 +1064,135 @@ def _gate_review(repo, meta):
                               "implementation must be finished")
 
 
+def _current_review_diff(repo, meta):
+    """Return the live subject identity for the current review round.
+
+    A re-review starts at the implementation head persisted by its most
+    recent rejection.  The first review starts at the integration merge
+    base.  Every ref is resolved here at the gate, so a receipt cannot replay
+    evidence for an implementation that has since changed.
+    """
+    item_id = meta["id"]
+    head = _git(repo, "rev-parse", "--verify",
+                f"refs/heads/factory/{item_id}")
+    if not head or not _SHA_RE.fullmatch(head):
+        raise GateError(
+            f"review selection receipt invalid: live factory/{item_id} "
+            "head is unresolvable")
+
+    rejection = next((event for event in reversed(logs.read_events(
+        repo, item_id)) if event.get("event") == "review.rejected"), None)
+    if rejection is not None:
+        data = rejection.get("data")
+        base = data.get("head") if isinstance(data, dict) else None
+        if not isinstance(base, str) or not _SHA_RE.fullmatch(base):
+            raise GateError(
+                "review selection receipt invalid: latest review.rejected "
+                "event has no valid data.head")
+        resolved = _git(repo, "rev-parse", "--verify", f"{base}^{{commit}}")
+        if resolved != base:
+            raise GateError(
+                "review selection receipt invalid: latest review.rejected "
+                f"data.head {base!r} is unresolvable")
+    else:
+        branch = _default_branch(repo)
+        base = _merge_base(repo, branch, item_id)
+        if base is None:
+            raise GateError(
+                "review selection receipt invalid: current review merge "
+                "base is unresolvable")
+
+    changed = _git(repo, "diff", "--name-only", f"{base}..{head}", "--")
+    if changed is None:
+        raise GateError(
+            "review selection receipt invalid: current review changed "
+            "paths are unresolvable")
+    return {
+        "base": base,
+        "head": head,
+        "changed_paths": changed.splitlines(),
+    }
+
+
+def _review_diff_errors(repo, meta, receipt, path):
+    expected = _current_review_diff(repo, meta)
+    recorded = receipt["diff"]
+    errors = []
+    for field in ("base", "head", "changed_paths"):
+        if recorded[field] != expected[field]:
+            errors.append(
+                f"{path}.diff.{field}: expected current review value "
+                f"{expected[field]!r}, got {recorded[field]!r}")
+    return errors
+
+
+def _require_review_selection(repo, meta):
+    reviews = _artifact(repo, meta, "reviews")
+    round_one = reviews / "selection-round-1.json"
+    if not round_one.exists():
+        raise GateError("review selection receipt required")
+    round_two_reports = reviews / "round-2"
+    if (any(_read_text_or_empty(report).strip()
+            for report in sorted(round_two_reports.glob("*.md"))
+            if report.is_file())
+            and not (reviews / "selection-round-2.json").exists()):
+        raise GateError(
+            "review selection receipt required for persisted Round 2 evidence")
+    from . import review_selection
+    synthesis = _read_text_or_empty(
+        _artifact(repo, meta, "reviews/synthesis.md"))
+    errors = []
+    prior_receipt = None
+    validated_round_one = None
+    validated_round_two = None
+    for receipt in sorted(reviews.glob("selection-round-*.json")):
+        rel = f"reviews/{receipt.name}"
+        match = re.fullmatch(r"selection-round-([12])\.json", receipt.name)
+        if not match:
+            errors.append(f"{rel}: invalid review selection filename")
+            continue
+        try:
+            data = json.loads(receipt.read_text(
+                encoding="utf-8", errors="replace"))
+        except json.JSONDecodeError as exc:
+            errors.append(f"{rel}: invalid JSON ({exc})")
+            continue
+        round_number = int(match.group(1))
+        # Evidence from a previous implementation delta cannot satisfy a new
+        # escalation, but must not poison a clean re-review either.
+        if (round_number == 2 and validated_round_one is not None
+                and isinstance(data, dict) and isinstance(data.get("diff"), dict)
+                and data["diff"] != validated_round_one["diff"]):
+            continue
+        receipt_errors = review_selection.receipt_errors(
+            data, rel, review_root=reviews, synthesis_text=synthesis,
+            expected_item=meta["id"], expected_round=round_number,
+            prior_receipt=prior_receipt if round_number == 2 else None)
+        errors.extend(receipt_errors)
+        if round_number == 1 and not receipt_errors:
+            diff_errors = _review_diff_errors(repo, meta, data, rel)
+            errors.extend(diff_errors)
+            if not diff_errors:
+                validated_round_one = data
+        if round_number == 1:
+            prior_receipt = data
+        elif not receipt_errors:
+            validated_round_two = data
+    if validated_round_one is not None:
+        errors.extend(review_selection.adjudication_errors(
+            validated_round_one, synthesis))
+        escalation = validated_round_one["escalation"]
+        if (escalation["conflicts"] or escalation["blocking_roles"]):
+            if validated_round_two is None:
+                errors.append(
+                    "Round 2 selection receipt required by Round 1 escalation")
+    if errors:
+        raise GateError("review selection receipt invalid: " + "; ".join(errors))
+
+
 def _gate_verify(repo, meta):
     _require_file(repo, meta, "reviews/synthesis.md", "council review synthesis required")
+    _require_review_selection(repo, meta)
     _require_event_this_round(repo, meta, "review.approved", "review",
                               "review must be approved with no blocking findings")
 

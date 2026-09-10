@@ -9,12 +9,19 @@
       "active_seconds": 0,
       "advances": 0,
       "corrupt_log_lines": 0,
+      "coverage_complete": false,
       "dispatches": 0,
       "elapsed_seconds": 0,
       "invalid_spend_events": 0,
       "item": "0001-thing",
       "measured": null,
+      "measured_scope": "leaf",
       "rework_edges": 0,
+      "scope_counts": {
+        "fork": 0,
+        "leaf": 0,
+        "unclassified": 0
+      },
       "unmeasured": "orchestrator main-loop tokens",
       "waiting_seconds": 0,
       "window": {

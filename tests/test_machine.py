@@ -11,6 +11,16 @@ from scripts.factory.lib import (
     breaker, cost, initrepo, items, logs, machine, paths)
 
 
+GIT_ENV = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
+               GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t")
+
+
+def git(repo, *args):
+    return subprocess.run(
+        ["git", *args], cwd=repo, check=True, env=GIT_ENV,
+        capture_output=True, text=True).stdout.strip()
+
+
 def make_item(repo, kind="ui", stage="idea", priority=None, bug=False, journeys=None):
     meta = {
         "id": "0001-thing", "title": "Thing", "stage": stage, "kind": kind,
@@ -30,6 +40,38 @@ def write(repo, rel, text="content\n"):
     p = paths.item_dir(repo, "0001-thing") / rel
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(text, encoding="utf-8")
+
+
+def write_review_receipt(repo, *, outcome="returned", degraded=False):
+    from tests.test_review_selection import valid_receipt, synthesis_text, execution_text
+
+    if not (Path(repo) / ".git").exists():
+        git(repo, "init", "-q")
+        git(repo, "commit", "-q", "--allow-empty", "-m", "root")
+        git(repo, "branch", "-M", "main")
+        git(repo, "branch", "factory/0001-thing")
+    data = valid_receipt(item="0001-thing", repo=repo)
+    if degraded:
+        for entry in data["outcomes"]:
+            if entry["role"] == "architecture":
+                entry["status"] = outcome
+                entry["report"] = ""
+        data["independence"] = {
+            "requested": True, "achieved": False,
+            "degradation": ["fresh dispatch unavailable"]}
+    for entry in data["outcomes"]:
+        if entry["status"] == "returned":
+            write(repo, "reviews/" + entry["report"], "# returned\n")
+    write(repo, "reviews/selection-round-1.json",
+          json.dumps(data, indent=2, sort_keys=True) + "\n")
+    if degraded:
+        write(repo, "reviews/synthesis.md",
+              synthesis_text(data) + "\n## Degradation\n\n"
+              "fresh dispatch unavailable\n\narchitecture: unavailable\n\n"
+              + execution_text(paths.item_dir(repo, "0001-thing") / "reviews"))
+    else:
+        write(repo, "reviews/synthesis.md", synthesis_text(data))
+    return data
 
 
 def mark_round(repo, item_id="0001-thing"):
@@ -309,14 +351,266 @@ class TestGates(MachineTest):
         logs.append_event(self.repo, "0001-thing", "implement.completed")
         self.assertEqual(machine.advance(self.repo, "0001-thing", "review")[0]["stage"], "review")
 
-    def test_verify_requires_synthesis_and_approval(self):
+    def test_verify_requires_review_selection_receipt(self):
         make_item(self.repo, stage="review", priority=1)
         mark_round(self.repo)
-        with self.assertRaises(machine.GateError):
-            machine.advance(self.repo, "0001-thing", "verify")
         write(self.repo, "reviews/synthesis.md")
         logs.append_event(self.repo, "0001-thing", "review.approved")
+        with self.assertRaisesRegex(
+                machine.GateError, "review selection receipt required"):
+            machine.advance(self.repo, "0001-thing", "verify")
+
+    def test_verify_refuses_invalid_review_selection_receipt(self):
+        make_item(self.repo, stage="review", priority=1)
+        mark_round(self.repo)
+        write(self.repo, "reviews/synthesis.md")
+        write(self.repo, "reviews/selection-round-1.json", "{}\n")
+        logs.append_event(self.repo, "0001-thing", "review.approved")
+        with self.assertRaisesRegex(
+                machine.GateError, "review selection receipt invalid"):
+            machine.advance(self.repo, "0001-thing", "verify")
+
+    def test_verify_refuses_round_two_report_without_selection_receipt(self):
+        make_item(self.repo, stage="review", priority=1)
+        mark_round(self.repo)
+        write_review_receipt(self.repo)
+        write(self.repo, "reviews/round-2/architecture.md", "# Round 2\n")
+        logs.append_event(self.repo, "0001-thing", "review.approved")
+
+        with self.assertRaisesRegex(
+                machine.GateError,
+                "review selection receipt required for persisted Round 2 evidence"):
+            machine.advance(self.repo, "0001-thing", "verify")
+        self.assertEqual(
+            items.load_item(self.repo, "0001-thing")[0]["stage"], "review")
+
+    def _assert_round_two_required_for_round_one_escalation(self, escalation):
+        make_item(self.repo, stage="review", priority=1)
+        mark_round(self.repo)
+        receipt = write_review_receipt(self.repo)
+        receipt["escalation"].update(escalation)
+        write(
+            self.repo, "reviews/selection-round-1.json",
+            json.dumps(receipt, indent=2, sort_keys=True) + "\n")
+        logs.append_event(self.repo, "0001-thing", "review.approved")
+
+        reviews = paths.item_dir(self.repo, "0001-thing") / "reviews"
+        self.assertFalse((reviews / "selection-round-2.json").exists())
+        self.assertFalse((reviews / "round-2").exists())
+        log_path = paths.item_dir(
+            self.repo, "0001-thing") / "log.jsonl"
+        log_before = log_path.read_text(encoding="utf-8")
+
+        with self.assertRaisesRegex(
+                machine.GateError,
+                "Round 2 selection receipt required by Round 1 escalation"):
+            machine.advance(self.repo, "0001-thing", "verify")
+
+        self.assertEqual(
+            items.load_item(self.repo, "0001-thing")[0]["stage"], "review")
+        self.assertEqual(log_path.read_text(encoding="utf-8"), log_before)
+
+    def test_verify_requires_round_two_for_round_one_conflict(self):
+        self._assert_round_two_required_for_round_one_escalation({
+            "conflicts": [{
+                "roles": ["engineering-quality", "architecture"],
+                "evidence": "reviewers disagree on blocking severity",
+            }],
+        })
+
+    def test_verify_requires_round_two_for_round_one_blocking_role(self):
+        self._assert_round_two_required_for_round_one_escalation({
+            "blocking_roles": ["architecture"],
+        })
+
+    def test_verify_refuses_missing_returned_report(self):
+        make_item(self.repo, stage="review", priority=1)
+        mark_round(self.repo)
+        write_review_receipt(self.repo)
+        write(self.repo, "reviews/round-1/architecture.md", "")
+        logs.append_event(self.repo, "0001-thing", "review.approved")
+        with self.assertRaisesRegex(machine.GateError, "missing or empty"):
+            machine.advance(self.repo, "0001-thing", "verify")
+
+    def test_verify_refuses_undisclosed_degradation(self):
+        make_item(self.repo, stage="review", priority=1)
+        mark_round(self.repo)
+        write_review_receipt(self.repo, outcome="unavailable", degraded=True)
+        write(self.repo, "reviews/synthesis.md", "# Review\n")
+        logs.append_event(self.repo, "0001-thing", "review.approved")
+        with self.assertRaisesRegex(machine.GateError, "Degradation"):
+            machine.advance(self.repo, "0001-thing", "verify")
+
+    def test_verify_refuses_degraded_review_without_execution_evidence(self):
+        make_item(self.repo, stage="review", priority=1)
+        mark_round(self.repo)
+        write_review_receipt(self.repo, outcome="unavailable", degraded=True)
+        write(self.repo, "reviews/synthesis.md",
+              "# Review\n\n## Degradation\n\n"
+              "fresh dispatch unavailable\n\narchitecture: unavailable\n")
+        logs.append_event(self.repo, "0001-thing", "review.approved")
+
+        with self.assertRaisesRegex(
+                machine.GateError, r"non-empty ## Execution"):
+            machine.advance(self.repo, "0001-thing", "verify")
+
+    def test_verify_refuses_execution_heading_bypasses(self):
+        degradation = (
+            "# Review\n\n## Degradation\n\n"
+            "fresh dispatch unavailable\n\narchitecture: unavailable\n")
+
+        for name, synthesis in (
+                ("heading prefix",
+                 degradation + "\n## Executioner\n\nStatic inspection only.\n"),
+                ("inline marker",
+                 degradation
+                 + "\nStatic inspection mentions ## Execution but ran nothing.\n")):
+            with self.subTest(name=name):
+                with tempfile.TemporaryDirectory() as tmp:
+                    repo = Path(tmp)
+                    make_item(repo, stage="review", priority=1)
+                    mark_round(repo)
+                    write_review_receipt(
+                        repo, outcome="unavailable", degraded=True)
+                    write(repo, "reviews/synthesis.md", synthesis)
+                    logs.append_event(repo, "0001-thing", "review.approved")
+                    with self.assertRaisesRegex(
+                            machine.GateError, r"non-empty ## Execution"):
+                        machine.advance(repo, "0001-thing", "verify")
+
+    def test_verify_refuses_undisclosed_round_two_degradation(self):
+        from tests.test_review_selection import valid_receipt
+
+        make_item(self.repo, stage="review", priority=1)
+        mark_round(self.repo)
+        round_one = write_review_receipt(self.repo)
+        round_two = valid_receipt(item="0001-thing")
+        round_two["round"] = 2
+        round_two["diff"] = round_one["diff"]
+        round_two["selected"] = [{
+            "role": "architecture",
+            "reasons": ["round2.blocking-finding"],
+        }]
+        round_two["omitted"] = [{
+            "role": role,
+            "reasons": ["signal.not-applicable"],
+        } for role in (
+            "product", "ui-taste", "engineering-quality", "customer",
+            "commercial")]
+        round_two["escalation"] = {
+            "conflicts": [],
+            "blocking_roles": ["architecture"],
+            "prior_roles": [entry["role"] for entry in round_one["selected"]],
+            "added_role": "",
+        }
+        round_two["outcomes"] = [{
+            "role": "architecture", "status": "unavailable", "report": "",
+        }]
+        round_two["independence"] = {
+            "requested": True,
+            "achieved": False,
+            "degradation": ["Round 2 architecture dispatch unavailable"],
+        }
+        write(self.repo, "reviews/selection-round-2.json",
+              json.dumps(round_two, indent=2, sort_keys=True) + "\n")
+        logs.append_event(self.repo, "0001-thing", "review.approved")
+
+        with self.assertRaisesRegex(
+                machine.GateError,
+                r"review selection receipt invalid: .*selection-round-2"
+                r".*Degradation"):
+            machine.advance(self.repo, "0001-thing", "verify")
+
+    def test_verify_accepts_valid_review_selection_receipt(self):
+        make_item(self.repo, stage="review", priority=1)
+        mark_round(self.repo)
+        write_review_receipt(self.repo)
+        logs.append_event(self.repo, "0001-thing", "review.approved")
         self.assertEqual(machine.advance(self.repo, "0001-thing", "verify")[0]["stage"], "verify")
+
+    def test_verify_refuses_synthesis_only_escalation(self):
+        from tests.test_review_selection import synthesis_text
+        make_item(self.repo, stage="review", priority=1)
+        mark_round(self.repo)
+        receipt = write_review_receipt(self.repo)
+        receipt["escalation"]["blocking_roles"] = ["architecture"]
+        write(self.repo, "reviews/synthesis.md", synthesis_text(receipt))
+        logs.append_event(self.repo, "0001-thing", "review.approved")
+        with self.assertRaisesRegex(machine.GateError, "finalized Round 1"):
+            machine.advance(self.repo, "0001-thing", "verify")
+
+    def test_stale_optional_round_two_does_not_poison_clean_rereview(self):
+        make_item(self.repo, stage="review", priority=1)
+        mark_round(self.repo)
+        old = write_review_receipt(self.repo)
+        stale = json.loads(json.dumps(old))
+        stale["round"] = 2
+        write(self.repo, "reviews/selection-round-2.json", json.dumps(stale))
+        write(self.repo, "reviews/round-2/architecture.md", "old report")
+        logs.append_event(self.repo, "0001-thing", "review.rejected",
+                          {"head": old["diff"]["head"]})
+        # The fixture adds a new committed delta after the rejection head.
+        write_review_receipt(self.repo)
+        logs.append_event(self.repo, "0001-thing", "review.approved")
+        self.assertEqual(machine.advance(
+            self.repo, "0001-thing", "verify")[0]["stage"], "verify")
+
+    def test_verify_accepts_disclosed_degraded_review(self):
+        make_item(self.repo, stage="review", priority=1)
+        mark_round(self.repo)
+        write_review_receipt(self.repo, outcome="unavailable", degraded=True)
+        logs.append_event(self.repo, "0001-thing", "review.approved")
+        self.assertEqual(
+            machine.advance(self.repo, "0001-thing", "verify")[0]["stage"],
+            "verify")
+
+    def test_verify_refuses_stale_review_receipt_after_rework(self):
+        make_item(self.repo, stage="review", priority=1)
+        mark_round(self.repo)
+        git(self.repo, "init", "-q")
+        git(self.repo, "commit", "-q", "--allow-empty", "-m", "root")
+        git(self.repo, "branch", "-M", "main")
+        git(self.repo, "checkout", "-q", "-b", "factory/0001-thing")
+
+        implementation = self.repo / "implementation.txt"
+        implementation.write_text("first\n", encoding="utf-8")
+        git(self.repo, "add", "implementation.txt")
+        git(self.repo, "commit", "-q", "-m", "first implementation")
+        first_head = git(self.repo, "rev-parse", "HEAD")
+        first_base = git(
+            self.repo, "merge-base", "main", "factory/0001-thing")
+
+        receipt = write_review_receipt(self.repo)
+        receipt["diff"] = {
+            "base": first_base,
+            "head": first_head,
+            "changed_paths": ["implementation.txt"],
+        }
+        write(
+            self.repo, "reviews/selection-round-1.json",
+            json.dumps(receipt, indent=2, sort_keys=True) + "\n")
+
+        logs.append_event(
+            self.repo, "0001-thing", "review.rejected",
+            {"round": 1, "head": first_head})
+        machine.advance(self.repo, "0001-thing", "implement")
+        implementation.write_text("second\n", encoding="utf-8")
+        git(self.repo, "add", "implementation.txt")
+        git(self.repo, "commit", "-q", "-m", "reworked implementation")
+        logs.append_event(self.repo, "0001-thing", "implement.completed")
+        machine.advance(self.repo, "0001-thing", "review")
+        logs.append_event(self.repo, "0001-thing", "review.approved")
+
+        log_path = paths.item_dir(
+            self.repo, "0001-thing") / "log.jsonl"
+        log_before = log_path.read_text(encoding="utf-8")
+        with self.assertRaisesRegex(
+                machine.GateError, "review selection receipt invalid"):
+            machine.advance(self.repo, "0001-thing", "verify")
+
+        self.assertEqual(
+            items.load_item(self.repo, "0001-thing")[0]["stage"], "review")
+        self.assertEqual(log_path.read_text(encoding="utf-8"), log_before)
 
     def test_ship_and_done_require_evidence_events(self):
         make_item(self.repo, stage="verify", priority=1, journeys="none")
@@ -390,7 +684,7 @@ class TestGateCorruption(MachineTest):
         # must refuse exactly as if the event were never logged.
         make_item(self.repo, stage="review", priority=1)
         mark_round(self.repo)
-        write(self.repo, "reviews/synthesis.md")
+        write_review_receipt(self.repo)
         self.corrupt_line()
         with self.assertRaises(machine.GateError):
             machine.advance(self.repo, "0001-thing", "verify")
@@ -398,7 +692,7 @@ class TestGateCorruption(MachineTest):
     def test_valid_approval_beside_corrupt_line_advances(self):
         make_item(self.repo, stage="review", priority=1)
         mark_round(self.repo)
-        write(self.repo, "reviews/synthesis.md")
+        write_review_receipt(self.repo)
         self.corrupt_line('{"event": "spend", "ts": ')
         logs.append_event(self.repo, "0001-thing", "review.approved")
         self.assertEqual(

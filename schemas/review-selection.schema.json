@@ -1,0 +1,113 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "review-selection",
+  "type": "object",
+  "required": [
+    "item", "round", "mode", "diff", "signals", "selected", "omitted",
+    "escalation", "outcomes", "independence"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "item": {"type": "string", "minLength": 1},
+    "round": {"type": "integer"},
+    "mode": {"type": "string", "enum": ["adaptive", "full"]},
+    "diff": {
+      "type": "object",
+      "required": ["base", "head", "changed_paths"],
+      "additionalProperties": false,
+      "properties": {
+        "base": {"type": "string", "minLength": 1},
+        "head": {"type": "string", "minLength": 1},
+        "changed_paths": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "signals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "evidence"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "enum": [
+              "security", "architecture", "customer-trust", "ui-taste",
+              "product-behavior", "commercial", "ambiguous",
+              "high-blast-radius", "irreversible"
+            ]
+          },
+          "evidence": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "selected": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["role", "reasons"],
+        "additionalProperties": false,
+        "properties": {
+          "role": {"type": "string", "enum": ["product", "ui-taste", "architecture", "engineering-quality", "customer", "commercial"]},
+          "reasons": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "omitted": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["role", "reasons"],
+        "additionalProperties": false,
+        "properties": {
+          "role": {"type": "string", "enum": ["product", "ui-taste", "architecture", "engineering-quality", "customer", "commercial"]},
+          "reasons": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "escalation": {
+      "type": "object",
+      "required": ["conflicts", "blocking_roles", "prior_roles", "added_role"],
+      "additionalProperties": false,
+      "properties": {
+        "conflicts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["roles", "evidence"],
+            "additionalProperties": false,
+            "properties": {
+              "roles": {"type": "array", "items": {"type": "string", "enum": ["product", "ui-taste", "architecture", "engineering-quality", "customer", "commercial"]}},
+              "evidence": {"type": "string"}
+            }
+          }
+        },
+        "blocking_roles": {"type": "array", "items": {"type": "string", "enum": ["product", "ui-taste", "architecture", "engineering-quality", "customer", "commercial"]}},
+        "prior_roles": {"type": "array", "items": {"type": "string", "enum": ["product", "ui-taste", "architecture", "engineering-quality", "customer", "commercial"]}},
+        "added_role": {"type": "string", "enum": ["", "product", "ui-taste", "architecture", "engineering-quality", "customer", "commercial"]}
+      }
+    },
+    "outcomes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["role", "status", "report"],
+        "additionalProperties": false,
+        "properties": {
+          "role": {"type": "string", "enum": ["product", "ui-taste", "architecture", "engineering-quality", "customer", "commercial"]},
+          "status": {"type": "string", "enum": ["returned", "missing", "unavailable"]},
+          "report": {"type": "string"}
+        }
+      }
+    },
+    "independence": {
+      "type": "object",
+      "required": ["requested", "achieved", "degradation"],
+      "additionalProperties": false,
+      "properties": {
+        "requested": {"type": "boolean"},
+        "achieved": {"type": "boolean"},
+        "degradation": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}

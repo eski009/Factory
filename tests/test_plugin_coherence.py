@@ -803,13 +803,184 @@ class TestPluginCoherence(unittest.TestCase):
                 self.assertNotIn("factory-interview", read(cmd),
                                  f"{cmd.name} must not invoke the interview")
 
-    def test_tier_consume_wiring_present(self):
+    def test_adaptive_review_wiring_present(self):
         review = read(ROOT / "skills/factory-review/SKILL.md")
-        self.assertIn("Review depth by tier", review)
+        self.assertIn("adaptive", review.lower())
+        self.assertIn("explicit full", review.lower())
+        self.assertNotIn("Review depth by tier", review)
+        self.assertIn("`mode: review`", review)
+        self.assertIn("`selection_mode: adaptive`", review)
+        self.assertIn("`selection_mode: full`", review)
+        self.assertNotIn("Pass `mode: adaptive`", review)
+        self.assertNotIn("passes `mode: full`", review)
         council = read(ROOT / "skills/council-review/SKILL.md")
-        self.assertIn("light", council)
+        self.assertNotIn("light review", council.lower())
+        self.assertIn("`mode` is `triage`, `review`, or `research`", council)
+        self.assertIn("`selection_mode` is `adaptive` or `full`", council)
+
+    def test_factory_review_scopes_each_review_to_current_round_delta(self):
+        review = read(ROOT / "skills/factory-review/SKILL.md")
+        lowered = review.lower()
+
+        self.assertIn(
+            "for the first review, use the default-branch merge base",
+            lowered,
+        )
+        self.assertIn(
+            "for a re-review, use the `head` from the most recent prior "
+            "`review.rejected` event",
+            lowered,
+        )
+        for command in (
+            "`git rev-parse factory/<item-id>`",
+            "`git merge-base <default-branch> <head>`",
+            "`git diff <base>..<head>`",
+            "`git diff --name-only <base>..<head>`",
+        ):
+            with self.subTest(command=command):
+                self.assertIn(command, review)
+        self.assertIn(
+            "receipt `diff.base`, `diff.head`, and `diff.changed_paths` "
+            "come from this exact comparison",
+            review,
+        )
+        self.assertIn(
+            "review.rejected --data "
+            "'{\"round\": N, \"head\": \"<head>\"}'",
+            review,
+        )
+
+    def test_readme_describes_adaptive_review_without_savings_overclaim(self):
+        readme = read(ROOT / "README.md")
+        plain = readme.replace("`", "").lower()
+        for claim in (
+            "two independent seats",
+            "current diff",
+            "explicit full",
+            "does not solve retry cost",
+        ):
+            with self.subTest(claim=claim):
+                self.assertIn(claim, plain)
+        self.assertRegex(plain, r"\blower(?:s)? routine review ceremony\b")
+        self.assertNotRegex(
+            plain,
+            r"\b(?:feature|epic)\b[^\n]*(?:full council|all six)",
+        )
+
+    def test_research_tier_consume_wiring_present(self):
         research = read(ROOT / "skills/factory-research/SKILL.md")
         self.assertIn("epic", research)
+
+    def test_adaptive_council_contract_is_complete(self):
+        text = read(ROOT / "skills/council-review/SKILL.md")
+        lowered = text.lower()
+
+        for required in (
+                "selection-round-N.json",
+                "review_selection.select_roles",
+                "fallback.general-backend",
+                "ambiguous",
+                "high-blast-radius",
+                "irreversible",
+                "fresh context",
+                "at most three",
+                "returned, missing, or unavailable",
+                "## Degradation",
+                "delta-only",
+                "synthesis-1.md",
+                "never run Round 3",
+                "at most four distinct adaptive roles",
+                "orchestrator alone writes reports, receipts, and synthesis",
+        ):
+            self.assertIn(required.lower(), lowered)
+
+        precedence = re.search(
+            r"precedence order(?P<signals>[^.]+)\.", text,
+            flags=re.IGNORECASE,
+        )
+        self.assertIsNotNone(
+            precedence,
+            "council-review must state one explicit signal precedence order",
+        )
+        ordered_signals = (
+            "security",
+            "architecture",
+            "customer-trust",
+            "ui-taste",
+            "product-behavior",
+            "commercial",
+        )
+        clause = precedence.group("signals").lower()
+        positions = [clause.index(signal) for signal in ordered_signals]
+        self.assertEqual(positions, sorted(positions))
+
+        receipt = re.search(
+            r"closed Round 1 receipt contains exactly these top-level fields:"
+            r"(?P<fields>[^.]+)\.",
+            text,
+        )
+        self.assertIsNotNone(receipt)
+        self.assertEqual(
+            re.findall(r"`([a-z]+)`", receipt.group("fields")),
+            ["item", "round", "mode", "diff", "signals", "selected",
+             "omitted", "escalation", "outcomes", "independence"],
+        )
+        self.assertIn(
+            "Successful independent execution records "
+            "`independence.requested=true`, `independence.achieved=true`, "
+            "and an empty `independence.degradation`.",
+            text,
+        )
+
+        self.assertIn(
+            "Only review mode limits Round 2 to a blocking finding or conflict.",
+            text,
+        )
+        self.assertIn(
+            "Triage and research may select Round 2 for any synthesis-driven "
+            "follow-up",
+            text,
+        )
+
+        roles = [
+            "product",
+            "ui-taste",
+            "architecture",
+            "engineering-quality",
+            "customer",
+            "commercial",
+        ]
+        triage = re.search(
+            r"Triage mode always dispatches all six roles exactly once:"
+            r"(?P<roles>[^.]+)\.",
+            text,
+        )
+        self.assertIsNotNone(triage)
+        self.assertEqual(re.findall(r"`([a-z-]+)`", triage.group("roles")),
+                         roles)
+
+        research = re.search(
+            r"Research mode dispatches exactly the four outward roles:"
+            r"(?P<roles>[^.]+)\.",
+            text,
+        )
+        self.assertIsNotNone(research)
+        self.assertEqual(
+            re.findall(r"`([a-z-]+)`", research.group("roles")),
+            ["customer", "commercial", "product", "ui-taste"],
+        )
+
+    def test_degraded_review_requires_reproduced_execution(self):
+        council = read(ROOT / "skills/council-review/SKILL.md")
+        review = read(ROOT / "skills/factory-review/SKILL.md")
+
+        for name, text in (("council", council), ("review", review)):
+            with self.subTest(skill=name):
+                self.assertIn("## Execution", text)
+                self.assertRegex(text.lower(), r"execut(?:e|ed).*(?:command|probe)")
+                self.assertIn("observed result", text.lower())
+                self.assertIn("static inspection alone is insufficient",
+                              text.lower())
 
     def test_spec_section_lists_stay_synced(self):
         # the spec.md section order is defined in two places; Journey impact

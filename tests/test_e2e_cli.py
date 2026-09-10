@@ -13,6 +13,8 @@ from unittest import mock
 
 from scripts.factory.lib import logs
 
+from tests.test_review_selection import valid_receipt
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CLI = REPO_ROOT / "scripts" / "factory" / "factory.py"
 
@@ -63,6 +65,13 @@ class TestE2ECli(unittest.TestCase):
                                         "path": "assurance/screenshots/s1.txt"}]}]}]}
         self.art(item, "assurance/verdicts.json", json.dumps(verdicts, indent=2))
 
+    def _write_review_receipt(self, item):
+        data = valid_receipt(item=item, repo=self.target)
+        for outcome in data["outcomes"]:
+            self.art(item, "reviews/" + outcome["report"], "# returned\n")
+        self.art(item, "reviews/selection-round-1.json",
+                 json.dumps(data, indent=2, sort_keys=True) + "\n")
+
     def test_full_cli_lifecycle(self):
         # init + validate
         self.cli("init", "--product", "demo")
@@ -105,6 +114,7 @@ class TestE2ECli(unittest.TestCase):
         self.cli("advance", item, "review")
         # review -> verify
         self.art(item, "reviews/synthesis.md")
+        self._write_review_receipt(item)
         self.cli("log", item, "review.approved")
         self.cli("advance", item, "verify")
         # verify -> assure (declared journey; gate: verify.green)
@@ -161,6 +171,7 @@ class TestE2ECli(unittest.TestCase):
         self.cli("log", item, "implement.completed")
         self.cli("advance", item, "review")
         self.art(item, "reviews/synthesis.md")
+        self._write_review_receipt(item)
         self.cli("log", item, "review.approved")
         self.cli("advance", item, "verify")
         self.engine_log(item, "verify.green")

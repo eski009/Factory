@@ -947,6 +947,18 @@ class ReworkTest(unittest.TestCase):
             plan_proposal=fixture["plan_proposal"],
             acceptance_proposal=fixture["acceptance_proposal"])
 
+    def test_review_rework_persists_and_pins_reviewed_commit(self):
+        fixture = self.fixture("review")
+        path = fixture["item_dir"] / "reviews/selection-round-1.json"
+        record = {"item": ITEM, "round": 1, "diff": {"head": "a" * 40}}
+        path.write_text(json.dumps(record))
+        prepared = self.prepare(fixture)
+        meta, _verdict, receipt = machine.commit_implement_entry(prepared)
+        rejected = [e for e in logs.read_events(fixture["repo"], ITEM)
+                    if e["event"] == "review.rejected"]
+        self.assertEqual(rejected[-1]["data"]["head"], "a" * 40)
+        self.assertEqual(meta["stage"], "implement")
+
     def test_review_verify_and_regression_rework_settle_atomically(self):
         for source in ("review", "verify", "assure"):
             with self.subTest(source=source):

@@ -456,6 +456,126 @@ class InitTest(unittest.TestCase):
             "0001-x/approach-judgements/later.json" in error
             and "unexpected property" in error for error in errors), errors)
 
+    def _review_receipt_dir(self):
+        meta = {"id": "0001-x", "title": "X", "stage": "idea",
+                "kind": "backend", "created": "2026-07-03T10:00:00Z",
+                "updated": "2026-07-03T10:00:00Z"}
+        items.save_item(self.repo, meta, "")
+        reviews = paths.item_dir(self.repo, "0001-x") / "reviews"
+        reviews.mkdir(parents=True, exist_ok=True)
+        return reviews
+
+    def test_validate_checks_every_review_selection_receipt(self):
+        from tests.test_review_selection import valid_receipt
+
+        initrepo.init(self.repo)
+        reviews = self._review_receipt_dir()
+        receipt = valid_receipt()
+        (reviews / "selection-round-1.json").write_text(
+            json.dumps(receipt), encoding="utf-8")
+        for outcome in receipt["outcomes"]:
+            report = reviews / outcome["report"]
+            report.parent.mkdir(parents=True, exist_ok=True)
+            report.write_text("# returned\n", encoding="utf-8")
+        errors = initrepo.validate_tree(self.repo)
+        self.assertFalse([e for e in errors if "selection-round" in e], errors)
+
+        (reviews / "selection-round-1.json").write_text(
+            "{}\n", encoding="utf-8")
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any(
+            "0001-x/reviews/selection-round-1.json" in e
+            for e in errors), errors)
+
+    def test_validate_flags_invalid_review_selection_json(self):
+        initrepo.init(self.repo)
+        reviews = self._review_receipt_dir()
+        (reviews / "selection-round-1.json").write_text(
+            "{not json\n", encoding="utf-8")
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any(
+            "0001-x/reviews/selection-round-1.json: invalid JSON" in e
+            for e in errors), errors)
+
+    def test_validate_binds_review_receipt_identity_and_round_history(self):
+        from tests.test_review_selection import valid_receipt
+
+        initrepo.init(self.repo)
+        reviews = self._review_receipt_dir()
+
+        wrong_item = valid_receipt(item="9999-other")
+        (reviews / "selection-round-1.json").write_text(
+            json.dumps(wrong_item), encoding="utf-8")
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any("does not match '0001-x'" in e for e in errors),
+                        errors)
+
+        wrong_round = valid_receipt()
+        wrong_round["round"] = 2
+        (reviews / "selection-round-1.json").write_text(
+            json.dumps(wrong_round), encoding="utf-8")
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any("does not match filename round 1" in e
+                            for e in errors), errors)
+
+        round_one = valid_receipt()
+        (reviews / "selection-round-1.json").write_text(
+            json.dumps(round_one), encoding="utf-8")
+        for outcome in round_one["outcomes"]:
+            report = reviews / outcome["report"]
+            report.parent.mkdir(parents=True, exist_ok=True)
+            report.write_text("# returned\n", encoding="utf-8")
+
+        round_two = valid_receipt()
+        round_two["round"] = 2
+        round_two["selected"] = [{
+            "role": "customer", "reasons": ["round2.blocking-finding"]}]
+        round_two["omitted"] = [
+            {"role": role, "reasons": ["signal.not-applicable"]}
+            for role in ("product", "ui-taste", "architecture",
+                         "engineering-quality", "commercial")]
+        round_two["escalation"] = {
+            "conflicts": [], "blocking_roles": ["customer"],
+            "prior_roles": ["engineering-quality", "architecture", "customer"],
+            "added_role": ""}
+        round_two["outcomes"] = [{
+            "role": "customer", "status": "returned",
+            "report": "round-2/customer.md"}]
+        report = reviews / "round-2/customer.md"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("# returned\n", encoding="utf-8")
+        (reviews / "selection-round-2.json").write_text(
+            json.dumps(round_two), encoding="utf-8")
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any("prior_roles" in e and "Round 1" in e
+                            for e in errors), errors)
+
+        round_two["escalation"]["prior_roles"] = [
+            entry["role"] for entry in round_one["selected"]]
+        round_two["escalation"]["blocking_roles"] = ["architecture"]
+        round_two["selected"] = [{
+            "role": "architecture", "reasons": ["round2.blocking-finding"]}]
+        round_two["omitted"] = [
+            {"role": role, "reasons": ["signal.not-applicable"]}
+            for role in ("product", "ui-taste", "engineering-quality",
+                         "customer", "commercial")]
+        round_two["outcomes"] = [{
+            "role": "architecture", "status": "returned",
+            "report": "round-2/architecture.md"}]
+        (reviews / "round-2/architecture.md").write_text(
+            "# returned\n", encoding="utf-8")
+        round_two["mode"] = "full"
+        (reviews / "selection-round-2.json").write_text(
+            json.dumps(round_two), encoding="utf-8")
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any("Round 2 must match Round 1 mode" in e
+                            for e in errors), errors)
+
+        (reviews / "selection-round-1.json").unlink()
+        errors = initrepo.validate_tree(self.repo)
+        self.assertTrue(any("requires a valid Round 1 receipt" in e
+                            for e in errors), errors)
+
 
 class SpendValidateTest(unittest.TestCase):
     def setUp(self):

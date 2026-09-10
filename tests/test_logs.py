@@ -670,15 +670,15 @@ class StructuredEvidenceValidationTest(unittest.TestCase):
 
     def test_unrelated_and_spend_intake_behavior_is_unchanged(self):
         for event, data in (("custom.event", {"anything": True}),
-                            ("spend", {"stage": "implement"})):
+                            ("spend", {"stage": "implement", "scope": "leaf",
+                                       "provenance": "proxy"})):
             code, _out, _err = self.run_cli(
                 "log", "0001-x", event, "--data", json.dumps(data))
             self.assertEqual(code, 0)
         events = logs.read_events(self.repo, "0001-x")
         self.assertEqual([event["event"] for event in events[-2:]],
                          ["custom.event", "spend"])
-        self.assertTrue(any("provenance" in error
-                            for error in initrepo.validate_tree(self.repo)))
+        self.assertEqual(initrepo.validate_tree(self.repo), [])
 
 
 if __name__ == "__main__":

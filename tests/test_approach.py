@@ -21,6 +21,7 @@ from pathlib import Path
 from scripts.factory import factory
 from scripts.factory.lib import (
     approach, breaker, cost, initrepo, items, logs, machine, packet, paths)
+from tests.test_review_selection import valid_receipt
 
 ITEM = "0001-thing"
 GIT_ENV = dict(GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
@@ -68,6 +69,13 @@ class ApproachTest(unittest.TestCase):
                        cwd=self.repo, check=True)
         self._branched = True
 
+    def write_review_receipt(self):
+        data = valid_receipt(item=ITEM, repo=self.repo)
+        for outcome in data["outcomes"]:
+            self.art("reviews/" + outcome["report"], "# returned\n")
+        self.art("reviews/selection-round-1.json",
+                 json.dumps(data, indent=2, sort_keys=True) + "\n")
+
     def _prep(self, to):
         """Write exactly what each gate requires, the way the stage
         skills write it, before advancing to `to`."""
@@ -91,6 +99,7 @@ class ApproachTest(unittest.TestCase):
             logs.append_event(self.repo, ITEM, "implement.completed")
         elif to == "verify":
             self.art("reviews/synthesis.md")
+            self.write_review_receipt()
             logs.append_event(self.repo, ITEM, "review.approved")
         elif to == "assure":
             logs.append_event(self.repo, ITEM, "verify.green")
@@ -977,6 +986,7 @@ class TestInheritance0025(ApproachTest):
         with self.assertRaises(machine.GateError):
             machine.advance(self.repo, ITEM, "verify")
         self.art("reviews/synthesis.md")
+        self.write_review_receipt()
         logs.append_event(self.repo, ITEM, "review.approved")
         meta, _ = machine.advance(self.repo, ITEM, "verify")
         self.assertEqual(meta["stage"], "verify")

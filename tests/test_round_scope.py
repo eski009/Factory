@@ -22,6 +22,7 @@ import unittest
 from pathlib import Path
 
 from scripts.factory.lib import assure, initrepo, items, logs, machine, paths
+from tests.test_review_selection import valid_receipt
 
 FROZEN_NOW = "2026-07-03T12:00:00Z"
 
@@ -55,12 +56,24 @@ class RoundScopeTest(unittest.TestCase):
         logs.append_event(self.repo, self.item, event, data)
 
     def make_branch(self):
-        subprocess.run(["git", "branch", "-f", f"factory/{self.item}"],
-                       cwd=self.repo, check=True)
+        exists = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet",
+             f"refs/heads/factory/{self.item}"], cwd=self.repo,
+            capture_output=True).returncode == 0
+        if not exists:
+            subprocess.run(["git", "branch", f"factory/{self.item}"],
+                           cwd=self.repo, check=True)
 
     def finish_implement(self):
         self.make_branch()
         self.log("implement.completed")
+
+    def write_review_receipt(self):
+        data = valid_receipt(item=self.item, repo=self.repo)
+        for outcome in data["outcomes"]:
+            self.art("reviews/" + outcome["report"], "# returned\n")
+        self.art("reviews/selection-round-1.json",
+                 json.dumps(data, indent=2, sort_keys=True) + "\n")
 
     def write_assurance(self):
         item_dir = paths.item_dir(self.repo, self.item)
@@ -105,6 +118,7 @@ class RoundScopeTest(unittest.TestCase):
     def walk_to_verify(self, journeys="J-001"):
         self.walk_to_review(journeys)
         self.art("reviews/synthesis.md")
+        self.write_review_receipt()
         self.log("review.approved")
         machine.advance(self.repo, self.item, "verify")
 
@@ -160,6 +174,7 @@ class TestReproDead(RoundScopeTest):
         self.rework()
         self.finish_implement()
         machine.advance(self.repo, self.item, "review")
+        self.write_review_receipt()
         self.log("review.approved")
         machine.advance(self.repo, self.item, "verify")
         self.log("verify.green")
@@ -207,6 +222,7 @@ class TestStaleRefusalShape(RoundScopeTest):
         machine.advance(self.repo, self.item, "implement")   # rework
         self.finish_implement()
         machine.advance(self.repo, self.item, "review")
+        self.write_review_receipt()
         msg = self.refusal("verify")
         self.assertRegex(msg, self.SHAPE)
         self.assertIn("review.approved", msg)
@@ -216,6 +232,7 @@ class TestStaleRefusalShape(RoundScopeTest):
         self.rework()
         self.finish_implement()
         machine.advance(self.repo, self.item, "review")
+        self.write_review_receipt()
         self.log("review.approved")
         machine.advance(self.repo, self.item, "verify")
         msg = self.refusal("assure")     # verify.green is round-1's
@@ -231,6 +248,7 @@ class TestStaleRefusalShape(RoundScopeTest):
         items.set_journeys(self.repo, self.item, "none")
         self.finish_implement()
         machine.advance(self.repo, self.item, "review")
+        self.write_review_receipt()
         self.log("review.approved")
         machine.advance(self.repo, self.item, "verify")
         msg = self.refusal("ship")       # journeys none: verify -> ship
@@ -244,6 +262,7 @@ class TestStaleRefusalShape(RoundScopeTest):
         self.rework()
         self.finish_implement()
         machine.advance(self.repo, self.item, "review")
+        self.write_review_receipt()
         self.log("review.approved")
         machine.advance(self.repo, self.item, "verify")
         self.log("verify.green")
@@ -349,6 +368,14 @@ class TestMissingRoundMarker(unittest.TestCase):
         p = paths.item_dir(self.repo, "0001-x") / "reviews" / "synthesis.md"
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text("s\n", encoding="utf-8")
+        data = valid_receipt(item="0001-x", repo=self.repo)
+        for outcome in data["outcomes"]:
+            report = p.parent / outcome["report"]
+            report.parent.mkdir(parents=True, exist_ok=True)
+            report.write_text("# returned\n", encoding="utf-8")
+        (p.parent / "selection-round-1.json").write_text(
+            json.dumps(data, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8")
         self.assert_marker_refusal("verify")
 
     def test_gate_assure_fails_closed(self):

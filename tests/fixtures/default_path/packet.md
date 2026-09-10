@@ -24,7 +24,7 @@
 
 ## Spend
 - [proxy] active 00h 00m (waiting 00h 00m), 0 advances, 0 dispatches, 0 rework edges
-- [measured] tokens: none logged
+- [unmeasured] tokens: UNMEASURED — PARTIAL — measured leaf events only; coverage incomplete (spend events: leaf 0, fork 0, unclassified 0)
 - [unmeasured] UNMEASURED: orchestrator main-loop tokens
 
 ## Respond

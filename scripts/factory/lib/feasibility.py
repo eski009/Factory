@@ -713,6 +713,23 @@ def prepare_rework_entry(repo, item_id, *, config, source, source_snapshot,
             "source_sha256": source_snapshot.sha256,
         },
     }
+    if source == "review":
+        # New review receipts persist the reviewed commit, not a moving HEAD.
+        # Keep it on the atomic rejection so the next pass uses the right delta.
+        relative = PurePosixPath(
+            ".factory", "items", item_id, "reviews", "selection-round-1.json")
+        receipt_snapshot = safeio.snapshot_path(
+            canonical, relative, limit=_READ_LIMIT, allow_missing=True)
+        if isinstance(receipt_snapshot, safeio.FileSnapshot):
+            prerequisites = _dedupe_snapshots((*prerequisites, receipt_snapshot))
+            receipt = parse_json_bytes(receipt_snapshot.data, label=str(relative))
+            diff = receipt.get("diff")
+            head = diff.get("head") if isinstance(diff, dict) else None
+            if (receipt.get("item") != item_id or receipt.get("round") != 1
+                    or not isinstance(head, str)
+                    or not re.fullmatch(r"[0-9a-f]{40,64}", head)):
+                raise FeasibilityError("review selection receipt has no valid reviewed head")
+            event["data"]["head"] = head
     operation_key = rework_operation_key(
         source, source_snapshot, findings)
     log_snapshot = None

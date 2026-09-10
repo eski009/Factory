@@ -7,6 +7,7 @@ never touches product code, CLAUDE.md, or existing docs. Spec §2.
 import hashlib
 import json
 import os
+
 import re
 import shutil
 import stat
@@ -447,6 +448,46 @@ def validate_tree(repo):
                         errors.append(f"{rel}: invalid JSON ({exc})")
                         continue
                     errors.extend(validate(judgement, judgement_schema, rel))
+
+            reviews = sub / "reviews"
+            if reviews.exists():
+                for receipt in sorted(reviews.glob("selection-round-*.json")):
+                    rel = f"{sub.name}/reviews/{receipt.name}"
+                    match = re.fullmatch(r"selection-round-([12])\.json",
+                                         receipt.name)
+                    if not match:
+                        errors.append(f"{rel}: invalid review selection filename")
+                        continue
+                    try:
+                        data = json.loads(receipt.read_text(
+                            encoding="utf-8", errors="replace"))
+                    except json.JSONDecodeError as exc:
+                        errors.append(f"{rel}: invalid JSON ({exc})")
+                        continue
+                    from . import review_selection
+                    round_number = int(match.group(1))
+                    prior_receipt = None
+                    if round_number == 2:
+                        prior_path = reviews / "selection-round-1.json"
+                        if prior_path.exists():
+                            try:
+                                prior_receipt = json.loads(prior_path.read_text(
+                                    encoding="utf-8", errors="replace"))
+                            except json.JSONDecodeError:
+                                prior_receipt = None
+                        if (prior_receipt is not None
+                                and not review_selection.receipt_errors(
+                                    prior_receipt, str(prior_path),
+                                    review_root=reviews, expected_item=sub.name,
+                                    expected_round=1)
+                                and isinstance(data, dict)
+                                and isinstance(data.get("diff"), dict)
+                                and data["diff"] != prior_receipt["diff"]):
+                            continue  # Historical optional round, not current evidence.
+                    errors.extend(review_selection.receipt_errors(
+                        data, rel, review_root=reviews,
+                        expected_item=sub.name, expected_round=round_number,
+                        prior_receipt=prior_receipt))
             if meta is not None and not schema_errors and log_valid:
                 acceptance_path = sub / "acceptance.json"
                 acceptance_present = (

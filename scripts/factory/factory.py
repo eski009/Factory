@@ -468,7 +468,7 @@ def cmd_log(args):
               "approach-judgement", file=sys.stderr)
         return 1
     if args.event == "stage.advance":
-        print("stage.advance is written only by factory advance",
+        print("stage.advance is written only by the Factory engine (factory advance)",
               file=sys.stderr)
         return 1
     if args.event in ("assure.waived", "assure.confirmed", "cost.answered",
