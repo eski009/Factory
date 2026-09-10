@@ -308,6 +308,19 @@
   refusal (source:
   .factory/items/0018-wall-clock-trigger-arm-catch-the-spend-r/triage.md,
   reviews/synthesis.md; authorized: judgement on bid-0131).
+- **Gap-capping event intervals does not turn a trace into a work meter.** 0030's
+  exhaustive replay found that every integer CAP from 1s through 6,204s can
+  separate 0016 from healthy 0015, but at CAP=1 the scores are exactly the
+  counts of positively separated events (13 vs 10). The ordering is materially
+  instrumentation-cadence-driven: 0016 logged more spend and plan/obligation
+  events, 0016 itself shipped, neither frozen cohort contains a labelled
+  runaway, and the motivating ParkSnap run is absent. A literal pairwise
+  separator is therefore not a meaningful work or runaway discriminator. Any
+  future trigger requires a stable trace schema, a labelled motivating corpus,
+  and a feasible intervention boundary; a reproducible table alone grants no
+  production authority (source:
+  .factory/items/0030-measurement-spike-gap-capped-per-pass-at/reviews/measurement-2026-09-07.md,
+  reviews/synthesis.md; authorized: judgement jdg-0175 on bid-0198).
 - **Engine-authoritative is not the same as meaningful.** bid-0064 governs who
   *writes* the event; bid-0018 governs what the *figure means*. Passing the
   first says nothing about the second, and bid-0064's success has made it read
@@ -457,18 +470,22 @@
   was filed on the opposite intuition and rescoped when this was measured
   (source: .factory/items/0015-…/log.jsonl; .factory/items/0027-…/log.jsonl;
   .factory/items/0026-…/reviews/synthesis.md; authorized: judgement on bid-0153).
-- **Two shipped narrowing mechanisms sit at zero adoption — build no third before
-  one of them fires once.** `grep -h "^bug:" .factory/items/*/item.md` = **0** of
-  32, so `_gate_plan`'s repro branch (`machine.py:529-533`) has never fired and no
-  `repro.md` exists anywhere; `journeys: none` — the only engine-authoritative
-  stage-dropping lever (`machine.stage_sequence`, `machine.py:61-68`) — is likewise
-  **0**. The gap is documentation-and-door, not engine: `factory add --tier`
-  already exists (`factory.py:481`, applied `:47-48`) while `commands/add.md` is
-  7 lines mentioning neither `tier` nor `bug`, and `factory-triage/SKILL.md:25`
-  asserts bugs are "usually filed via `/factory:bug` already carrying `tier: bug`"
-  — an assumption that is **0-for-9** (source: scripts/factory/lib/machine.py;
-  commands/add.md; .factory/items/0026-…/reviews/round-1/engineering-quality.md;
-  authorized: judgement on bid-0154).
+- **Existing engine narrowing mechanisms sit at zero live adoption — build no
+  additional narrowing mechanism until one materially fires at its authoritative
+  gate for a real item.** The original audit found `grep -h "^bug:"
+  .factory/items/*/item.md` = **0** of 32, no `repro.md`, and zero
+  `journeys: none` declarations, so `_gate_plan`'s repro branch and the only then-
+  shipped engine-authoritative stage drop had never fired. 0033 subsequently
+  shipped the immutable, door-keyed `assurance.verify` stage drop, making the old
+  “two / no third” count stale without changing the adoption result: the
+  2026-09-07 audit still finds zero `bug: true`, zero `repro.md`, zero
+  `assurance.verify` events, and one `journeys: none` declaration on an item
+  blocked before the omitted-assure edge. The gap remains documentation-and-door,
+  not another engine control (source: scripts/factory/lib/machine.py;
+  commands/add.md; docs/factory/brain/decisions.md;
+  .factory/items/0026-…/reviews/round-1/engineering-quality.md;
+  .factory/items/0017-…/reviews/round-2/architecture.md; authorized: judgements
+  on bids 0154 and 0197).
 - **An absence marker must key on the event's presence, not on one provenance
   class of it.** `cost.render_receipt` fires `(no spend events logged)` on
   `bucket["measured"] is None`, but `cost.summarize` populates `measured` only
@@ -529,3 +546,13 @@
   (source: .factory/items/0026-…/spec.md; README.md;
   .factory/items/0033-…/reviews/triage/synthesis.md; authorized: judgement on
   bid-0177).
+- **Approach convergence and acceptance feasibility are orthogonal
+  pre-implementation judgements.** Convergence asks whether the selected
+  strategy has a bounded path to completion. Feasibility asks whether the
+  declared item can legally and operationally satisfy its acceptance criteria
+  across ownership, dependencies, runtime capabilities, devices/routes, and
+  merge order. Combining them creates an ambiguous gate and an unactionable
+  rejection; each needs its own evidence and disposition (source:
+  .factory/items/0014-approach-gate-at-plan-judge-convergence-/item.md;
+  .factory/items/0014-approach-gate-at-plan-judge-convergence-/reviews/synthesis.md;
+  authorized: judgement on bid-0185).

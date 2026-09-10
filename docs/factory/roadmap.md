@@ -30,8 +30,8 @@
 - [2] 0013-assure-attribution-gate-only-on-regressi Assure attribution: gate only on regressions this item caused (done)
 - [2] 0025-round-scope-all-rework-gates-implement-c Round-scope all rework gates: implement.completed, review.approved and verify.green accept prior-round evidence (done)
 - [3] 0015-approach-rejected-a-redesign-loop-back-t approach.rejected: a redesign loop back to spec with forbidden approaches recorded (done)
-- [4] 0014-approach-gate-at-plan-judge-convergence- Approach gate at plan: judge convergence before implementation spend (idea)
-- [-] 0017-factory-scope-engine-validated-scope-nar factory scope: engine-validated scope narrowing as a first-class artifact (idea — split out of 0013; sequence after it ships)
+- [4] 0014-approach-gate-at-plan-judge-convergence- Approach gate at plan: judge convergence before implementation spend (spec — BUILD-RESCOPED 6/6: one fresh independent approach judgement at plan exit, deterministic risk trigger, fail-closed current-round artifact, rejection reuses 0015; 3 blocking findings carry to spec)
+- [6] 0017-factory-scope-engine-validated-scope-nar factory scope: engine-validated scope narrowing as a first-class artifact (blocked — triage rejected 6/6: 0013 consumed the only observed trigger; no additional narrowing mechanism until one existing mechanism fires in a real item and a post-0013 assure run proves a distinct selective-scope need with retry spend)
 
 ## Cost-control line (0018 triage outcome, 2026-08-03)
 
@@ -61,8 +61,8 @@
 - [2] 0027-packet-respond-falls-through-to-factory- Packet Respond falls through to /factory:run when a decision pause is parked from an unexpected stage (done — shipped 2026-08-03 as merge 0bd2a36; the Respond verb is now keyed on the pause's reason rather than its stage, absorbing 0028's None-repr refusal; also unblocks 0018 if 0030 revives it)
 - [-] 0028-the-cost-breaker-leaks-a-python-none-rep The cost breaker leaks a Python None repr in its malformed-answer refusal (blocked — its scope item 4 SHIPPED 2026-08-03 in 0027's merge 0bd2a36: the missing `- answer:` line now gets its own refusal and no None repr reaches the operator. Stays blocked only for bid-0129's rework-edges regex residual, which 0027 did not touch; corrected 2026-08-04, the line previously read "absorbed into 0027" as though nothing had landed)
 - [3] 0031-the-cost-packet-s-decision-copy-is-churn The cost packet's decision copy is churn-shaped in four places and its recommendation never reads the verdict reason (done — BUILD-RESCOPED to the live state-derived `continue` destination defect; generalized reason/copy/recommendation work cut; backend bug)
-- [5] 0029-scope-spend-events-a-leaf-vs-fork-discri Scope spend events: a leaf-vs-fork discriminator so measured token totals are trustworthy (idea — the precursor; finally owns bid-0063, the brain's top open question)
-- [6] 0030-measurement-spike-gap-capped-per-pass-at Measurement spike: gap-capped per-pass attributed_seconds, and whether any threshold separates a runaway from healthy work (idea — replaces 0018's build; gates it)
+- [5] 0029-scope-spend-events-a-leaf-vs-fork-discri Scope spend events: a leaf-vs-fork discriminator so measured token totals are trustworthy (spec — BUILD-RESCOPED 6/6: classify leaf/fork at origin, total measured leaves only, exclude and visibly qualify unclassified/partial evidence; no backfill, coverage repair, receipt repair, threshold, or breaker scope)
+- [6] 0030-measurement-spike-gap-capped-per-pass-at Measurement spike: gap-capped per-pass attributed_seconds, and whether any threshold separates a runaway from healthy work (spec — BUILD-RESCOPED 6/6: check in deterministic non-normative replay over immutable n=13 and n=16 cohorts; algebraic separation exists but is event-cadence-driven and does not revive 0018; no engine change or threshold)
 - [8] 0018-wall-clock-trigger-arm-catch-the-spend-r Wall-clock trigger arm: catch the spend runaways the churn breaker misses (blocked — triage rejected the mechanism; unblocks only if 0030's spike finds a separating threshold)
 
 ## Filed but not yet council-ranked (added 2026-08-03)
@@ -74,8 +74,8 @@ sorts last in `factory status`); a council ranks them when each reaches triage.
 (0026 was the seventh; its council ran on 2026-08-03 and it now has its own
 section below.)
 
-- [-] 0019-shared-scratchpad-message-clobber-concur Concurrent agents in one session reuse stale commit-message files (idea, bug — observed on 0016's rework: reflog ae205c4 → f609d24 shipped the wrong commit body)
-- [-] 0020-concurrent-implementers-violate-the-one- Concurrent implementers violate the one-at-a-time contract in a shared checkout (idea, bug — factory-implement's own sub-dispatches broke its contract on 0016)
+- [4] 0019-shared-scratchpad-message-clobber-concur Concurrent agents in one session reuse stale commit-message files (blocked — triage rejected standalone build 6/6; historical symptom confirmed and regression absorbed into 0020's shared-checkout concurrency boundary)
+- [1] 0020-concurrent-implementers-violate-the-one- Concurrent implementers violate the one-at-a-time contract in a shared checkout (spec — BUILD-RESCOPED 6/6: one item-scoped atomic exclusion covers in-process task windows and same-item headless work; 0019 commit/index/evidence regression is core)
 - [-] 0021-parent-agents-block-on-child-replies-tha Parent agents block on child replies that never arrive though the work is done on disk (idea, bug — **five occurrences across three skills on 2026-08-02/03**, one of which caused a duplicated council; the best-evidenced item in the backlog)
 - [-] 0022-gitignored-factory-state-is-invisible-to Gitignored .factory state is invisible to clones (idea, bug — a fresh clone gets the code and none of the decisions; also why suite skip counts differ between checkouts)
 - [-] 0023-packet-furniture-and-readout-polish-drop Packet furniture and readout polish (idea, bug — owns the J-002 one-job-per-screen ruling, the status-table overflow on engine-filed ids, and the shipped packet's dead self-link)
@@ -154,6 +154,9 @@ section below.)
 - [1] 0033-bugs-run-less-pipeline-make-stage-member Bugs run less pipeline: make stage membership tier-conditional, the way it is already kind-conditional (done, feature — **human-filed 2026-08-04**, "I want bugs to use less pipeline as a general rule"; 6/6 BUILD-RESCOPED: goal affirmed, `tier`-parameter mechanism refused 6/6, **assure is the one stage a confirmed bug skips**, triage skip excluded to 0026's parked branch; shipped as a door-keyed immutable assurance declaration, not a tier axis)
 - [1] 0034-independent-council-review-defaults-to-t Independent council review defaults to two seats with risk-triggered escalation (blocked — review rejected too many times after round 3; implementation remains isolated on its branch)
 - [-] 0032-dispatch-resilience-pool-exhaustion-and- Dispatch resilience: pool-exhaustion and no-synthesis council runs must fail fast and resume, not silently re-walk (idea, feature — filed by 0026's triage council; a malfunctioned council-review cost 1,499,591 tokens vs 135,475 for a complete fan-out, 11x; ranked second, after 0026's routing branch)
+- [-] 0036-plan-acceptance-feasibility-and-resumabl Plan acceptance-feasibility and resumable execution contract (idea, backend feature — split from 0014 by unanimous council; own triage must rank the 3–3 priority tie)
+- [-] 0037-spend-event-emission-coverage-measure-de Spend-event emission coverage: measure denominators and enforce missing logging (idea, backend — filed by 0029's triage council; outside 0029's leaf/fork discriminator scope)
+- [-] 0038-proxy-only-spend-receipt-state-distingui Proxy-only spend receipt state: distinguish recorded proxy evidence from no spend events (idea, backend — filed by 0029's triage council; owns the proxy-only absence-marker defect recorded below)
 
 <!-- TWO CROSS-ITEM CONSTRAINTS, recorded here 2026-08-04 because both were
      found inside .factory/ (gitignored, item 0022) and would otherwise be lost

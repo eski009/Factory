@@ -262,8 +262,8 @@
   (source: .factory/items/0016-…/reviews/synthesis.md; authorized: judgement
   on bid-0079). Resolved by: an engine-side park obligation or a
   breaker-aware blocked packet.
-- **Spend-magnitude runaways remain uncovered after 0016, and are now
-  unowned.** The field report's Defect 5 proposed a disjunction (spend-multiple
+- **Spend-magnitude runaways remain uncovered after 0016 and 0030.** The field
+  report's Defect 5 proposed a disjunction (spend-multiple
   OR rework count); only the rework disjunct shipped. 0016 itself burned
   1,989,500 measured tokens by its first implement pass (3,949,630 final) with
   zero rework edges — its own breaker scores it 0, and nothing on any surface
@@ -278,14 +278,25 @@
   implement pass is 9,499s, 0015's is 10,046s and 0015 shipped clean, and 0015
   also out-spends 0016 on measured tokens), `active_seconds` measures calendar
   dwell rather than work, and no engine-authoritative in-stage work meter exists
-  to rescope onto. 0018 is `blocked` at priority 8. **Resolved by:** 0029
+  to rescope onto. 0018 is `blocked` at priority 8. The proposed evidence
+  owners were 0029
   (`scope-spend-events-a-leaf-vs-fork-discri`) making measured totals
   trustworthy — it finally owns the bid-0063 nested-dispatch double-count that
   both 0016 and 0018 cited as a reason not to build the real thing — and 0030
-  (`measurement-spike-gap-capped-per-pass-at`), whose finding determines whether
-  0018 ever unblocks or is closed won't-build (source:
+  (`measurement-spike-gap-capped-per-pass-at`).
+
+  *Amended 2026-09-07.* 0030's live triage replay found many literal `(CAP,T)`
+  pairs that separate 0016 from 0015, but no calibrated runaway discriminator:
+  0016 shipped, the ParkSnap runaway remains absent, and the low-CAP result is
+  materially a count of timestamped log gaps. Literal separation therefore
+  does not satisfy 0018's unblock condition. 0018's current wall-clock
+  mechanism remains won't-build; retriage requires a labelled motivating-corpus
+  discriminator and a feasible intervention boundary. 0030 proceeds only to
+  check in the non-normative replay evidence, while the spend-magnitude problem
+  stays open (source:
   .factory/items/0018-…/triage.md, reviews/synthesis.md; authorized: judgement
-  on bid-0136).
+  on bid-0136; .factory/items/0030-…/reviews/measurement-2026-09-07.md,
+  reviews/synthesis.md; authorized: judgement jdg-0176 on bid-0199).
 - **Verify rework is structurally uncountable until 0014/0015.**
   `REWORK_FROM` includes `verify` but `machine.advance` admits no
   `verify → implement` transition, so a verify failure ping-pongs through

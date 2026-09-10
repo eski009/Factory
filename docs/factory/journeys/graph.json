@@ -102,6 +102,53 @@
           "tests/test_plugin_coherence.py"
         ]
       }
+    },
+    {
+      "id": "J-005",
+      "slug": "plan-approach-convergence-gate",
+      "title": "Plan approach convergence gate — a risky strategy is judged before implementation spend",
+      "persona": "The Overnight Operator (docs/factory/brain/personas.md)",
+      "trigger": "With approach convergence explicitly enabled, an item attempts to leave plan and its current-round screen carries at least one named convergence-risk signal",
+      "outcome": "The operator can audit why implementation was admitted or refused from one cited current-round artifact while the autonomous run enters implement only on a pass or follows the existing redesign route on rejection",
+      "criticality": "high",
+      "status": "draft",
+      "contract": "contracts/J-005-plan-approach-convergence-gate.md",
+      "links": {
+        "apis": [
+          "scripts/factory/lib/machine.py::_gate_implement",
+          "scripts/factory/lib/machine.py::advance",
+          "skills/factory-plan/SKILL.md",
+          "skills/factory-dispatch/SKILL.md"
+        ],
+        "tests": [
+          "tests/test_machine.py",
+          "tests/test_approach.py",
+          "tests/test_plugin_coherence.py"
+        ]
+      }
+    },
+    {
+      "id": "J-006",
+      "slug": "implementation-checkout-ownership",
+      "title": "Implementation checkout ownership — one same-item owner mutates an implementation checkout at a time",
+      "persona": "The Overnight Operator (docs/factory/brain/personas.md)",
+      "trigger": "Factory is about to dispatch an in-process implementer for an item or begin a direct headless factory work run against that item's registered implementation checkout",
+      "outcome": "The admitted owner completes its implementation and evidence window without same-item contamination, while a competing owner is refused before mutation with an actionable diagnostic",
+      "criticality": "core",
+      "status": "draft",
+      "contract": "contracts/J-006-implementation-checkout-ownership.md",
+      "links": {
+        "apis": [
+          "scripts/factory/lib/work.py::resolve_worktree",
+          "scripts/factory/lib/work.py::run_work",
+          "skills/factory-implement/SKILL.md"
+        ],
+        "tests": [
+          "tests/test_work.py",
+          "tests/test_cli_work.py",
+          "tests/test_plugin_coherence.py"
+        ]
+      }
     }
   ]
 }

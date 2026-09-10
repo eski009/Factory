@@ -50,3 +50,25 @@ entries below were registered by the work that touched them._
   `docs/factory/roadmap.md` and `factory status`, and its packet names the depth
   it ran at and the intake path it took (source:
   .factory/items/0026-complexity-scored-bug-flow-bugs-run-a-su/spec.md).
+- **J-005 — Plan approach convergence gate**
+  (`plan-approach-convergence-gate`, criticality `high`, status `draft`,
+  contract `contracts/J-005-plan-approach-convergence-gate.md`). Persona: The
+  Overnight Operator (source: docs/factory/brain/personas.md). Trigger: with
+  approach convergence explicitly enabled, an item attempts to leave `plan`
+  and its current-round screen carries at least one named convergence-risk
+  signal. Outcome: the operator can audit why implementation was admitted or
+  refused from one cited current-round artifact while the autonomous run enters
+  `implement` only on a pass or follows the existing redesign route on
+  rejection (source:
+  .factory/items/0014-approach-gate-at-plan-judge-convergence-/spec.md).
+- **J-006 — Implementation checkout ownership**
+  (`implementation-checkout-ownership`, criticality `core`, status `draft`,
+  contract `contracts/J-006-implementation-checkout-ownership.md`). Persona:
+  The Overnight Operator (source: docs/factory/brain/personas.md). Trigger:
+  Factory is about to dispatch an in-process implementer for an item or begin
+  a direct headless `factory work` run against that item's registered
+  implementation checkout. Outcome: the admitted owner completes its
+  implementation and evidence window without same-item contamination, while a
+  competing owner is refused before mutation with an actionable diagnostic
+  (source:
+  .factory/items/0020-concurrent-implementers-violate-the-one-/spec.md).

@@ -662,3 +662,28 @@
   receipts remain with 0026; no tier-based stage routing shipped (item 0033,
   mode `auto`).
 - **Ship record — 0031 completed (2026-08-15).** Auto-merged as `36ea7fea87fcd1b23f51431368c2ed561c32afa9`; the cost packet's `continue` consequence now derives its displayed resume destination from persisted `paused-from`, including an explicit missing-field fallback. The merged default checkout passed 958 tests (item 0031, mode `auto`).
+- **2026-09-04, 0014 triage durable judgement:** accepted bid-0185 and added
+  the convergence-versus-feasibility boundary to `brain/constraints.md`.
+  Approach convergence remains in 0014; ownership/dependency/capability and
+  merge-order feasibility was filed separately as 0036 (source:
+  .factory/items/0014-approach-gate-at-plan-judge-convergence-/reviews/synthesis.md;
+  authorized: judgement on bid-0185).
+- **2026-09-07, 0017 triage corrected the narrowing-adoption rule:** 0033's
+  shipped `assurance.verify` declaration made the old “two mechanisms / build no
+  third” count stale while all narrowing mechanisms still lack a live consumer.
+  The durable rule is now count-independent: build no additional narrowing
+  mechanism until one materially fires at its authoritative gate for a real
+  item (source: .factory/items/0017-…/reviews/round-2/architecture.md;
+  docs/factory/brain/constraints.md; authorized: judgement jdg-0174 on
+  bid-0197).
+- **2026-09-07, 0030 triage preserved the replay and refused the inference:**
+  after an exhaustive live replay and a bounded two-round council, the verdict
+  was 6/6 BUILD-RESCOPED at p6/backend/feature. The only deliverables are a
+  checked-in deterministic script and factual report over immutable n=13 and
+  n=16 cohorts. CAP 1..6,204 separates 0016 from 0015, but the result is
+  materially event-cadence-driven and neither cohort contains a labelled
+  runaway, so no threshold, engine behavior, savings claim, or 0018 revival is
+  authorized. The durable trace-cadence constraint and corrected 0018 unblock
+  condition were accepted through judgements jdg-0175 and jdg-0176 on bids
+  0198 and 0199 (source: .factory/items/0030-…/reviews/synthesis.md,
+  reviews/measurement-2026-09-07.md).
