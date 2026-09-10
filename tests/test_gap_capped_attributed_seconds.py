@@ -50,6 +50,7 @@ class FailClosedCliTest(unittest.TestCase):
             frozen["records"] = [row for row in frozen["records"]
                                  if row["event"] != "item.created"]
             frozen["record_count"] = len(frozen["records"])
+            frozen["disclosure"]["parseable_timestamped_records"] = len(frozen["records"])
             frozen["records_sha256"] = replay.records_digest(frozen["records"])
             bad = root / "missing-record.json"
             bad.write_text(json.dumps(document), encoding="utf-8")
