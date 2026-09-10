@@ -12,7 +12,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from . import items, logs, ownership
+from . import items, machine, ownership
 
 
 _ATTEMPT_RE = re.compile(r"^[0-9a-f]{32}$")
@@ -36,6 +36,10 @@ class PublicationUncertain(ReconciliationError):
         self.committed = committed
 
 
+class _ManifestDurabilityError(ReconciliationError):
+    """A visible manifest could not be durably adopted and revalidated."""
+
+
 class FilesystemOps:
     """Injectable filesystem boundary used by adversarial tests."""
 
@@ -57,6 +61,11 @@ class FilesystemOps:
 
     @staticmethod
     def fsync(fd):
+        return os.fsync(fd)
+
+    @staticmethod
+    def sync_observation(fd):
+        """Make already-visible recovery evidence durable before adoption."""
         return os.fsync(fd)
 
     @staticmethod
@@ -103,6 +112,11 @@ class _Handle:
 
 def _identity(details):
     return details.st_dev, details.st_ino
+
+
+def _file_state(details):
+    return (_identity(details), details.st_size,
+            details.st_mtime_ns, details.st_ctime_ns)
 
 
 def _close_chain(chain, ops=DEFAULT_OPS):
@@ -282,8 +296,21 @@ def _validate_opened_directories(opened, ops=DEFAULT_OPS):
             raise ReconciliationError("file directory chain was replaced")
 
 
+def _sync_directories(opened, parent_fd, root_fd, ops=DEFAULT_OPS):
+    directory_fds = [parent_fd]
+    directory_fds.extend(
+        ancestor_fd for ancestor_fd, _identity_value, _handle_value
+        in reversed(opened))
+    directory_fds.append(root_fd)
+    seen = set()
+    for directory_fd in directory_fds:
+        if directory_fd not in seen:
+            ops.sync_observation(directory_fd)
+            seen.add(directory_fd)
+
+
 def _secure_read_from(chain, repo_path, repo_index, relative,
-                      missing_ok=False, ops=DEFAULT_OPS):
+                      missing_ok=False, durable=False, ops=DEFAULT_OPS):
     parts = _normalize_relative(relative) if isinstance(relative, str) else relative
     opened = []
     leaf_fd = -1
@@ -295,6 +322,17 @@ def _secure_read_from(chain, repo_path, repo_index, relative,
                 fd = ops.open(part, _DIRECTORY_FLAGS, dir_fd=parent_fd)
             except FileNotFoundError:
                 if missing_ok:
+                    if durable:
+                        _sync_directories(
+                            opened, parent_fd, chain[repo_index].fd, ops)
+                        try:
+                            ops.stat(part, dir_fd=parent_fd,
+                                     follow_symlinks=False)
+                        except FileNotFoundError:
+                            pass
+                        else:
+                            raise ReconciliationError(
+                                "missing path appeared while making durable")
                     _validate_opened_directories(opened, ops)
                     _validate_chain(chain, repo_path, repo_index, ops)
                     return None
@@ -308,6 +346,17 @@ def _secure_read_from(chain, repo_path, repo_index, relative,
                                dir_fd=parent_fd)
         except FileNotFoundError:
             if missing_ok:
+                if durable:
+                    _sync_directories(
+                        opened, parent_fd, chain[repo_index].fd, ops)
+                    try:
+                        ops.stat(parts[-1], dir_fd=parent_fd,
+                                 follow_symlinks=False)
+                    except FileNotFoundError:
+                        pass
+                    else:
+                        raise ReconciliationError(
+                            "missing file appeared while making durable")
                 _validate_opened_directories(opened, ops)
                 _validate_chain(chain, repo_path, repo_index, ops)
                 return None
@@ -317,14 +366,32 @@ def _secure_read_from(chain, repo_path, repo_index, relative,
             raise ReconciliationError(f"evidence is not a regular file: {'/'.join(parts)}")
         raw = _read_fd(leaf_fd, ops)
         after = ops.fstat(leaf_fd)
-        if (_identity(before) != _identity(after)
-                or before.st_size != after.st_size
-                or before.st_mtime_ns != after.st_mtime_ns
-                or before.st_ctime_ns != after.st_ctime_ns):
+        if (len(raw) != before.st_size
+                or _file_state(before) != _file_state(after)):
             raise ReconciliationError(f"file changed while reading: {'/'.join(parts)}")
         entry = ops.stat(parts[-1], dir_fd=parent_fd, follow_symlinks=False)
-        if not stat.S_ISREG(entry.st_mode) or _identity(entry) != _identity(before):
+        if (not stat.S_ISREG(entry.st_mode)
+                or _file_state(entry) != _file_state(before)):
             raise ReconciliationError(f"file was replaced while reading: {'/'.join(parts)}")
+        if durable:
+            # A child may die after installing a complete file but before its
+            # namespace fsync. Adopt that visible state by syncing the leaf,
+            # then every directory entry from the leaf back to the repo root.
+            ops.sync_observation(leaf_fd)
+            _sync_directories(
+                opened, parent_fd, chain[repo_index].fd, ops)
+            synced = ops.fstat(leaf_fd)
+            synced_entry = ops.stat(
+                parts[-1], dir_fd=parent_fd, follow_symlinks=False)
+            if (not stat.S_ISREG(synced.st_mode)
+                    or _identity(synced) != _identity(before)
+                    or synced.st_size != before.st_size
+                    or synced.st_mtime_ns != before.st_mtime_ns
+                    or synced.st_ctime_ns != before.st_ctime_ns
+                    or not stat.S_ISREG(synced_entry.st_mode)
+                    or _file_state(synced_entry) != _file_state(before)):
+                raise ReconciliationError(
+                    f"file changed while making durable: {'/'.join(parts)}")
         _validate_opened_directories(opened, ops)
         _validate_chain(chain, repo_path, repo_index, ops)
         return raw, _identity(before)
@@ -366,7 +433,8 @@ def _canonical_json(value):
         "utf-8")
 
 
-def _secure_read_named(chain, repo_path, repo_index, name, ops=DEFAULT_OPS):
+def _secure_read_named(chain, repo_path, repo_index, name, ops=DEFAULT_OPS,
+                       *, durable=False):
     fd = -1
     try:
         fd = ops.open(name, _FILE_READ_FLAGS,
@@ -377,10 +445,22 @@ def _secure_read_named(chain, repo_path, repo_index, name, ops=DEFAULT_OPS):
         raw = _read_fd(fd, ops)
         after = ops.fstat(fd)
         entry = ops.stat(name, dir_fd=chain[-1].fd, follow_symlinks=False)
-        if (_identity(before) != _identity(after)
+        if (len(raw) != before.st_size
+                or _file_state(before) != _file_state(after)
                 or not stat.S_ISREG(entry.st_mode)
-                or _identity(entry) != _identity(before)):
+                or _file_state(entry) != _file_state(before)):
             raise ReconciliationError(f"reconciliation file was replaced: {name}")
+        if durable:
+            ops.sync_observation(fd)
+            ops.sync_observation(chain[-1].fd)
+            synced = ops.fstat(fd)
+            synced_entry = ops.stat(
+                name, dir_fd=chain[-1].fd, follow_symlinks=False)
+            if (_file_state(synced) != _file_state(before)
+                    or not stat.S_ISREG(synced_entry.st_mode)
+                    or _file_state(synced_entry) != _file_state(before)):
+                raise ReconciliationError(
+                    f"reconciliation file changed while making durable: {name}")
         _validate_chain(chain, repo_path, repo_index, ops)
         return raw, _identity(before)
     except OSError as exc:
@@ -465,6 +545,38 @@ def _publish_json(chain, repo_path, repo_index, final_name, payload_factory,
     return payload, cleanup_pending
 
 
+def _pin_log_prefix(chain, repo_path, repo_index, expected, attempt_id,
+                    ops=DEFAULT_OPS):
+    """Retain the checkpoint log inode so COW generations cannot recycle it."""
+    item_chain = chain[:-2]
+    if (len(item_chain) <= repo_index or item_chain[-1].name is None
+            or chain[-1].name != attempt_id):
+        raise ReconciliationError("invalid checkpoint directory chain")
+    try:
+        source = _secure_read_named(
+            item_chain, repo_path, repo_index, "log.jsonl", ops)
+        if source != expected:
+            raise ReconciliationError(
+                "event log changed before prefix pinning")
+        ops.link(
+            "log.jsonl", "log-prefix.jsonl",
+            src_dir_fd=item_chain[-1].fd, dst_dir_fd=chain[-1].fd,
+            follow_symlinks=False)
+        ops.fsync(chain[-1].fd)
+        pinned = _secure_read_named(
+            chain, repo_path, repo_index, "log-prefix.jsonl", ops)
+        current = _secure_read_named(
+            item_chain, repo_path, repo_index, "log.jsonl", ops)
+        if pinned != expected or current != expected:
+            raise ReconciliationError(
+                "event log changed while pinning its prefix")
+        _validate_chain(chain, repo_path, repo_index, ops)
+    except (OSError, ReconciliationError) as exc:
+        raise PublicationUncertain(
+            "event log prefix pinning is uncertain",
+            attempt_id, False) from exc
+
+
 def _sha(raw):
     return hashlib.sha256(raw).hexdigest()
 
@@ -489,42 +601,25 @@ def _parse_log(raw, label="event log"):
 
 
 def _semantic_snapshot(repo_path, item_id, chain, repo_index,
-                       ops=DEFAULT_OPS, *, defer_log_validation=False):
+                       ops=DEFAULT_OPS, *, durable=False):
     item_path = f".factory/items/{item_id}/item.md"
     log_path = f".factory/items/{item_id}/log.jsonl"
-    item_before = _secure_read_from(
-        chain, repo_path, repo_index, item_path, ops=ops)
+    item_state = _secure_read_from(
+        chain, repo_path, repo_index, item_path,
+        durable=durable, ops=ops)
     try:
-        meta, body = items.load_item(repo_path, item_id)
-    except (items.ItemError, OSError, UnicodeError) as exc:
+        meta, _body = items.parse_item(item_state[0].decode("utf-8"))
+    except (items.ItemError, UnicodeDecodeError) as exc:
         raise ReconciliationError(f"invalid item metadata: {item_id}") from exc
-    item_after = _secure_read_from(
-        chain, repo_path, repo_index, item_path, ops=ops)
-    if item_before != item_after:
-        raise ReconciliationError("item metadata changed while checkpointing")
-    try:
-        secure_meta, secure_body = items.parse_item(item_before[0].decode("utf-8"))
-    except (UnicodeDecodeError, items.ItemError) as exc:
-        raise ReconciliationError(f"invalid item metadata: {item_id}") from exc
-    if secure_meta != meta or secure_body != body:
-        raise ReconciliationError("item metadata semantic validation disagrees")
+    if meta.get("id") != item_id:
+        raise ReconciliationError(
+            f"item metadata identity does not match: {item_id}")
 
-    log_before = _secure_read_from(
-        chain, repo_path, repo_index, log_path, ops=ops)
-    try:
-        library_events = logs.read_events(repo_path, item_id)
-    except (OSError, UnicodeError, ValueError) as exc:
-        raise ReconciliationError(f"invalid event log: {item_id}") from exc
-    log_after = _secure_read_from(
-        chain, repo_path, repo_index, log_path, ops=ops)
-    if log_before != log_after:
-        raise ReconciliationError("event log changed while checkpointing")
-    parsed_events = library_events
-    if not defer_log_validation:
-        parsed_events = _parse_log(log_before[0])
-        if parsed_events != library_events:
-            raise ReconciliationError("event log semantic validation disagrees")
-    return meta, item_before, parsed_events, log_before
+    log_state = _secure_read_from(
+        chain, repo_path, repo_index, log_path,
+        durable=durable, ops=ops)
+    events = _parse_log(log_state[0])
+    return meta, item_state, events, log_state
 
 
 def _run_git(checkout, *args):
@@ -606,6 +701,74 @@ def _untracked_record(chain, root_path, root_index, relative, ops=DEFAULT_OPS):
                 pass
 
 
+def _sync_checkout_entry(chain, checkout, checkout_index, relative,
+                         ops=DEFAULT_OPS):
+    parts = _normalize_relative(relative)
+    opened = []
+    try:
+        parent_fd = chain[checkout_index].fd
+        parent_identity = chain[checkout_index].identity
+        for part in parts[:-1]:
+            try:
+                fd = ops.open(part, _DIRECTORY_FLAGS, dir_fd=parent_fd)
+            except FileNotFoundError:
+                _sync_directories(
+                    opened, parent_fd, chain[checkout_index].fd, ops)
+                try:
+                    ops.stat(part, dir_fd=parent_fd, follow_symlinks=False)
+                except FileNotFoundError:
+                    return
+                raise ReconciliationError(
+                    "checkout path appeared while making durable")
+            handle = _handle(fd, part, ops)
+            opened.append((parent_fd, parent_identity, handle))
+            parent_fd = handle.fd
+            parent_identity = handle.identity
+        try:
+            details = ops.stat(
+                parts[-1], dir_fd=parent_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            _sync_directories(
+                opened, parent_fd, chain[checkout_index].fd, ops)
+            try:
+                ops.stat(parts[-1], dir_fd=parent_fd, follow_symlinks=False)
+            except FileNotFoundError:
+                return
+            raise ReconciliationError(
+                "checkout path appeared while making durable")
+        if stat.S_ISREG(details.st_mode):
+            _secure_read_from(
+                chain, checkout, checkout_index, parts,
+                durable=True, ops=ops)
+            return
+        if stat.S_ISLNK(details.st_mode):
+            before = (_file_state(details),
+                      ops.readlink(parts[-1], dir_fd=parent_fd))
+            _sync_directories(
+                opened, parent_fd, chain[checkout_index].fd, ops)
+            after_details = ops.stat(
+                parts[-1], dir_fd=parent_fd, follow_symlinks=False)
+            after = (_file_state(after_details),
+                     ops.readlink(parts[-1], dir_fd=parent_fd))
+            if not stat.S_ISLNK(after_details.st_mode) or after != before:
+                raise ReconciliationError(
+                    "checkout symlink changed while making durable")
+            _validate_opened_directories(opened, ops)
+            _validate_chain(chain, checkout, checkout_index, ops)
+            return
+        raise ReconciliationError(
+            f"unsupported changed checkout entry: {relative}")
+    except OSError as exc:
+        raise ReconciliationError(
+            f"checkout observation could not be made durable: {relative}") from exc
+    finally:
+        for _parent_fd, _parent_identity, handle in reversed(opened):
+            try:
+                ops.close(handle.fd)
+            except OSError:
+                pass
+
+
 def _feed_record(digest, label, raw):
     name = label.encode("utf-8")
     digest.update(len(name).to_bytes(8, "big"))
@@ -628,6 +791,8 @@ def _capture_checkout_state(checkout, chain, checkout_index, ops=DEFAULT_OPS):
         "--binary", "HEAD", "--")
     untracked_raw = _run_git(
         checkout, "ls-files", "--others", "--exclude-standard", "-z")
+    tracked_raw = _run_git(
+        checkout, "diff", "--name-only", "--no-renames", "-z", "HEAD", "--")
     untracked_paths = [
         os.fsdecode(value) for value in untracked_raw.split(b"\0") if value]
     records = [
@@ -635,10 +800,12 @@ def _capture_checkout_state(checkout, chain, checkout_index, ops=DEFAULT_OPS):
         for value in sorted(untracked_paths)
     ]
     _validate_chain(chain, checkout, checkout_index, ops)
-    return head, status_raw, unstaged, staged, untracked_raw, records
+    return (head, status_raw, unstaged, staged, untracked_raw, tracked_raw,
+            records)
 
 
-def _checkout_snapshot(repo_path, item_id, supplied, ops=DEFAULT_OPS):
+def _checkout_snapshot(repo_path, item_id, supplied, ops=DEFAULT_OPS,
+                       *, durable=False, baseline_head=None):
     try:
         checkout = ownership.canonical_worktree(repo_path, item_id, supplied)
     except ownership.OwnershipError as exc:
@@ -647,14 +814,45 @@ def _checkout_snapshot(repo_path, item_id, supplied, ops=DEFAULT_OPS):
     try:
         captured = _capture_checkout_state(
             checkout, chain, checkout_index, ops)
+        if durable:
+            if (type(baseline_head) is not str
+                    or re.fullmatch(r"[0-9a-f]{40}", baseline_head) is None):
+                raise ReconciliationError(
+                    "checkout baseline HEAD is invalid")
+            changed_paths = set(
+                os.fsdecode(value) for value in captured[4].split(b"\0")
+                if value)
+            changed_paths.update(
+                os.fsdecode(value) for value in captured[5].split(b"\0")
+                if value)
+            current_head = captured[0].decode("ascii")
+            committed_paths = _run_git(
+                checkout, "diff", "--name-only", "--no-renames", "-z",
+                baseline_head, current_head, "--")
+            changed_paths.update(
+                os.fsdecode(value) for value in committed_paths.split(b"\0")
+                if value)
+            try:
+                for relative in sorted(changed_paths):
+                    _sync_checkout_entry(
+                        chain, checkout, checkout_index, relative, ops)
+                ops.sync_observation(chain[checkout_index].fd)
+            except ReconciliationError as exc:
+                raise ReconciliationError(
+                    f"checkout observation could not be made durable: {exc}") from exc
+            except OSError as exc:
+                raise ReconciliationError(
+                    "checkout observation could not be made durable") from exc
         if _capture_checkout_state(
                 checkout, chain, checkout_index, ops) != captured:
             raise ReconciliationError("checkout changed while snapshotting")
-        head, status_raw, unstaged, staged, untracked_raw, records = captured
+        (head, status_raw, unstaged, staged, untracked_raw, tracked_raw,
+         records) = captured
         digest = hashlib.sha256()
         for label, raw in (
                 ("status", status_raw), ("unstaged", unstaged),
                 ("staged", staged), ("untracked-paths", untracked_raw),
+                ("tracked-paths", tracked_raw),
                 ("untracked-records", _canonical_json(records))):
             _feed_record(digest, label, raw)
         _validate_chain(chain, checkout, checkout_index, ops)
@@ -670,12 +868,12 @@ def _checkout_snapshot(repo_path, item_id, supplied, ops=DEFAULT_OPS):
 
 
 def _snapshot_paths(chain, repo_path, repo_index, names, missing_ok,
-                    ops=DEFAULT_OPS):
+                    ops=DEFAULT_OPS, *, durable=False):
     output = {}
     for name in names:
         value = _secure_read_from(
             chain, repo_path, repo_index, name,
-            missing_ok=missing_ok, ops=ops)
+            missing_ok=missing_ok, durable=durable, ops=ops)
         output[name] = None if value is None else _sha(value[0])
     return output
 
@@ -799,7 +997,7 @@ def _open_attempt_chain(repo, item_id, attempt_id, ops=DEFAULT_OPS):
 
 
 def _load_manifest(chain, repo_path, repo_index, item_id, attempt_id,
-                   ops=DEFAULT_OPS):
+                   ops=DEFAULT_OPS, *, durable=False):
     raw, file_identity = _secure_read_named(
         chain, repo_path, repo_index, "manifest.json", ops)
     try:
@@ -812,7 +1010,42 @@ def _load_manifest(chain, repo_path, repo_index, item_id, attempt_id,
         return None, raw, file_identity, problem
     if raw != _canonical_json(value):
         return None, raw, file_identity, "manifest is not canonical JSON"
+    if durable:
+        try:
+            durable_raw, durable_identity = _secure_read_named(
+                chain, repo_path, repo_index, "manifest.json", ops,
+                durable=True)
+        except ReconciliationError as exc:
+            raise _ManifestDurabilityError(
+                "manifest and attempt namespace could not be made durable") from exc
+        if durable_raw != raw or durable_identity != file_identity:
+            raise _ManifestDurabilityError(
+                "manifest changed while making its publication durable")
     return value, raw, file_identity, None
+
+
+def _read_pinned_log(chain, repo_path, repo_index, manifest,
+                     ops=DEFAULT_OPS):
+    log_prefix = manifest["log_prefix"]
+    raw, identity = _secure_read_named(
+        chain, repo_path, repo_index, "log-prefix.jsonl", ops)
+    if (identity != (log_prefix["dev"], log_prefix["ino"])
+            or len(raw) != log_prefix["bytes"]
+            or _sha(raw) != log_prefix["sha256"]):
+        raise ReconciliationError(
+            "pinned event log prefix changed or was replaced")
+    events = _parse_log(raw, "pinned event log prefix")
+    if len(events) != log_prefix["events"]:
+        raise ReconciliationError("pinned event log count changed")
+    stage_entries = sum(
+        1 for event in events
+        if (event.get("event") == "stage.advance"
+            and type(event.get("data")) is dict
+            and event["data"].get("to") == manifest["stage"]))
+    if stage_entries != manifest["stage_entry"]:
+        raise ReconciliationError(
+            "pinned event log stage identity changed")
+    return raw, events
 
 
 def _fingerprint(observation):
@@ -879,6 +1112,13 @@ def begin(repo, item_id, stage, obligation, inputs, evidence, worktree=None,
         if checkout is not None:
             if _checkout_snapshot(repo_path, item_id, worktree, _ops) != checkout:
                 raise ReconciliationError("checkout changed before publication")
+
+        # Keep a hard link to the exact baseline log generation. The current
+        # logger replaces log.jsonl on every append, so this pin both proves
+        # the original inode and prevents its number from being recycled into
+        # a later generation while the checkpoint remains live.
+        _pin_log_prefix(
+            chain, repo_path, repo_index, log_state, attempt_id, _ops)
 
         stage_entry = sum(
             1 for event in events
@@ -966,9 +1206,12 @@ def discover(repo, item_id, stage, obligation, inputs, worktree=None,
             _append_directory(chain, attempt_id, _ops)
             try:
                 manifest, _raw, _file_identity, problem = _load_manifest(
-                    chain, repo_path, repo_index, item_id, attempt_id, _ops)
+                    chain, repo_path, repo_index, item_id, attempt_id, _ops,
+                    durable=True)
                 if problem is not None:
                     raise ReconciliationError(problem)
+                _read_pinned_log(
+                    chain, repo_path, repo_index, manifest, _ops)
                 if (manifest["stage"] != stage
                         or manifest["obligation"] != obligation
                         or sorted(manifest["inputs"]) != input_names):
@@ -1007,6 +1250,53 @@ def _suffix_events(raw):
         return [], str(exc)
 
 
+_NORMAL_TRANSITIONS = {
+    "idea": frozenset({"triage"}),
+    "triage": frozenset({"spec"}),
+    # Backend items omit design; items with no journey assurance omit assure.
+    "spec": frozenset({"design", "plan"}),
+    "design": frozenset({"plan"}),
+    "plan": frozenset({"implement"}),
+    "implement": frozenset({"review"}),
+    "review": frozenset({"verify"}),
+    "verify": frozenset({"assure", "ship"}),
+    "assure": frozenset({"ship"}),
+    "ship": frozenset({"done"}),
+    "done": frozenset(),
+}
+_REWORK_SOURCES = frozenset({"review", "verify", "assure"})
+
+
+def _transition_step(source, destination, pause_origin):
+    """Validate one engine-shaped edge and return the active pause origin."""
+    normal = frozenset(machine.STAGES)
+    special = frozenset(machine.SPECIAL)
+    if source not in normal | special or destination not in normal | special:
+        raise ReconciliationError(
+            "post-checkpoint stage transition is illegitimate")
+    if source in special:
+        # A checkpoint taken while already paused lacks the pre-checkpoint
+        # origin needed to prove a later resume. Fail closed rather than infer.
+        if pause_origin is None or destination != pause_origin:
+            raise ReconciliationError(
+                "post-checkpoint pause/resume transition is illegitimate")
+        return None
+    if destination in special:
+        if source == "done":
+            raise ReconciliationError(
+                "post-checkpoint stage transition is illegitimate")
+        return source
+    if pause_origin is not None:
+        raise ReconciliationError(
+            "post-checkpoint pause/resume transition is illegitimate")
+    if (destination not in _NORMAL_TRANSITIONS[source]
+            and not (source in _REWORK_SOURCES
+                     and destination in {"implement", "spec"})):
+        raise ReconciliationError(
+            "post-checkpoint stage transition is illegitimate")
+    return None
+
+
 def inspect(repo, item_id, attempt_id, writer_state, worktree=None,
             *, _ops=DEFAULT_OPS):
     """Classify durable change since one exact dispatch checkpoint."""
@@ -1015,38 +1305,46 @@ def inspect(repo, item_id, attempt_id, writer_state, worktree=None,
     repo_path, repo_index, chain = _open_attempt_chain(
         repo, item_id, attempt_id, _ops)
     try:
-        manifest, raw_manifest, _manifest_identity, problem = _load_manifest(
-            chain, repo_path, repo_index, item_id, attempt_id, _ops)
+        try:
+            manifest, raw_manifest, _manifest_identity, problem = _load_manifest(
+                chain, repo_path, repo_index, item_id, attempt_id, _ops,
+                durable=True)
+        except _ManifestDurabilityError as exc:
+            return _contradictory(attempt_id, writer_state, str(exc))
         if problem is not None:
             return _contradictory(
                 attempt_id, writer_state, problem, raw_manifest)
 
         log_prefix = manifest["log_prefix"]
         try:
-            meta, item_state, library_events, log_state = _semantic_snapshot(
+            pinned_raw, pinned_events = _read_pinned_log(
+                chain, repo_path, repo_index, manifest, _ops)
+            meta, item_state, current_events, log_state = _semantic_snapshot(
                 repo_path, item_id, chain, repo_index, _ops,
-                defer_log_validation=True)
+                durable=True)
         except ReconciliationError as exc:
             return _contradictory(attempt_id, writer_state, str(exc))
 
-        if _identity_record(item_state[1]) != {
-                "dev": manifest["item_file"]["dev"],
-                "ino": manifest["item_file"]["ino"]}:
+        baseline_item_identity = (
+            manifest["item_file"]["dev"], manifest["item_file"]["ino"])
+        if (item_state[1] != baseline_item_identity
+                and _sha(item_state[0]) ==
+                manifest["item_file"]["sha256"]):
             return _contradictory(
-                attempt_id, writer_state, "item file identity changed")
+                attempt_id, writer_state,
+                "item file identity changed without content change")
         current_log, current_log_identity = log_state
-        if current_log_identity != (log_prefix["dev"], log_prefix["ino"]):
-            return _contradictory(
-                attempt_id, writer_state, "event log identity changed")
+        baseline_log_identity = (log_prefix["dev"], log_prefix["ino"])
+        log_generation_changed = current_log_identity != baseline_log_identity
         prefix_length = log_prefix["bytes"]
         if (len(current_log) < prefix_length
                 or _sha(current_log[:prefix_length]) != log_prefix["sha256"]):
             return _contradictory(
                 attempt_id, writer_state, "event log prefix changed")
-        try:
-            prefix_events = _parse_log(current_log[:prefix_length])
-        except ReconciliationError as exc:
-            return _contradictory(attempt_id, writer_state, str(exc))
+        prefix_events = pinned_events
+        if current_log[:prefix_length] != pinned_raw:
+            return _contradictory(
+                attempt_id, writer_state, "event log prefix changed")
         prefix_stage_entry = sum(
             1 for event in prefix_events
             if (event.get("event") == "stage.advance"
@@ -1056,24 +1354,43 @@ def inspect(repo, item_id, attempt_id, writer_state, worktree=None,
                 or prefix_stage_entry != manifest["stage_entry"]):
             return _contradictory(
                 attempt_id, writer_state, "manifest stage/log identity changed")
-        if library_events[:len(prefix_events)] != prefix_events:
+        if current_events[:len(prefix_events)] != prefix_events:
             return _contradictory(
                 attempt_id, writer_state,
                 "event log semantic validation disagrees")
         suffix, suffix_problem = _suffix_events(current_log[prefix_length:])
         if (suffix_problem is None
-                and prefix_events + suffix != library_events):
+                and prefix_events + suffix != current_events):
             return _contradictory(
                 attempt_id, writer_state,
                 "event log semantic validation disagrees")
 
+        # logs.append_event publishes a complete old+new image by atomic
+        # replacement.  Therefore a legitimate append has a new inode, the
+        # exact checkpoint prefix, and at least one complete valid suffix
+        # event.  An equal-byte replacement, an in-place append, or a new
+        # malformed image cannot be a publication made by the current logger.
+        # Keeping this check after prefix validation preserves a precise
+        # prefix-corruption diagnosis while admitting the logger's COW lineage.
+        if log_generation_changed and len(current_log) == prefix_length:
+            return _contradictory(
+                attempt_id, writer_state,
+                "event log identity changed without an append")
+        if not log_generation_changed and len(current_log) != prefix_length:
+            return _contradictory(
+                attempt_id, writer_state, "event log changed in place")
+        if log_generation_changed and suffix_problem is not None:
+            return _contradictory(
+                attempt_id, writer_state,
+                "replacement event log has an invalid appended record")
+
         try:
             current_inputs = _snapshot_paths(
                 chain, repo_path, repo_index, sorted(manifest["inputs"]),
-                False, _ops)
+                False, _ops, durable=True)
             current_evidence = _snapshot_paths(
                 chain, repo_path, repo_index, sorted(manifest["evidence"]),
-                True, _ops)
+                True, _ops, durable=True)
         except ReconciliationError as exc:
             return _contradictory(attempt_id, writer_state, str(exc))
         if current_inputs != manifest["inputs"]:
@@ -1092,11 +1409,12 @@ def inspect(repo, item_id, attempt_id, writer_state, worktree=None,
             current_checkout = None
         else:
             try:
+                expected = manifest["checkout"]
                 current_checkout = _checkout_snapshot(
-                    repo_path, item_id, worktree, _ops)
+                    repo_path, item_id, worktree, _ops, durable=True,
+                    baseline_head=expected["head"])
             except ReconciliationError as exc:
                 return _contradictory(attempt_id, writer_state, str(exc))
-            expected = manifest["checkout"]
             if (current_checkout["path"] != expected["path"]
                     or current_checkout["dev"] != expected["dev"]
                     or current_checkout["ino"] != expected["ino"]):
@@ -1131,6 +1449,8 @@ def inspect(repo, item_id, attempt_id, writer_state, worktree=None,
 
         last_transition = None
         eligible = None
+        expected_source = manifest["stage"]
+        pause_origin = None
         for event in suffix:
             if event.get("event") != "stage.advance":
                 continue
@@ -1145,8 +1465,21 @@ def inspect(repo, item_id, attempt_id, writer_state, worktree=None,
                 return _result(
                     "contradictory", "stop", attempt_id, writer_state,
                     observation, changed_evidence, reason)
-            if eligible is None and data["from"] == manifest["stage"]:
+            if data["from"] != expected_source:
+                return _result(
+                    "contradictory", "stop", attempt_id, writer_state,
+                    observation, changed_evidence,
+                    "post-checkpoint stage transition history is disconnected")
+            try:
+                pause_origin = _transition_step(
+                    data["from"], data["to"], pause_origin)
+            except ReconciliationError as exc:
+                return _result(
+                    "contradictory", "stop", attempt_id, writer_state,
+                    observation, changed_evidence, str(exc))
+            if eligible is None:
                 eligible = event
+            expected_source = data["to"]
             last_transition = event
         if last_transition is not None:
             expected_stage = last_transition["data"]["to"]

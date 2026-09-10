@@ -9,9 +9,10 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from pathlib import PurePosixPath
 from unittest import mock
 
-from scripts.factory.lib import initrepo, items, logs, reconciliation
+from scripts.factory.lib import control, initrepo, items, logs, reconciliation, safeio
 
 
 def _git(repo, *args):
@@ -89,6 +90,9 @@ class BeginDiscoverTest(ReconciliationFixture):
                 [".factory/items"], [self.evidence_paths[0]])
 
     def test_begin_publishes_exact_self_bound_manifest(self):
+        log_path = self.repo / ".factory/items" / self.item_id / "log.jsonl"
+        baseline_log = log_path.read_bytes()
+        baseline_inode = (log_path.stat().st_dev, log_path.stat().st_ino)
         result = self.begin()
         self.assertRegex(result["attempt_id"], r"^[0-9a-f]{32}$")
         self.assertFalse(result["cleanup_pending"])
@@ -110,6 +114,11 @@ class BeginDiscoverTest(ReconciliationFixture):
             (manifest["manifest_file"]["dev"],
              manifest["manifest_file"]["ino"]),
             (manifest_path.stat().st_dev, manifest_path.stat().st_ino))
+        pinned_log = attempt / "log-prefix.jsonl"
+        self.assertEqual(pinned_log.read_bytes(), baseline_log)
+        self.assertEqual(
+            (pinned_log.stat().st_dev, pinned_log.stat().st_ino),
+            baseline_inode)
         self.assertEqual(list(attempt.glob(".manifest.json.tmp-*")), [])
 
     def test_discover_zero_one_and_ambiguous_attempts(self):
@@ -135,6 +144,20 @@ class BeginDiscoverTest(ReconciliationFixture):
         self.assertEqual((result["classification"], result["action"]),
                          ("contradictory", "stop"))
         self.assertIn("input", result["reason"])
+
+    def test_missing_pinned_log_is_not_discoverable_or_adoptable(self):
+        attempt = self.begin()["attempt_id"]
+        pinned = (self.repo / ".factory/items" / self.item_id /
+                  "reconciliation" / attempt / "log-prefix.jsonl")
+        pinned.unlink()
+
+        with self.assertRaises(reconciliation.ReconciliationError):
+            reconciliation.discover(
+                self.repo, self.item_id, "plan", "plan:judge",
+                [self.input_path])
+        result = self.inspect(attempt)
+        self.assertEqual((result["classification"], result["action"]),
+                         ("contradictory", "stop"))
 
 
 class ClassificationTest(ReconciliationFixture):
@@ -182,6 +205,38 @@ class ClassificationTest(ReconciliationFixture):
                          ("contradictory", "stop"))
         self.assertIn("without a stage transition", stopped["reason"])
 
+    def test_transactional_item_replacement_and_cow_log_are_complete(self):
+        attempt = self.begin()["attempt_id"]
+        item_relative = PurePosixPath(
+            ".factory", "items", self.item_id, "item.md")
+        log_relative = PurePosixPath(
+            ".factory", "items", self.item_id, "log.jsonl")
+        item_snapshot = safeio.snapshot_path(self.repo, item_relative)
+        log_snapshot = safeio.snapshot_path(self.repo, log_relative)
+        meta, body = items.parse_item(item_snapshot.data.decode("utf-8"))
+        meta["stage"] = "implement"
+        meta["updated"] = "2026-09-08T01:00:00Z"
+        before_inode = item_snapshot.file_identity[:2]
+        control.commit_operation(
+            self.repo, self.item_id, kind="test.reconciliation",
+            key=attempt, request={"attempt": attempt},
+            replacements=((
+                item_snapshot,
+                items.render_item(meta, body).encode("utf-8")),),
+            events=({
+                "event": "stage.advance",
+                "ts": "2026-09-08T01:00:00Z",
+                "data": {"from": "plan", "to": "implement"},
+            },),
+            log_snapshot=log_snapshot)
+        self.assertNotEqual(
+            (self.repo / item_relative).stat().st_ino, before_inode[1])
+
+        complete = self.inspect(attempt)
+
+        self.assertEqual((complete["classification"], complete["action"]),
+                         ("complete", "adopt"))
+
     def test_metadata_only_change_waits_for_active_writer(self):
         attempt = self.begin()["attempt_id"]
         meta, body = items.load_item(self.repo, self.item_id)
@@ -195,19 +250,95 @@ class ClassificationTest(ReconciliationFixture):
     def test_leaving_and_reentering_baseline_stage_remains_complete(self):
         attempt = self.begin()["attempt_id"]
         for frm, to in (("plan", "implement"), ("implement", "review"),
-                        ("review", "plan")):
+                        ("review", "spec"), ("spec", "plan")):
             logs.append_event(self.repo, self.item_id, "stage.advance",
                               {"from": frm, "to": to})
         complete = self.inspect(attempt)
         self.assertEqual((complete["classification"], complete["action"]),
                          ("complete", "adopt"))
 
+    def test_disconnected_transition_history_is_never_adopted(self):
+        attempt = self.begin()["attempt_id"]
+        meta, body = items.load_item(self.repo, self.item_id)
+        meta["stage"] = "ship"
+        items.save_item(self.repo, meta, body)
+        logs.append_event(self.repo, self.item_id, "stage.advance",
+                          {"from": "plan", "to": "implement"})
+        logs.append_event(self.repo, self.item_id, "stage.advance",
+                          {"from": "review", "to": "ship"})
+
+        result = self.inspect(attempt)
+
+        self.assertEqual((result["classification"], result["action"]),
+                         ("contradictory", "stop"))
+        self.assertIn("disconnected", result["reason"])
+
+    def test_connected_but_illegal_transition_history_is_never_adopted(self):
+        attempt = self.begin()["attempt_id"]
+        meta, body = items.load_item(self.repo, self.item_id)
+        meta["stage"] = "ship"
+        items.save_item(self.repo, meta, body)
+        logs.append_event(self.repo, self.item_id, "stage.advance",
+                          {"from": "plan", "to": "ship"})
+
+        result = self.inspect(attempt)
+
+        self.assertEqual((result["classification"], result["action"]),
+                         ("contradictory", "stop"))
+        self.assertIn("illegitimate", result["reason"])
+
+    def test_pause_must_resume_to_the_stage_that_parked(self):
+        attempt = self.begin()["attempt_id"]
+        meta, body = items.load_item(self.repo, self.item_id)
+        meta["stage"] = "review"
+        items.save_item(self.repo, meta, body)
+        logs.append_event(self.repo, self.item_id, "stage.advance",
+                          {"from": "plan", "to": "waiting-human"})
+        logs.append_event(self.repo, self.item_id, "stage.advance",
+                          {"from": "waiting-human", "to": "review"})
+
+        result = self.inspect(attempt)
+
+        self.assertEqual((result["classification"], result["action"]),
+                         ("contradictory", "stop"))
+        self.assertIn("illegitimate", result["reason"])
+
+    def test_matching_pause_and_resume_history_remains_adoptable(self):
+        attempt = self.begin()["attempt_id"]
+        logs.append_event(self.repo, self.item_id, "stage.advance",
+                          {"from": "plan", "to": "waiting-human"})
+        logs.append_event(self.repo, self.item_id, "stage.advance",
+                          {"from": "waiting-human", "to": "plan"})
+
+        result = self.inspect(attempt)
+
+        self.assertEqual((result["classification"], result["action"]),
+                         ("complete", "adopt"))
+
+    def test_resume_from_baseline_special_stage_fails_closed(self):
+        meta, body = items.load_item(self.repo, self.item_id)
+        meta["stage"] = "waiting-human"
+        meta["paused-from"] = "plan"
+        items.save_item(self.repo, meta, body)
+        attempt = self.begin_at_stage("waiting-human")
+        meta["stage"] = "plan"
+        meta.pop("paused-from")
+        items.save_item(self.repo, meta, body)
+        logs.append_event(self.repo, self.item_id, "stage.advance",
+                          {"from": "waiting-human", "to": "plan"})
+
+        result = self.inspect(attempt)
+
+        self.assertEqual((result["classification"], result["action"]),
+                         ("contradictory", "stop"))
+        self.assertIn("illegitimate", result["reason"])
+
     def begin_at_stage(self, stage):
         return reconciliation.begin(
             self.repo, self.item_id, stage, f"{stage}:child",
             [self.input_path], self.evidence_paths)["attempt_id"]
 
-    def test_torn_suffix_waits_only_for_active_writer(self):
+    def test_in_place_torn_suffix_stops_even_for_active_writer(self):
         attempt = self.begin()["attempt_id"]
         log_path = self.repo / ".factory/items" / self.item_id / "log.jsonl"
         with log_path.open("ab") as stream:
@@ -215,23 +346,35 @@ class ClassificationTest(ReconciliationFixture):
         active = self.inspect(attempt, "active")
         terminal = self.inspect(attempt, "terminal")
         self.assertEqual((active["classification"], active["action"]),
-                         ("partial", "wait-active"))
+                         ("contradictory", "stop"))
+        self.assertIn("pinned event log prefix", active["reason"])
         self.assertEqual((terminal["classification"], terminal["action"]),
                          ("contradictory", "stop"))
 
-    def test_invalid_utf8_suffix_waits_for_active_writer(self):
+    def test_in_place_invalid_utf8_suffix_stops_for_active_writer(self):
         attempt = self.begin()["attempt_id"]
         log_path = self.repo / ".factory/items" / self.item_id / "log.jsonl"
         with log_path.open("ab") as stream:
             stream.write(
                 b'{"event":"worker.note","ts":"2026-09-08T00:00:00Z",'
                 b'"data":"\xff"}\n')
-        with mock.patch.object(
-                logs, "read_events", wraps=logs.read_events) as read_events:
-            result = self.inspect(attempt, "active")
-        read_events.assert_called_once_with(self.repo, self.item_id)
+        result = self.inspect(attempt, "active")
         self.assertEqual((result["classification"], result["action"]),
-                         ("partial", "wait-active"))
+                         ("contradictory", "stop"))
+        self.assertIn("pinned event log prefix", result["reason"])
+
+    def test_valid_in_place_append_changes_the_pinned_prefix_and_stops(self):
+        attempt = self.begin()["attempt_id"]
+        log_path = self.repo / ".factory/items" / self.item_id / "log.jsonl"
+        with log_path.open("ab") as stream:
+            stream.write(
+                b'{"event":"worker.note","ts":"2026-09-08T00:00:00Z"}\n')
+
+        result = self.inspect(attempt, "terminal")
+
+        self.assertEqual((result["classification"], result["action"]),
+                         ("contradictory", "stop"))
+        self.assertIn("pinned event log prefix", result["reason"])
 
     def test_invalid_utf8_suffix_stops_for_terminal_writer(self):
         attempt = self.begin()["attempt_id"]
@@ -240,10 +383,7 @@ class ClassificationTest(ReconciliationFixture):
             stream.write(
                 b'{"event":"worker.note","ts":"2026-09-08T00:00:00Z",'
                 b'"data":"\xff"}\n')
-        with mock.patch.object(
-                logs, "read_events", wraps=logs.read_events) as read_events:
-            result = self.inspect(attempt, "terminal")
-        read_events.assert_called_once_with(self.repo, self.item_id)
+        result = self.inspect(attempt, "terminal")
         self.assertEqual((result["classification"], result["action"]),
                          ("contradictory", "stop"))
 
@@ -316,6 +456,48 @@ class WorktreeStateTest(ReconciliationFixture):
         result = self.inspect(attempt, worktree=self.repo)
         self.assertEqual((result["classification"], result["action"]),
                          ("partial", "continue"))
+
+    def test_unsyncable_checkout_progress_cannot_authorize_continuation(self):
+        dirty = self.repo / "seed.txt"
+        attempt = self.begin(worktree=self.repo)["attempt_id"]
+        dirty.write_text("unsynced child progress\n", encoding="utf-8")
+        dirty_identity = (dirty.stat().st_dev, dirty.stat().st_ino)
+
+        class CheckoutSyncFailOps(reconciliation.FilesystemOps):
+            def sync_observation(self, fd):
+                if reconciliation._identity(os.fstat(fd)) == dirty_identity:
+                    raise OSError("injected checkout durability failure")
+                return super().sync_observation(fd)
+
+        result = reconciliation.inspect(
+            self.repo, self.item_id, attempt, "terminal", self.repo,
+            _ops=CheckoutSyncFailOps())
+
+        self.assertEqual((result["classification"], result["action"]),
+                         ("contradictory", "stop"))
+        self.assertIn("checkout", result["reason"])
+
+    def test_unsyncable_clean_commit_leaf_cannot_authorize_continuation(self):
+        dirty = self.repo / "seed.txt"
+        attempt = self.begin(worktree=self.repo)["attempt_id"]
+        dirty.write_text("committed child progress\n", encoding="utf-8")
+        _git(self.repo, "add", "seed.txt")
+        _git(self.repo, "commit", "-q", "-m", "child progress")
+        dirty_identity = (dirty.stat().st_dev, dirty.stat().st_ino)
+
+        class CheckoutSyncFailOps(reconciliation.FilesystemOps):
+            def sync_observation(self, fd):
+                if reconciliation._identity(os.fstat(fd)) == dirty_identity:
+                    raise OSError("injected committed-leaf durability failure")
+                return super().sync_observation(fd)
+
+        result = reconciliation.inspect(
+            self.repo, self.item_id, attempt, "terminal", self.repo,
+            _ops=CheckoutSyncFailOps())
+
+        self.assertEqual((result["classification"], result["action"]),
+                         ("contradictory", "stop"))
+        self.assertIn("checkout", result["reason"])
 
     def test_textconv_cannot_hide_further_tracked_file_progress(self):
         textconv = self.repo / "lossy-textconv.sh"
@@ -519,8 +701,8 @@ class PublicationTest(ReconciliationFixture):
         self.assertFalse(result["cleanup_pending"])
         self.assertGreater(ops.directory_fsyncs, failed_count)
 
-    def test_commit_fsync_failure_leaves_only_complete_uncommitted_links(self):
-        ops = FaultOps(directory_fsync=3)
+    def test_uncommitted_manifest_needs_recovery_fsync_before_authority(self):
+        ops = FaultOps(directory_fsync=4)
         with self.assertRaises(reconciliation.PublicationUncertain) as ctx:
             self.call_begin(ops)
         self.assertFalse(ctx.exception.committed)
@@ -532,6 +714,42 @@ class PublicationTest(ReconciliationFixture):
         self.assertEqual(finals[0].read_bytes(), temps[0].read_bytes())
         self.assertEqual(finals[0].stat().st_ino, temps[0].stat().st_ino)
 
+        attempt_identity = (attempt.stat().st_dev, attempt.stat().st_ino)
+
+        class ManifestCommitFailOps(reconciliation.FilesystemOps):
+            def sync_observation(self, fd):
+                details = os.fstat(fd)
+                if (stat.S_ISDIR(details.st_mode)
+                        and reconciliation._identity(details) ==
+                        attempt_identity):
+                    raise OSError("injected manifest durability failure")
+                return super().sync_observation(fd)
+
+        recovery_ops = ManifestCommitFailOps()
+        with self.assertRaises(reconciliation.ReconciliationError):
+            reconciliation.discover(
+                self.repo, self.item_id, "plan", "plan:judge",
+                [self.input_path], _ops=recovery_ops)
+        refused = reconciliation.inspect(
+            self.repo, self.item_id, ctx.exception.attempt_id,
+            "terminal", _ops=recovery_ops)
+        self.assertEqual((refused["classification"], refused["action"]),
+                         ("contradictory", "stop"))
+        self.assertIn("attempt namespace", refused["reason"])
+
+        # The visible same-inode residue becomes authority only after a later
+        # recovery successfully fsyncs and revalidates the exact manifest and
+        # attempt namespace.
+        self.assertEqual(
+            reconciliation.discover(
+                self.repo, self.item_id, "plan", "plan:judge",
+                [self.input_path]),
+            [ctx.exception.attempt_id])
+        recovered = reconciliation.inspect(
+            self.repo, self.item_id, ctx.exception.attempt_id, "terminal")
+        self.assertEqual((recovered["classification"], recovered["action"]),
+                         ("absent", "count-failure"))
+
     def test_postcommit_cleanup_failures_are_reported_without_revocation(self):
         unlink = self.call_begin(FaultOps(unlink_error=True))
         self.assertTrue(unlink["cleanup_pending"])
@@ -539,7 +757,7 @@ class PublicationTest(ReconciliationFixture):
 
         root = self.repo / ".factory/items" / self.item_id / "reconciliation"
         shutil.rmtree(root)
-        cleanup_fsync = self.call_begin(FaultOps(directory_fsync=4))
+        cleanup_fsync = self.call_begin(FaultOps(directory_fsync=5))
         self.assertTrue(cleanup_fsync["cleanup_pending"])
         self.assertEqual(len(self.manifest_paths()), 1)
 
@@ -747,7 +965,7 @@ class IdentityAndCorruptionTest(ReconciliationFixture):
         os.replace(replacement, log_path)
         result = self.inspect(attempt)
         self.assertEqual(result["action"], "stop")
-        self.assertIn("event log identity", result["reason"])
+        self.assertIn("identity changed without an append", result["reason"])
 
     def test_truncated_prefix_and_malformed_complete_suffix_stop(self):
         attempt = self.begin()["attempt_id"]
@@ -756,7 +974,7 @@ class IdentityAndCorruptionTest(ReconciliationFixture):
         log_path.write_bytes(raw[:-1])
         result = self.inspect(attempt)
         self.assertEqual(result["action"], "stop")
-        self.assertIn("prefix", result["reason"])
+        self.assertIn("pinned event log prefix", result["reason"])
 
         log_path.write_bytes(raw)
         shutil.rmtree(self.attempt_path(attempt).parent)
@@ -765,8 +983,25 @@ class IdentityAndCorruptionTest(ReconciliationFixture):
             stream.write(b"not-json\n")
         active = self.inspect(attempt, "active")
         terminal = self.inspect(attempt, "terminal")
-        self.assertEqual(active["action"], "wait-active")
+        self.assertEqual(active["action"], "stop")
+        self.assertIn("pinned event log prefix", active["reason"])
         self.assertEqual(terminal["action"], "stop")
+
+    def test_inspection_refuses_when_visible_state_cannot_be_made_durable(self):
+        class ObservationFailOps(reconciliation.FilesystemOps):
+            def sync_observation(self, fd):
+                raise OSError("injected observation durability failure")
+
+        attempt = self.begin()["attempt_id"]
+        self.write(self.evidence_paths[0], "partial\n")
+
+        result = reconciliation.inspect(
+            self.repo, self.item_id, attempt, "terminal",
+            _ops=ObservationFailOps())
+
+        self.assertEqual((result["classification"], result["action"]),
+                         ("contradictory", "stop"))
+        self.assertIn("could not be made durable", result["reason"])
 
     def test_parent_symlinked_evidence_is_never_followed(self):
         attempt = self.begin()["attempt_id"]

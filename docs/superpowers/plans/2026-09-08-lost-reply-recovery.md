@@ -23,6 +23,7 @@ fan-out across attempts, and resuming arbitrary prior council runs.
 
 ```text
 .factory/items/<item>/reconciliation/<attempt-id>/manifest.json
+.factory/items/<item>/reconciliation/<attempt-id>/log-prefix.jsonl
 .factory/items/<item>/reconciliation/<attempt-id>/continuations.json
 .factory/items/<item>/reconciliation/<attempt-id>/continuations/claim.json
 ```
@@ -71,16 +72,33 @@ component `openat` traversal (`dir_fd` in Python) with `O_NOFOLLOW`; directories
 also use `O_DIRECTORY`. A leaf is accepted only when `fstat` reports a regular
 file. After each read, compare every opened child descriptor's `(dev, ino)` to
 a no-follow `stat` of its name from its still-open parent, bottom-up. A mismatch
-is a rename-replacement refusal. `items.load_item` and `logs.read_events` are
-still called for their semantic validation, but their result is accepted only
-when secure reads immediately before and after return the same bytes and inode;
-the checkpoint hashes those securely read bytes. Baseline logs with skipped or
+is a rename-replacement refusal. Item metadata is parsed from the securely read
+bytes with `items.parse_item`, and the event log is strictly parsed from its
+secure descriptor read; path-based helpers are never allowed to reopen an
+untrusted namespace between those checks. Baseline logs with skipped or
 malformed events are refused.
+
+Inspection makes each visible item, log, input, present evidence, and changed
+checkout leaf durable before it can influence a routing result: fsync the
+opened regular-file descriptor, then fsync every containing directory bottom-up
+through the repository or checkout root, and revalidate the leaf and directory
+chain. Missing-path observations fsync and revalidate the deepest existing
+parent. This lets a new parent safely adopt a complete image that a child
+installed just before dying, even if the child did not reach its own namespace
+fsync; a sync or revalidation failure is contradictory and never authorizes
+adoption or continuation.
 
 The stage entry is the number of valid `stage.advance` events whose `data.to`
 equals the current stage. The log prefix stores the exact byte length, hash,
-valid-event count, and inode; inspection requires that the same log inode still
-starts with those exact bytes, not merely that it has the same event count.
+valid-event count, and inode. Factory's logger publishes each append as a
+complete copy-on-write image. Before manifest publication, `begin` hard-links
+that exact baseline generation to `log-prefix.jsonl` and fsyncs the attempt
+directory. The pin prevents inode-number reuse and makes an in-place mutation
+change the retained prefix too. Inspection therefore accepts either that same
+inode at exactly the checkpoint length or a new inode that starts with the
+exact pinned bytes and adds at least one complete valid event. A same-byte
+replacement, an in-place append, a changed pin/prefix, or a replacement with a
+malformed suffix is contradictory; event count alone is never authority.
 Input and evidence bytes are snapshotted only after item metadata, the log, and
 the optional canonical Factory worktree have passed those checks.
 
@@ -128,13 +146,22 @@ inspection. A post-commit directory-identity mismatch still returns an error
 and no dispatch authorization. Tests assert these explicit states instead of
 requiring impossible rollback after an injected filesystem failure.
 
+Discovery and inspection never treat a merely visible manifest link as durable
+authority. After validating its closed schema and self-binding, recovery fsyncs
+the exact opened manifest and attempt directory, reopens/revalidates that same
+leaf and the full descriptor chain, and only then permits discovery or a routing
+result. A failed recovery fsync leaves the linked-but-uncommitted residue
+non-authoritative.
+
 The manifest binds itself without mutating the item log: its closed payload
 contains both the attempt-directory identity and the temporary manifest-file
 identity; atomic hard-link publication preserves the latter for
 `manifest.json`. Inspection opens the final leaf no-follow and requires both
-identities to match. Combined with the stored log inode and exact prefix hash,
-this rejects an equal-length rewritten log, a copied/replaced manifest, or an
-identically copied/relocated attempt directory in a fresh session.
+identities to match. It also requires `log-prefix.jsonl` to retain the stored
+log inode and exact bytes. Combined, these reject inode reuse, a same-byte log
+replacement, an in-place append, a
+copied/replaced manifest, or an identically copied/relocated attempt directory
+in a fresh session while admitting logger-owned copy-on-write appends.
 
 The first continuation attempt also publishes a self-bound
 `continuations.json` beside the directory, recording both the directory inode
@@ -177,8 +204,12 @@ path plus its no-follow type/mode and either regular-file bytes or symlink
 target bytes. Git is invoked with argument arrays, `--no-ext-diff`,
 `--no-textconv`, and a fixed locale. This detects further edits to an
 already-dirty file even under a lossy textconv driver, as well as new untracked
-content. Inspection revalidates both `ownership.canonical_worktree` and the
-stored root identity.
+content. Before checkout progress can authorize continuation, inspection
+fsyncs every regular leaf changed in the current dirty state or between the
+manifest's baseline HEAD and current HEAD, plus its containing directories (or
+the containing directory for a symlink or absence), fsyncs the checkout root,
+and repeats the complete Git snapshot. Inspection also
+revalidates both `ownership.canonical_worktree` and the stored root identity.
 
 Inspection takes an observed writer state, `active` or `terminal`, and the same
 worktree path when the manifest carries one. It returns:
@@ -203,23 +234,27 @@ item hash/stage, current full-log hash/length, sorted input and evidence states
 Inspection rules, in order:
 
 1. Validate the stored/requested item and attempt ids, closed manifest schema,
-   manifest/binding/directory/log-prefix identity, current input hashes, safe
+   manifest/binding/directory/log-prefix lineage, current input hashes, safe
    evidence types, and the supplied/canonical checkout path and root identity.
    Any mismatch, input deletion/change, evidence deletion after a non-null
    baseline, or unreadable/symlinked/nonregular path is
    `contradictory/stop`, even when the caller reports an active writer.
-2. Parse every complete event after the recorded byte prefix. A non-empty
-   suffix without a trailing newline, invalid UTF-8/JSON, non-object event, or
-   event without `event` and `ts` is treated as a write in progress only while
-   writer state is active and returns `partial/wait-active`; with a terminal
-   writer it is `contradictory/stop` and cannot fall through to evidence-based
-   adoption. Otherwise the eligible
-   completion edge is the first valid `stage.advance` after that prefix whose
-   `data.from` equals the manifest stage. If any such edge exists, current item
-   metadata must
-   equal the `data.to` of the last subsequent `stage.advance`; otherwise state
-   is contradictory. Leaving and later re-entering the baseline stage remains
-   complete because the first eligible edge is retained.
+2. Parse every complete event after the recorded byte prefix. Because the
+   logger exposes only complete fsynced staging images through atomic
+   replacement, a suffix without a trailing newline, invalid UTF-8/JSON,
+   non-object event, or event without `event` and `ts` is always
+   `contradictory/stop`; active writers cannot make that authoritative image a
+   legitimate partial publication. Otherwise the eligible completion edge is
+   the first valid `stage.advance` after that prefix. Its `data.from` must equal
+   the manifest stage, and every later edge must start at the preceding edge's
+   destination. Every edge must also be an engine-shaped normal, rework,
+   redesign, pause, or matching resume transition. A resume must return to the
+   stage that entered the special state; a checkpoint already in a special
+   state fails closed if a later resume cannot reconstruct that origin. Current
+   item metadata must equal the final connected edge's destination.
+   Disconnected, unknown, self, or impossible histories are contradictory. A
+   legitimate redesign path may leave and later re-enter the baseline stage and
+   remains complete because the first edge is retained.
 3. If writer state is `active`, return `partial/wait-active` after the safety
    checks, even if evidence or a transition appears complete. A metadata stage
    change with no eligible edge is treated as an in-progress `machine.advance`
@@ -284,8 +319,9 @@ def inspect(repo, item_id, attempt_id, writer_state,
 def claim_continuation(repo, item_id, attempt_id, result) -> dict: ...
 ```
 
-- [x] Reuse `items.load_item`, `logs.read_events`, and
-  `ownership.canonical_worktree`; execute git with argument arrays only. Keep
+- [x] Reuse `items.parse_item` and `ownership.canonical_worktree`; strictly
+  parse log bytes read through the descriptor-safe boundary, and execute git
+  with argument arrays only. Keep
   all checkpoint/marker filesystem operations descriptor-anchored and
   fail-closed under directory/leaf symlinks and rename replacement.
 - [x] Add `tests/test_reconciliation.py` with real temporary repositories and
@@ -320,6 +356,10 @@ def claim_continuation(repo, item_id, attempt_id, result) -> dict: ...
     after item save but before `stage.advance`, and mutate evidence between
     inspect and claim. Assert the exact refusal/result and filesystem state in
     each case.
+  - refuse checkout-only progress when its changed leaf cannot be fsynced;
+    require successful manifest/attempt recovery fsync before a linked
+    pre-commit residue can be discovered or inspected; and reject disconnected,
+    impossible, or mismatched pause/resume transition histories.
 - [x] Run `python3 -m unittest tests.test_reconciliation -v`; expect all tests
   green. Run `git diff --check`.
 
