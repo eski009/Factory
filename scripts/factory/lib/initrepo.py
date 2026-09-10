@@ -369,7 +369,8 @@ def validate_tree(repo):
                         event = json.loads(line)
                     except UnicodeDecodeError:
                         errors.append(
-                            f"{sub.name}/log.jsonl:{lineno}: invalid UTF-8")
+                            f"{sub.name}/log.jsonl:{lineno}: "
+                            "invalid JSON (invalid UTF-8)")
                         log_valid = False
                         continue
                     except json.JSONDecodeError:

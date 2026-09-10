@@ -197,6 +197,21 @@ class TestPluginCoherence(unittest.TestCase):
         self.assertIn("factory provision", ref)
         self.assertIn("factory cleanup", ref)
 
+    def test_derived_ledger_wiring_and_claim_boundaries(self):
+        ref_path = (ROOT / "skills/capabilities/references/derived-ledger.md")
+        self.assertTrue(ref_path.exists())
+        ref = read(ref_path)
+        status = read(ROOT / "skills/factory-status/SKILL.md")
+        ship = read(ROOT / "skills/factory-ship/SKILL.md")
+        cli = read(ROOT / "scripts/factory/factory.py")
+        for surface in (status, ship):
+            self.assertIn("references/derived-ledger.md", surface)
+        for event in ("test.wave", "activity.span"):
+            self.assertIn(event, ref)
+        for boundary in ("not a ship gate", "not a delivery gate"):
+            self.assertIn(boundary, (ref + "\n" + status + "\n" + ship).lower())
+        self.assertIn('sub.add_parser(\n        "ledger"', cli)
+
     def test_decision_page_wiring_present(self):
         ref = ROOT / "skills/capabilities/references/decision-pages.md"
         self.assertTrue(ref.exists())

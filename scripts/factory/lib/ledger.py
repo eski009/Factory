@@ -643,3 +643,155 @@ def summarize(repo, base, head, product_paths=(), admin_paths=(),
             "timing categories may overlap and must not be summed",
         ],
     }
+
+
+def _field_text(value):
+    """Keep one logical rendered field on one physical text-output line."""
+    if value is None:
+        return "UNAVAILABLE"
+    return json.dumps(str(value), ensure_ascii=True)[1:-1]
+
+
+def _list_text(values):
+    return ",".join(_field_text(value) for value in values) if values else "none"
+
+
+def _unavailable_text(label, metric):
+    return (f"[unmeasured] {_field_text(label)}: UNAVAILABLE "
+            f"reason={_field_text(metric.get('reason', 'not available'))}")
+
+
+def render_text(summary):
+    """Render the ledger without combining inventories or timing classes."""
+    run = summary["run"]
+    synthetic = " synthetic=true" if run.get("synthetic") else ""
+    lines = [f"[inventory] run: {run['commit_range']}{synthetic}"]
+
+    commits = summary["commits"]
+    for key, label in (
+            ("product_changing_merges", "product-changing merges"),
+            ("admin_only_commits", "admin-only commits")):
+        metric = commits[key]
+        if metric["status"] != "available":
+            lines.append(_unavailable_text(label, metric))
+            continue
+        value = metric["value"]
+        lines.append(
+            f"[inventory] {label}: count={value['count']} "
+            f"shas={_list_text(value['shas'])}")
+
+    current = summary["factory_items"]["current"]["value"]
+    stages = ",".join(
+        f"{_field_text(stage)}={count}"
+        for stage, count in current["by_stage"].items()
+    ) or "none"
+    lines.append(
+        f"[inventory] Factory items current cumulative: count={current['count']} "
+        f"by_stage={stages} unreadable={current['unreadable']}")
+    completions = summary["factory_items"]["completions"]
+    if completions["status"] == "available":
+        value = completions["value"]
+        lines.append(
+            f"[inventory] Factory item completions observed in run: "
+            f"count={value['count']} items={_list_text(value['items'])}")
+        for event in sorted(
+                value["events"],
+                key=lambda row: (row["ts"], row["item"],
+                                 str(row.get("from")), row["to"])):
+            lines.append(
+                f"[inventory] Factory completion event: "
+                f"item={_field_text(event['item'])} ts={event['ts']} "
+                f"from={_field_text(event.get('from'))} "
+                f"to={_field_text(event['to'])}")
+    else:
+        lines.append(_unavailable_text(
+            "Factory item completions observed in run", completions))
+
+    aliases = summary["aliases"]
+    if aliases["status"] == "available":
+        value = aliases["value"]
+        lines.append(
+            f"[inventory] external aliases cumulative non-additive: "
+            f"count={value['count']}")
+        for row in value["rows"]:
+            status = _field_text(row["status"])
+            lines.append(
+                f"[inventory] alias: id={_field_text(row['alias'])} "
+                f"item={_field_text(row['item'])} "
+                f"status={status} known_item={str(row['known_item']).lower()}")
+    else:
+        lines.append(_unavailable_text("external aliases cumulative", aliases))
+
+    timing = summary["timing"]
+    if timing["status"] != "available":
+        lines.append(_unavailable_text("time observations", timing))
+    else:
+        timing_rows = sorted(
+            timing["rows"],
+            key=lambda row: (row["start"], row["end"], row["item"],
+                             row["stage"], row["category"]))
+        for row in timing_rows:
+            lines.append(
+                f"[proxy] stage interval: item={_field_text(row['item'])} "
+                f"stage={_field_text(row['stage'])} "
+                f"category={row['category']} seconds={row['seconds']} "
+                f"start={row['start']} end={row['end']} "
+                f"clipped={str(row['clipped']).lower()}")
+        if not timing_rows and not timing["unavailable"]:
+            lines.append("[unmeasured] stage intervals: UNMEASURED")
+        for row in sorted(timing["unavailable"], key=lambda value: value["item"]):
+            lines.append(_unavailable_text(
+                f"stage intervals item={row['item']}", row))
+
+        spans = sorted(
+            timing["activity_spans"],
+            key=lambda row: (row["reported_start"], row["reported_end"],
+                             row["item"], row["span_id"]))
+        for row in spans:
+            lines.append(
+                f"[measured] activity span: item={_field_text(row['item'])} "
+                f"id={_field_text(row['span_id'])} category={row['category']} "
+                f"source={_field_text(row['source'])} seconds={row['seconds']} "
+                f"start={row['reported_start']} end={row['reported_end']} "
+                f"clipped={str(row['clipped']).lower()}")
+        for category in ("test", "review", "admin"):
+            metric = timing["category_status"][category]
+            if metric["status"] == "unmeasured":
+                lines.append(
+                    f"[unmeasured] activity category {category}: UNMEASURED")
+
+    waves = summary["waves"]
+    if waves["status"] != "available":
+        lines.append(_unavailable_text("test waves", waves))
+    else:
+        wave_rows = sorted(
+            waves["value"]["rows"],
+            key=lambda row: (row["finished_at"], row["item"], row["wave_id"]))
+        if not wave_rows:
+            lines.append("[measured] test waves: none observed in interval")
+        for row in wave_rows:
+            tests = row["tests"]
+            green = row["green_sha"] or "UNAVAILABLE"
+            shipping = row["shipping_ref"] or "UNAVAILABLE"
+            shots = [
+                f"{shot['path']}={shot['current_sha256']}"
+                for shot in row["screenshots"]
+            ]
+            lines.append(
+                f"[measured] test wave: item={_field_text(row['item'])} "
+                f"id={_field_text(row['wave_id'])} "
+                f"purpose={row['purpose']} result={row['result']} "
+                f"tests=passed:{tests['passed']},failed:{tests['failed']},"
+                f"skipped:{tests['skipped']} duration_seconds={row['duration_seconds']} "
+                f"green_sha={green} delivery={row['delivery_status']} "
+                f"flows={_list_text(row['flows'])} "
+                f"shipped_flows={_list_text(row['shipped_flows'])} "
+                f"shipping_ref={shipping} screenshots={len(shots)} "
+                f"screenshot_hashes={_list_text(shots)} "
+                f"boundary_crossing={str(row['boundary_crossing']).lower()}")
+
+    lines.extend(
+        f"[warning] {_field_text(warning)}" for warning in summary["warnings"])
+    lines.extend(
+        f"[warning] limit: {_field_text(limit)}" for limit in summary["limits"])
+    return "\n".join(lines)
