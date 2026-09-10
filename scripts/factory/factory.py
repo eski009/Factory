@@ -10,9 +10,9 @@ import sys
 if __package__ in (None, ""):
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod, breaker, approach, ownership, config_state, control, feasibility, safeio
+    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod, breaker, approach, ownership, config_state, control, feasibility, safeio, reconciliation
 else:
-    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod, breaker, approach, ownership, config_state, control, feasibility, safeio
+    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod, breaker, approach, ownership, config_state, control, feasibility, safeio, reconciliation
 
 
 IMPLEMENTATION_OWNER_ENV = "FACTORY_IMPLEMENTATION_OWNER"
@@ -715,6 +715,83 @@ def cmd_doctor(args):
     return 0
 
 
+def _reconcile_json(value):
+    print(json.dumps(value, indent=2, sort_keys=True))
+
+
+def _validate_reconcile_arguments(args):
+    """Separate malformed CLI input from unsafe observed repository state."""
+    reconciliation._safe_component(args.item, "item id")
+    if args.reconcile_command in ("begin", "discover"):
+        if (not args.stage.strip() or args.stage != args.stage.strip()):
+            raise reconciliation.ReconciliationError(
+                "stage must be a non-empty trimmed string")
+        if (not args.obligation.strip()
+                or args.obligation != args.obligation.strip()):
+            raise reconciliation.ReconciliationError(
+                "obligation must be a non-empty trimmed string")
+        inputs = reconciliation._normalize_paths(args.input, "inputs")
+        if args.reconcile_command == "begin":
+            evidence = reconciliation._normalize_paths(
+                args.evidence, "evidence")
+            reconciliation._reject_overlapping_paths(inputs, evidence)
+    elif (len(args.attempt) != 32
+          or any(character not in "0123456789abcdef"
+                 for character in args.attempt)):
+        raise reconciliation.ReconciliationError(
+            "invalid reconciliation attempt id")
+    if (args.reconcile_command == "inspect"
+            and args.claim_continuation
+            and args.writer_state != "terminal"):
+        raise reconciliation.ReconciliationError(
+            "--claim-continuation requires a terminal writer")
+
+
+def cmd_reconcile(args):
+    try:
+        _validate_reconcile_arguments(args)
+    except reconciliation.ReconciliationError as exc:
+        _reconcile_json({"error": str(exc)})
+        return 1
+
+    try:
+        if args.reconcile_command == "begin":
+            result = reconciliation.begin(
+                args.repo, args.item, args.stage, args.obligation,
+                args.input, args.evidence, worktree=args.worktree)
+        elif args.reconcile_command == "discover":
+            result = reconciliation.discover(
+                args.repo, args.item, args.stage, args.obligation,
+                args.input, worktree=args.worktree)
+        else:
+            result = reconciliation.inspect(
+                args.repo, args.item, args.attempt, args.writer_state,
+                worktree=args.worktree)
+            if result["classification"] == "contradictory":
+                _reconcile_json(result)
+                return 2
+            if (args.claim_continuation
+                    and result["classification"] == "partial"
+                    and result["action"] == "continue"):
+                claim = reconciliation.claim_continuation(
+                    args.repo, args.item, args.attempt, result)
+                if claim["action"] == "stop":
+                    result = dict(
+                        result, action="stop", reason=claim["reason"])
+    except reconciliation.PublicationUncertain as exc:
+        _reconcile_json({"error": str(exc)})
+        return 2
+    except reconciliation.ReconciliationError as exc:
+        _reconcile_json({"error": str(exc)})
+        return 2
+    except Exception as exc:
+        _reconcile_json({"error": str(exc)})
+        return 1
+
+    _reconcile_json(result)
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="factory")
     parser.add_argument("--repo", default=".")
@@ -949,6 +1026,43 @@ def main(argv=None):
     p = sub.add_parser("doctor", help="readout of repo integration state")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_doctor)
+
+    p = sub.add_parser(
+        "reconcile", help="recover durable work after a lost child reply")
+    subreconcile = p.add_subparsers(
+        dest="reconcile_command", required=True)
+
+    begin = subreconcile.add_parser(
+        "begin", help="publish a pre-dispatch reconciliation checkpoint")
+    begin.add_argument("item")
+    begin.add_argument("--stage", required=True)
+    begin.add_argument("--obligation", required=True)
+    begin.add_argument("--input", nargs="+", required=True)
+    begin.add_argument("--evidence", nargs="+", required=True)
+    begin.add_argument("--worktree")
+    begin.add_argument("--json", action="store_true", required=True)
+    begin.set_defaults(func=cmd_reconcile)
+
+    discover = subreconcile.add_parser(
+        "discover", help="find safely bound reconciliation checkpoints")
+    discover.add_argument("item")
+    discover.add_argument("--stage", required=True)
+    discover.add_argument("--obligation", required=True)
+    discover.add_argument("--input", nargs="+", required=True)
+    discover.add_argument("--worktree")
+    discover.add_argument("--json", action="store_true", required=True)
+    discover.set_defaults(func=cmd_reconcile)
+
+    inspect = subreconcile.add_parser(
+        "inspect", help="classify durable progress for one checkpoint")
+    inspect.add_argument("item")
+    inspect.add_argument("attempt")
+    inspect.add_argument(
+        "--writer-state", choices=["active", "terminal"], required=True)
+    inspect.add_argument("--worktree")
+    inspect.add_argument("--claim-continuation", action="store_true")
+    inspect.add_argument("--json", action="store_true", required=True)
+    inspect.set_defaults(func=cmd_reconcile)
 
     try:
         args = parser.parse_args(argv)

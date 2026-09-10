@@ -365,7 +365,7 @@ def claim_continuation(repo, item_id, attempt_id, result) -> dict: ...
 
 ## Task 2 — Public CLI and bounded parent protocol
 
-- [ ] Import `reconciliation` in both import branches of
+- [x] Import `reconciliation` in both import branches of
   `scripts/factory/factory.py` and add:
 
 ```text
@@ -381,23 +381,23 @@ factory reconcile inspect ITEM ATTEMPT --writer-state active|terminal
   arguments/internal errors; `2` for untrusted, stale, or contradictory state.
   `--claim-continuation` calls the append-only claim only after inspection and
   rewrites `action` to `stop` when already claimed.
-- [ ] Add CLI cases to `tests/test_reconciliation.py`: direct-script and module
+- [x] Add CLI cases to `tests/test_reconciliation.py`: direct-script and module
   invocation parity, exact JSON, refusal exit codes, active-writer claim
   refusal, and repeated claim idempotency.
-- [ ] Add `skills/capabilities/references/disk-first-reconciliation.md` with
+- [x] Add `skills/capabilities/references/disk-first-reconciliation.md` with
   the exact commands, result matrix, one host-native wait capped at 60 seconds,
   and this required order: begin checkpoint → dispatch → wait once → establish
   writer `active|terminal` using the host adapter → inspect → adopt, claim one
   continuation, count a genuine absence, or stop. An active writer causes the
   current stage invocation to return “still running”; it never waits again,
   fails the work, or dispatches a replacement.
-- [ ] State that a complete artifact may encode PASS, BLOCK, rejection, or red
+- [x] State that a complete artifact may encode PASS, BLOCK, rejection, or red
   tests; `complete` means transport completion only. Before finalization the
   parent re-reads current item stage and existing events, then performs only the
   missing normal side effects. If an earlier transition already landed, adopt
   it; never replay post-transition bids/learning as if they were pre-transition
   obligations.
-- [ ] Run `python3 -m unittest tests.test_reconciliation -v` and both
+- [x] Run `python3 -m unittest tests.test_reconciliation -v` and both
   `python3 scripts/factory/factory.py --help` and
   `python3 -m scripts.factory.factory --help`.
 

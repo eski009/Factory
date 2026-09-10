@@ -1,17 +1,22 @@
 """Behavioral tests for durable lost-reply reconciliation."""
 
+import io
 import json
 import os
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 import threading
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from pathlib import PurePosixPath
+from types import SimpleNamespace
 from unittest import mock
 
+from scripts.factory import factory as factory_cli
 from scripts.factory.lib import control, initrepo, items, logs, reconciliation, safeio
 
 
@@ -69,6 +74,190 @@ class ReconciliationFixture(unittest.TestCase):
         return reconciliation.inspect(
             self.repo, self.item_id, attempt_id, writer_state,
             worktree=worktree)
+
+    def run_cli(self, *arguments, module=False):
+        invocation = ([sys.executable, "-m", "scripts.factory.factory"]
+                      if module else
+                      [sys.executable, "scripts/factory/factory.py"])
+        return subprocess.run(
+            invocation + ["--repo", str(self.repo), *arguments],
+            cwd=Path(__file__).resolve().parents[1], capture_output=True,
+            text=True)
+
+    def expected_json(self, value):
+        return json.dumps(value, indent=2, sort_keys=True) + "\n"
+
+
+class ReconciliationCliTest(ReconciliationFixture):
+    def test_begin_emits_exact_json_and_discover_has_script_module_parity(self):
+        begun = self.run_cli(
+            "reconcile", "begin", self.item_id,
+            "--stage", "plan", "--obligation", "plan:judge",
+            "--input", self.input_path,
+            "--evidence", *self.evidence_paths, "--json")
+
+        self.assertEqual(begun.returncode, 0, begun.stderr)
+        payload = json.loads(begun.stdout)
+        self.assertEqual(set(payload), {"attempt_id", "cleanup_pending"})
+        self.assertRegex(payload["attempt_id"], r"^[0-9a-f]{32}$")
+        self.assertFalse(payload["cleanup_pending"])
+        self.assertEqual(begun.stdout, self.expected_json(payload))
+        self.assertEqual(begun.stderr, "")
+
+        arguments = (
+            "reconcile", "discover", self.item_id,
+            "--stage", "plan", "--obligation", "plan:judge",
+            "--input", self.input_path, "--json")
+        direct = self.run_cli(*arguments)
+        module = self.run_cli(*arguments, module=True)
+        expected = self.expected_json([payload["attempt_id"]])
+        self.assertEqual((direct.returncode, direct.stdout, direct.stderr),
+                         (0, expected, ""))
+        self.assertEqual((module.returncode, module.stdout, module.stderr),
+                         (direct.returncode, direct.stdout, direct.stderr))
+
+    def test_malformed_and_untrusted_states_use_distinct_refusal_codes(self):
+        malformed = self.run_cli(
+            "reconcile", "begin", self.item_id,
+            "--stage", "plan", "--obligation", "plan:judge",
+            "--input", "../escape", "--evidence", self.evidence_paths[0],
+            "--json")
+        self.assertEqual(malformed.returncode, 1)
+        self.assertEqual(
+            malformed.stdout,
+            self.expected_json({
+                "error": "unsafe repository-relative path: '../escape'",
+            }))
+
+        attempt = self.begin()["attempt_id"]
+        self.write(self.input_path, "changed after checkpoint\n")
+        contradictory = self.run_cli(
+            "reconcile", "inspect", self.item_id, attempt,
+            "--writer-state", "terminal", "--json")
+        expected = reconciliation.inspect(
+            self.repo, self.item_id, attempt, "terminal")
+        self.assertEqual(contradictory.returncode, 2)
+        self.assertEqual(contradictory.stdout, self.expected_json(expected))
+        self.assertEqual(expected["classification"], "contradictory")
+
+        invalid_attempt = self.run_cli(
+            "reconcile", "inspect", self.item_id, "not-an-attempt",
+            "--writer-state", "terminal", "--json")
+        self.assertEqual(invalid_attempt.returncode, 1)
+        self.assertEqual(
+            invalid_attempt.stdout,
+            self.expected_json({
+                "error": "invalid reconciliation attempt id",
+            }))
+
+    def test_durability_uncertainty_is_untrusted_not_an_internal_error(self):
+        args = SimpleNamespace(
+            repo=self.repo, reconcile_command="begin", item=self.item_id,
+            stage="plan",
+            obligation="plan:judge", input=[self.input_path],
+            evidence=list(self.evidence_paths), worktree=None)
+        output = io.StringIO()
+        uncertain = reconciliation.PublicationUncertain(
+            "checkpoint publication is uncertain", "a" * 32, False)
+
+        with mock.patch.object(
+                factory_cli.reconciliation, "begin", side_effect=uncertain):
+            with redirect_stdout(output):
+                code = factory_cli.cmd_reconcile(args)
+
+        self.assertEqual(code, 2)
+        self.assertEqual(
+            output.getvalue(),
+            self.expected_json({
+                "error": "checkpoint publication is uncertain",
+            }))
+
+        output = io.StringIO()
+        with mock.patch.object(
+                factory_cli.reconciliation, "begin",
+                side_effect=RuntimeError("injected internal failure")):
+            with redirect_stdout(output):
+                code = factory_cli.cmd_reconcile(args)
+        self.assertEqual(code, 1)
+        self.assertEqual(
+            output.getvalue(),
+            self.expected_json({"error": "injected internal failure"}))
+
+    def test_stale_and_untrusted_repository_states_exit_two(self):
+        stale = self.run_cli(
+            "reconcile", "begin", self.item_id,
+            "--stage", "implement", "--obligation", "plan:judge",
+            "--input", self.input_path,
+            "--evidence", *self.evidence_paths, "--json")
+        self.assertEqual(stale.returncode, 2)
+        self.assertEqual(
+            stale.stdout,
+            self.expected_json({
+                "error": "item stage is 'plan', not 'implement'",
+            }))
+
+        attempt = self.begin()["attempt_id"]
+        pinned = (self.repo / ".factory/items" / self.item_id /
+                  "reconciliation" / attempt / "log-prefix.jsonl")
+        pinned.unlink()
+        untrusted = self.run_cli(
+            "reconcile", "discover", self.item_id,
+            "--stage", "plan", "--obligation", "plan:judge",
+            "--input", self.input_path, "--json")
+        self.assertEqual(untrusted.returncode, 2)
+        self.assertEqual(
+            untrusted.stdout,
+            self.expected_json({
+                "error": "unsafe reconciliation file: log-prefix.jsonl",
+            }))
+
+    def test_claim_requires_terminal_inspection_and_never_claims_active_writer(self):
+        attempt = self.begin()["attempt_id"]
+        self.write(self.evidence_paths[0], "partial\n")
+
+        inspected = self.run_cli(
+            "reconcile", "inspect", self.item_id, attempt,
+            "--writer-state", "active", "--json")
+        expected = reconciliation.inspect(
+            self.repo, self.item_id, attempt, "active")
+        self.assertEqual(inspected.returncode, 0, inspected.stderr)
+        self.assertEqual(inspected.stdout, self.expected_json(expected))
+        self.assertEqual(
+            (expected["classification"], expected["action"]),
+            ("partial", "wait-active"))
+
+        active = self.run_cli(
+            "reconcile", "inspect", self.item_id, attempt,
+            "--writer-state", "active", "--claim-continuation", "--json")
+
+        self.assertEqual(active.returncode, 1)
+        self.assertEqual(
+            active.stdout,
+            self.expected_json({
+                "error": "--claim-continuation requires a terminal writer",
+            }))
+        claim = (self.repo / ".factory/items" / self.item_id /
+                 "reconciliation" / attempt / "continuations" /
+                 "claim.json")
+        self.assertFalse(claim.exists())
+
+    def test_claim_output_is_exact_and_repeated_claim_rewrites_to_stop(self):
+        attempt = self.begin()["attempt_id"]
+        self.write(self.evidence_paths[0], "partial\n")
+        inspected = reconciliation.inspect(
+            self.repo, self.item_id, attempt, "terminal")
+        arguments = (
+            "reconcile", "inspect", self.item_id, attempt,
+            "--writer-state", "terminal", "--claim-continuation", "--json")
+
+        first = self.run_cli(*arguments)
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertEqual(first.stdout, self.expected_json(inspected))
+
+        repeated = self.run_cli(*arguments, module=True)
+        stopped = dict(inspected, action="stop", reason="already-claimed")
+        self.assertEqual(repeated.returncode, 0, repeated.stderr)
+        self.assertEqual(repeated.stdout, self.expected_json(stopped))
 
 
 class BeginDiscoverTest(ReconciliationFixture):
