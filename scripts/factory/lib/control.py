@@ -1425,13 +1425,74 @@ def _event_prefix(events, intended, operation_id):
     return len(existing)
 
 
-def _authorized_log_prefix_at(item_fd, intent, blobs, *, sync=False):
+def _log_authority_prefix(index):
+    return f"log-{index:08d}.authority-"
+
+
+def _log_authority_name(index, inode_identity):
+    device, inode = inode_identity
+    if (type(device) is not int or device < 0 or
+            type(inode) is not int or inode < 0):
+        raise ControlRefusal("operation log identity authority is invalid")
+    return f"{_log_authority_prefix(index)}{device}-{inode}"
+
+
+def _find_log_authority(operation_fd, index, expected, *, sync=False):
+    prefix = _log_authority_prefix(index)
+    try:
+        names = [name for name in os.listdir(operation_fd)
+                 if name.startswith(prefix)]
+    except OSError as exc:
+        raise ControlError(
+            "operation log identity authority cannot be inspected") from exc
+    if not names:
+        return None
+    if len(names) != 1:
+        raise ControlRefusal("operation log identity authority conflicts")
+    name = names[0]
+    suffix = name[len(prefix):].split("-")
+    if len(suffix) != 2 or not all(value.isdigit() for value in suffix):
+        raise ControlRefusal("operation log identity authority is invalid")
+    recorded_identity = tuple(int(value) for value in suffix)
+    try:
+        authority, authority_identity = _read_bytes_at(
+            operation_fd, name, limit=max(len(expected), 1), sync=sync)
+    except FileNotFoundError as exc:
+        raise ControlRefusal(
+            "operation log identity authority is missing") from exc
+    if (authority != expected or
+            authority_identity[:2] != recorded_identity):
+        raise ControlRefusal("operation log identity authority conflicts")
+    return name, authority_identity
+
+
+def _require_log_authority(operation_pin, index, expected, identity, *,
+                           sync=False):
+    if operation_pin is None:
+        return
+    found = _find_log_authority(
+        operation_pin.fd, index, expected, sync=sync)
+    if found is None:
+        raise ControlRefusal(
+            "operation log identity authority is missing")
+    _name, authority_identity = found
+    if authority_identity[:2] != identity[:2]:
+        raise ControlRefusal("operation log identity authority conflicts")
+
+
+def _authorized_log_prefix_at(item_fd, intent, blobs, *, sync=False,
+                              operation_pin=None, include_identity=False):
     """Validate the exact captured log plus this operation's event prefix."""
     record = intent.get("log_snapshot")
     if record is None:
         events, size = _strict_log_image_at(item_fd, sync=sync)
-        return _event_prefix(
-            events, intent["events"], intent["operation_id"]), size
+        result = (_event_prefix(
+            events, intent["events"], intent["operation_id"]), size)
+        if include_identity:
+            current = _read_optional_bytes(
+                item_fd, "log.jsonl", limit=_LOG_IMAGE_LIMIT, sync=sync)
+            return result + (None if current is None else current[1],)
+        return result
 
     if record["state"] == "file":
         try:
@@ -1440,15 +1501,34 @@ def _authorized_log_prefix_at(item_fd, intent, blobs, *, sync=False):
             raise ControlRefusal("operation log snapshot blob is missing") from exc
     else:
         captured = b""
-    raw = _strict_log_bytes_at(item_fd, sync=sync)
+    current = _read_optional_bytes(
+        item_fd, "log.jsonl", limit=_LOG_IMAGE_LIMIT, sync=sync)
+    raw = b"" if current is None else current[0]
+    if captured and not captured.endswith(b"\n"):
+        raise ControlRefusal("item log is missing its final newline")
     candidate = captured
     if raw == candidate:
-        return 0, len(raw)
+        if record["state"] == "file":
+            expected_identity = _integer_tuple(
+                record.get("file_identity"), 5, "log file identity")
+            if current is None or current[1] != expected_identity:
+                raise ControlRefusal("operation log snapshot identity changed")
+        elif current is not None:
+            raise ControlRefusal("operation missing log was created")
+        result = (0, len(raw))
+        return (result + (None if current is None else current[1],)
+                if include_identity else result)
     from . import logs
     for index, event in enumerate(intent["events"]):
         candidate += logs._entry_bytes(event)
         if raw == candidate:
-            return index + 1, len(raw)
+            if current is None:
+                raise ControlRefusal("operation log event identity is missing")
+            _require_log_authority(
+                operation_pin, index, candidate, current[1], sync=sync)
+            result = (index + 1, len(raw))
+            return (result + (current[1],)
+                    if include_identity else result)
         if len(candidate) > len(raw):
             break
     raise ControlRefusal("item log changed outside the prepared operation")
@@ -1471,9 +1551,10 @@ def _preflight_log_capacity(lock, intended, operation_id):
         lock._item_fd, intended, operation_id)
 
 
-def _preflight_intent_log_capacity_at(item_fd, intent, blobs, *, sync=False):
+def _preflight_intent_log_capacity_at(item_fd, intent, blobs, *, sync=False,
+                                      operation_pin=None):
     prefix, current_size = _authorized_log_prefix_at(
-        item_fd, intent, blobs, sync=sync)
+        item_fd, intent, blobs, sync=sync, operation_pin=operation_pin)
     from . import logs
     missing_size = sum(
         len(logs._entry_bytes(event))
@@ -1483,9 +1564,11 @@ def _preflight_intent_log_capacity_at(item_fd, intent, blobs, *, sync=False):
     return prefix
 
 
-def _preflight_intent_log_capacity(lock, intent, blobs, *, sync=False):
+def _preflight_intent_log_capacity(lock, intent, blobs, *, sync=False,
+                                   operation_pin=None):
     return _preflight_intent_log_capacity_at(
-        lock._item_fd, intent, blobs, sync=sync)
+        lock._item_fd, intent, blobs, sync=sync,
+        operation_pin=operation_pin)
 
 
 def _load_blobs(blobs_pin, intent, *, sync=False):
@@ -1863,7 +1946,8 @@ def _verify_effects(lock, operation_pin, intent, blobs, repo, *, sync=False):
                 after == before.data and state == "before")):
             raise ControlRefusal("committed replacement no longer matches")
     prefix, _size = _authorized_log_prefix_at(
-        lock._item_fd, intent, blobs, sync=sync)
+        lock._item_fd, intent, blobs, sync=sync,
+        operation_pin=operation_pin)
     if prefix != len(intent["events"]):
         raise ControlRefusal("committed operation event is missing")
 
@@ -1925,7 +2009,8 @@ def _settle_locked(lock, pins, intent, intent_identity, active_identity):
     else:
         # A malformed or unterminated authoritative log refuses before any
         # replacement effect, including during active recovery.
-        _preflight_intent_log_capacity(lock, intent, blobs)
+        _preflight_intent_log_capacity(
+            lock, intent, blobs, operation_pin=operation_pin)
         for record in intent["prerequisites"]:
             snapshot = _snapshot_from_record(
                 record, blobs, expected_repo=repo)
@@ -1977,16 +2062,27 @@ def _settle_locked(lock, pins, intent, intent_identity, active_identity):
                     "operation replacement authority is missing")
             _after_replacement(index)
             _validate_pins(lock, *pins)
-        prefix = _preflight_intent_log_capacity(lock, intent, blobs)
+        prefix = _preflight_intent_log_capacity(
+            lock, intent, blobs, operation_pin=operation_pin)
         from . import logs
         for index in range(prefix, len(intent["events"])):
+            current_prefix, _size, source_identity = (
+                _authorized_log_prefix_at(
+                    lock._item_fd, intent, blobs,
+                    operation_pin=operation_pin, include_identity=True))
+            if current_prefix != index:
+                raise ControlRefusal(
+                    "operation log changed between event appends")
             logs._append_entry_locked(
                 lock, intent["events"][index],
-                _operation_id=intent["operation_id"])
+                _operation_id=intent["operation_id"],
+                _authority_fd=operation_pin.fd,
+                _authority_index=index,
+                _source_identity=source_identity)
             _after_event(index)
             _validate_pins(lock, *pins)
         completed, _size = _authorized_log_prefix_at(
-            lock._item_fd, intent, blobs)
+            lock._item_fd, intent, blobs, operation_pin=operation_pin)
         if completed != len(intent["events"]):
             raise ControlRefusal("operation events could not be verified")
         commit = _expected_commit(intent)

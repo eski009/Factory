@@ -6,13 +6,13 @@ import argparse
 import json
 import os
 import sys
+from pathlib import Path
 
 if __package__ in (None, ""):
-    from pathlib import Path
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod, breaker, approach, ownership, config_state, control, feasibility, safeio, reconciliation
+    from scripts.factory.lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod, breaker, approach, ownership, config_state, control, feasibility, safeio, reconciliation, convergence
 else:
-    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod, breaker, approach, ownership, config_state, control, feasibility, safeio, reconciliation
+    from .lib import initrepo, items, logs, machine, council, health as health_mod, prune as prune_mod, dispatch, packet as packet_mod, design as design_mod, doctor as doctor_mod, paths, cost, work, pool, assure as assure_mod, escapes as escapes_mod, journeys as journeys_mod, breaker, approach, ownership, config_state, control, feasibility, safeio, reconciliation, convergence
 
 
 IMPLEMENTATION_OWNER_ENV = "FACTORY_IMPLEMENTATION_OWNER"
@@ -445,6 +445,14 @@ def cmd_log(args):
         print(f"{args.event} is written only by factory bug-assurance",
               file=sys.stderr)
         return 1
+    if args.event == "approach.judgement.recorded":
+        print("approach.judgement.recorded is written only by factory "
+              "approach-judgement", file=sys.stderr)
+        return 1
+    if args.event == "stage.advance":
+        print("stage.advance is written only by factory advance",
+              file=sys.stderr)
+        return 1
     if args.event in ("assure.waived", "assure.confirmed", "cost.answered",
                       "approach.answered"):
         print(f"{args.event} is written only by its human verb "
@@ -611,6 +619,31 @@ def cmd_approach_answer(args):
         print(f"refused: {exc}", file=sys.stderr)
         return 2
     print(path)
+    return 0
+
+
+def cmd_approach_context(args):
+    try:
+        context = convergence.current_context(args.repo, args.item)
+    except (convergence.ConvergenceError, items.ItemError) as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(context, indent=2, sort_keys=True))
+    return 0
+
+
+def cmd_approach_judgement(args):
+    try:
+        record = json.loads(args.data)
+    except json.JSONDecodeError as exc:
+        print(f"--data is not valid JSON: {exc}", file=sys.stderr)
+        return 1
+    try:
+        path = convergence.record_judgement(args.repo, args.item, record)
+    except (convergence.ConvergenceError, items.ItemError) as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    print(path.relative_to(Path(args.repo)))
     return 0
 
 
@@ -973,6 +1006,20 @@ def main(argv=None):
     p.add_argument("answer", choices=list(approach.ANSWERS))
     p.add_argument("--notes")
     p.set_defaults(func=cmd_approach_answer)
+
+    p = sub.add_parser(
+        "approach-context",
+        help="show the current plan round, hash, tier budget and record path")
+    p.add_argument("item")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_approach_context)
+
+    p = sub.add_parser(
+        "approach-judgement",
+        help="validate and record current-plan approach evidence")
+    p.add_argument("item")
+    p.add_argument("--data", required=True)
+    p.set_defaults(func=cmd_approach_judgement)
 
     p = sub.add_parser("waive",
                        help="record a human assurance waiver (requires a reason)")

@@ -130,7 +130,7 @@ class TestApproachEdge(ApproachTest):
 
     def test_constants_declared_once_in_machine(self):
         self.assertEqual(machine.APPROACH_FROM,
-                         frozenset({"review", "verify", "assure"}))
+                         frozenset({"plan", "review", "verify", "assure"}))
         self.assertEqual(machine.APPROACH_TO, "spec")
         self.assertEqual(machine.MAX_APPROACH_REJECTIONS, 1)
         # aliased, not re-declared (import graph: cost imports machine)
@@ -199,12 +199,18 @@ class TestApproachEdge(ApproachTest):
         events = logs.read_events(self.repo, ITEM)
         self.assertEqual(machine._approach_edges(events)[0], 1)
 
-    def test_outside_firing_set_to_spec_stays_illegal(self):
+    def test_plan_origin_uses_the_shared_artifact_gate(self):
         self.make_item()
         self.walk_to("plan")
         with self.assertRaises(machine.GateError) as ctx:
-            machine.advance(self.repo, ITEM, "spec")
-        self.assertIn("illegal transition", str(ctx.exception))
+            machine.advance(self.repo, ITEM, "spec",
+                            reason="approach.rejected: plan failed")
+        self.assertIn("approaches/forbidden.md", str(ctx.exception))
+        self.forbid("plan")
+        meta, _ = machine.advance(
+            self.repo, ITEM, "spec",
+            reason="approach.rejected: plan failed")
+        self.assertEqual(meta["stage"], "spec")
 
     def test_cap_counts_engine_edges_only(self):
         # AC2, the parameterized invariance: (a) edges only and
@@ -270,6 +276,100 @@ class TestApproachEdge(ApproachTest):
 
 class TestApproachAnswer(ApproachTest):
     """AC6/AC16/AC17/AC18: the five-part pause contract's artifact side."""
+
+    def test_plan_origin_cap_resume_and_watermark_admit_exactly_one(self):
+        # Exercise plan and every previous caller through the same edge,
+        # including interruption between cap refusal and the human answer.
+        for frm in sorted(machine.APPROACH_FROM):
+            with self.subTest(frm=frm):
+                self.reset()
+                self.make_item()
+                self.redesign(frm=frm, entry=1)
+                self.walk_to(frm)
+                self.forbid(frm, entry=2)
+                before = logs.read_events(self.repo, ITEM)
+                with self.assertRaises(machine.GateError) as ctx:
+                    machine.advance(self.repo, ITEM, "spec",
+                                    reason="approach.rejected: second try")
+                refusal = str(ctx.exception)
+                self.assertIn("approach cap: 1 redesign(s) used (cap 1)",
+                              refusal)
+                self.assertIn(f"factory approach-answer {ITEM}", refusal)
+                self.assertEqual(items.load_item(self.repo, ITEM)[0]["stage"],
+                                 frm)
+                self.assertEqual(logs.read_events(self.repo, ITEM), before)
+
+                meta, _ = machine.advance(self.repo, ITEM, "waiting-human",
+                                          reason=refusal)
+                self.assertEqual(meta["stage"], "waiting-human")
+                self.assertEqual(meta["paused-from"], frm)
+                before = logs.read_events(self.repo, ITEM)
+                self.assertIsNone(approach.read_answer(self.repo, ITEM))
+                self.assertEqual(logs.read_events(self.repo, ITEM), before)
+                approach.record_answer(self.repo, ITEM, "continue")
+                before = logs.read_events(self.repo, ITEM)
+                self.assertEqual(approach.read_answer(self.repo, ITEM),
+                                 {"answer": "continue", "redesigns": 1})
+                self.assertEqual(logs.read_events(self.repo, ITEM), before)
+
+                meta, _ = machine.advance(self.repo, ITEM, frm)
+                self.assertEqual(meta["stage"], frm)
+                self.assertNotIn("paused-from", meta)
+                self.assertEqual(approach.approach_edges(self.repo, ITEM), 1)
+                meta, _ = machine.advance(
+                    self.repo, ITEM, "spec",
+                    reason="approach.rejected: second try")
+                self.assertEqual(meta["stage"], "spec")
+                self.assertEqual(approach.approach_edges(self.repo, ITEM), 2)
+                self.walk_to(frm)
+                self.forbid(frm, entry=3)
+                before = logs.read_events(self.repo, ITEM)
+                with self.assertRaises(machine.GateError) as ctx:
+                    machine.advance(self.repo, ITEM, "spec",
+                                    reason="approach.rejected: third try")
+                self.assertIn("stale", str(ctx.exception))
+                self.assertIn("recorded at 1", str(ctx.exception))
+                self.assertIn("now 2", str(ctx.exception))
+                self.assertEqual(items.load_item(self.repo, ITEM)[0]["stage"],
+                                 frm)
+                self.assertEqual(logs.read_events(self.repo, ITEM), before)
+                self.assertEqual(approach.approach_edges(self.repo, ITEM), 2)
+
+    def test_0015_contract_values_and_formats_are_unchanged(self):
+        self.assertEqual(machine.MAX_APPROACH_REJECTIONS, 1)
+        self.assertEqual(approach.ANSWERS, ("continue", "narrow", "defer"))
+        self.make_item()
+        self.redesign(frm="plan")
+        self.walk_to("plan")
+        self.forbid("plan", entry=2)
+        with self.assertRaises(machine.GateError) as ctx:
+            machine.advance(self.repo, ITEM, "spec",
+                            reason="approach.rejected: second try")
+        machine.advance(self.repo, ITEM, "waiting-human",
+                        reason=str(ctx.exception))
+        rendered = packet.render_packet(self.repo, ITEM)
+        self.assertIn("## Redesign decision", rendered)
+        self.assertIn("## Respond", rendered)
+        self.assertIn("redesigns: 1 of 1", rendered)
+        self.assertIn(f"factory approach-answer {ITEM}", rendered)
+        self.assertNotIn("approach-convergence-answer", rendered)
+
+        forbidden = approach.forbidden_path(self.repo, ITEM)
+        original = forbidden.read_bytes()
+        self.assertIn("## 2026-07-03T12:00:00Z - rejected at plan (entry 1)",
+                      original.decode("utf-8"))
+        answer = approach.record_answer(self.repo, ITEM, "continue",
+                                        notes="one more try")
+        self.assertEqual(answer.relative_to(paths.item_dir(self.repo, ITEM)),
+                         Path("approaches/answer.md"))
+        self.assertEqual(answer.read_text(encoding="utf-8"),
+                         "# Approach cap answer\n\n- answer: continue\n"
+                         "- redesigns: 1\n- ts: 2026-07-03T12:00:00Z\n\n"
+                         "one more try\n")
+        self.assertEqual(forbidden.read_bytes(), original)
+        self.assertEqual(logs.read_events(self.repo, ITEM)[-1]["data"],
+                         {"answer": "continue", "redesigns": 1})
+        self.assertEqual(cost.summarize(self.repo, ITEM)["approach_edges"], 1)
 
     def test_record_below_cap_refused(self):
         self.make_item()

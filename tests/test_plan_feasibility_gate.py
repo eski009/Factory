@@ -11,8 +11,9 @@ from pathlib import Path
 from scripts.factory import factory
 from unittest import mock
 
-from scripts.factory.lib import (config_state, control, feasibility, initrepo,
-                                 items, logs, machine, ownership, work)
+from scripts.factory.lib import (config_state, control, convergence,
+                                 feasibility, initrepo, items, logs, machine,
+                                 ownership, work)
 
 
 ITEM = "0001-feature"
@@ -85,6 +86,33 @@ class PlanFeasibilityGateTest(unittest.TestCase):
         path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n",
                         encoding="utf-8")
 
+    def set_both_gates(self):
+        path = self.repo / ".factory/config.json"
+        value = json.loads(path.read_text(encoding="utf-8"))
+        value["gates"] = ["feasibility"]
+        value["approach_convergence"] = {"enabled": True}
+        path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n",
+                        encoding="utf-8")
+
+    def record_approach_judgement(self):
+        context = convergence.current_context(self.repo, ITEM)
+        record = {
+            "version": 1,
+            "item": ITEM,
+            "planning_round": context["planning_round"],
+            "plan_sha256": context["plan_sha256"],
+            "configuration": {"enabled": True},
+            "tier": context["tier"],
+            "planner_invocation": "planner-001",
+            "signals": [],
+            "attempts": [],
+            "final_verdict": "not-triggered",
+            "disposition": "advance",
+            "escalation_count": 0,
+            "escalation_bound": context["escalation_bound"],
+        }
+        return convergence.record_judgement(self.repo, ITEM, record), record
+
     def write_item(self, stage="plan", *, plan=None, sidecar=True,
                    paused_from=None):
         spec = b"Acceptance.\n"
@@ -140,6 +168,64 @@ class PlanFeasibilityGateTest(unittest.TestCase):
                             len(list(operations.glob("*/commit.json"))), 1)
                     finally:
                         self.repo = old_repo
+
+    def test_combined_gates_bind_exact_judgement_into_transactional_entry(self):
+        self.set_both_gates()
+        self.write_item("plan")
+        logs.append_event(
+            self.repo, ITEM, "stage.advance", {"from": "spec", "to": "plan"})
+        judgement_path, record = self.record_approach_judgement()
+
+        meta, verdict = machine.advance(self.repo, ITEM, "implement")
+
+        self.assertEqual(meta["stage"], "implement")
+        self.assertFalse(verdict["fired"])
+        event = logs.read_events(self.repo, ITEM)[-1]
+        self.assertEqual(event["event"], "stage.advance")
+        self.assertEqual(event["data"]["approach"], {
+            "planning_round": record["planning_round"],
+            "plan_sha256": record["plan_sha256"],
+        })
+        operations = (self.repo / ".factory/items" / ITEM /
+                      "control/operations")
+        intents = [json.loads(path.read_text())
+                   for path in operations.glob("*/intent.json")]
+        intent = next(value for value in intents
+                      if value["kind"] == "implement-entry")
+        judgement_relative = judgement_path.relative_to(self.repo).as_posix()
+        matching = [entry for entry in intent["prerequisites"]
+                    if entry["relative"] == judgement_relative]
+        self.assertEqual(len(matching), 1)
+        self.assertEqual(matching[0]["sha256"],
+                         hashlib.sha256(judgement_path.read_bytes()).hexdigest())
+
+    def test_combined_gates_refuse_judgement_change_before_commit(self):
+        self.set_both_gates()
+        self.write_item("plan")
+        logs.append_event(
+            self.repo, ITEM, "stage.advance", {"from": "spec", "to": "plan"})
+        judgement_path, record = self.record_approach_judgement()
+        original_commit = machine.commit_implement_entry
+
+        def change_judgement_then_commit(prepared):
+            changed = dict(record)
+            changed["planner_invocation"] = "planner-replaced"
+            judgement_path.write_text(
+                json.dumps(changed, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8")
+            return original_commit(prepared)
+
+        with (mock.patch.object(
+                machine, "commit_implement_entry",
+                side_effect=change_judgement_then_commit),
+              self.assertRaisesRegex(machine.GateError, "changed")):
+            machine.advance(self.repo, ITEM, "implement")
+
+        self.assertEqual(items.load_item(self.repo, ITEM)[0]["stage"], "plan")
+        self.assertFalse(any(
+            event.get("event") == "stage.advance" and
+            event.get("data", {}).get("to") == "implement"
+            for event in logs.read_events(self.repo, ITEM)))
 
     def test_enabled_entry_uses_current_time_and_unique_resume_episodes(self):
         self.set_gate()

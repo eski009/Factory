@@ -8,13 +8,19 @@ successful writes atomically replace the authoritative inode while preserving
 the exact historical byte prefix.
 """
 
+import fcntl
 import json
 import os
 import stat
+import threading
 import uuid
+from contextlib import contextmanager, nullcontext
 from datetime import datetime, timezone
 
 from . import paths
+
+
+_SUPPLIED_DESCRIPTOR_LOCK = threading.RLock()
 
 
 def now_stamp():
@@ -26,6 +32,62 @@ def now_stamp():
 
 def _log_path(repo, item_id):
     return paths.item_dir(repo, item_id) / "log.jsonl"
+
+
+@contextmanager
+def append_lock(file_fd):
+    """Serialize supplied-descriptor appends and rollback on its inode."""
+    fcntl.flock(file_fd, fcntl.LOCK_EX)
+    try:
+        yield
+    finally:
+        fcntl.flock(file_fd, fcntl.LOCK_UN)
+
+
+def _write_all(file_fd, payload):
+    while payload:
+        written = os.write(file_fd, payload)
+        if written == 0:
+            raise OSError("audit log write made no progress")
+        payload = payload[written:]
+
+
+def _append_event_descriptor(event, data, file_fd, append_span):
+    entry = _entry(event, data)
+    payload = _entry_bytes(entry)
+    with _SUPPLIED_DESCRIPTOR_LOCK:
+        flags = None
+        try:
+            flags = fcntl.fcntl(file_fd, fcntl.F_GETFL)
+            if not flags & os.O_APPEND:
+                fcntl.fcntl(file_fd, fcntl.F_SETFL, flags | os.O_APPEND)
+            with append_lock(file_fd):
+                start = os.fstat(file_fd).st_size
+                try:
+                    _write_all(file_fd, payload)
+                finally:
+                    if append_span is not None:
+                        append_span[:] = [start, os.fstat(file_fd).st_size]
+        finally:
+            if flags is not None and not flags & os.O_APPEND:
+                fcntl.fcntl(file_fd, fcntl.F_SETFL, flags)
+    return entry
+
+
+def rollback_append(file_fd, span):
+    """Remove one supplied-descriptor append while retaining later bytes."""
+    with _SUPPLIED_DESCRIPTOR_LOCK:
+        with append_lock(file_fd):
+            start, end = span
+            chunks = []
+            offset = end
+            while chunk := os.pread(file_fd, 65536, offset):
+                chunks.append(chunk)
+                offset += len(chunk)
+            os.ftruncate(file_fd, start)
+            for chunk in chunks:
+                _write_all(file_fd, chunk)
+            os.fsync(file_fd)
 
 
 def _entry(event, data=None):
@@ -158,6 +220,10 @@ def _after_log_staging_sync():
     """Test seam after the staged new image is durable."""
 
 
+def _after_log_authority_sync():
+    """Test seam after transactional log inode authority is durable."""
+
+
 def _before_log_install():
     """Test seam before the final source and namespace revalidation."""
 
@@ -170,7 +236,12 @@ def _after_log_directory_sync():
     """Test seam after the installed namespace is durable."""
 
 
-def _append_entry_locked(lock, entry, *, _operation_id=None):
+_UNSUPPLIED_IDENTITY = object()
+
+
+def _append_entry_locked(lock, entry, *, _operation_id=None,
+                         _authority_fd=None, _authority_index=None,
+                         _source_identity=_UNSUPPLIED_IDENTITY):
     """Publish one full old+new log image under a validated item lock.
 
     The authoritative inode is never modified in place.  Before installation,
@@ -181,6 +252,13 @@ def _append_entry_locked(lock, entry, *, _operation_id=None):
     from . import control
 
     control._validate_item_lock(lock)
+    if (_authority_fd is None) != (_authority_index is None):
+        raise control.ControlRefusal(
+            "transactional log authority is incomplete")
+    if (_authority_index is not None and
+            (type(_authority_index) is not int or _authority_index < 0)):
+        raise control.ControlRefusal(
+            "transactional log authority index is invalid")
     active = control._active_record(lock)
     if _operation_id is None:
         if active is not None:
@@ -209,6 +287,10 @@ def _append_entry_locked(lock, entry, *, _operation_id=None):
             if _file_identity(named) != old_identity:
                 raise control.ControlError("item log identity changed")
             old_mode = stat.S_IMODE(named.st_mode)
+        if (_source_identity is not _UNSUPPLIED_IDENTITY and
+                old_identity != _source_identity):
+            raise control.ControlRefusal(
+                "transactional log source identity changed")
     except OSError as exc:
         raise control.ControlError(
             "item log history could not be made durable") from exc
@@ -225,15 +307,44 @@ def _append_entry_locked(lock, entry, *, _operation_id=None):
     cleanup_identity = None
     installed = False
     try:
-        staging_fd = os.open(
-            staging_name, flags, old_mode, dir_fd=lock._item_fd)
-        os.fchmod(staging_fd, old_mode)
+        authority_reused = False
+        authority_name = None
+        if _authority_fd is not None:
+            found = control._find_log_authority(
+                _authority_fd, _authority_index, image, sync=True)
+            if found is not None:
+                authority_name, _authority_identity = found
+            try:
+                if authority_name is not None:
+                    os.link(
+                        authority_name, staging_name,
+                        src_dir_fd=_authority_fd, dst_dir_fd=lock._item_fd,
+                        follow_symlinks=False)
+                    authority_reused = True
+            except OSError as exc:
+                raise control.ControlError(
+                    "transactional log authority could not be staged") from exc
+        if authority_reused:
+            staging_fd = os.open(
+                staging_name,
+                os.O_RDWR | getattr(os, "O_NOFOLLOW", 0) |
+                getattr(os, "O_NONBLOCK", 0),
+                dir_fd=lock._item_fd)
+        else:
+            staging_fd = os.open(
+                staging_name, flags, old_mode, dir_fd=lock._item_fd)
+            os.fchmod(staging_fd, old_mode)
         opened = os.fstat(staging_fd)
         if not stat.S_ISREG(opened.st_mode):
             raise OSError("item log staging entry is not a regular file")
         staging_inode = _inode_identity(opened)
 
-        _write_log_image(staging_fd, image)
+        if authority_reused:
+            if _read_fd_exact(staging_fd, len(image)) != image:
+                raise control.ControlRefusal(
+                    "transactional log authority conflicts")
+        else:
+            _write_log_image(staging_fd, image)
         cleanup_identity = _opened_named_exact_identity(
             lock._item_fd, staging_name, staging_fd, image)
         _after_log_staging_write()
@@ -245,6 +356,37 @@ def _append_entry_locked(lock, entry, *, _operation_id=None):
             raise OSError("item log staging image changed after sync")
         cleanup_identity = synced_identity
         _after_log_staging_sync()
+
+        if _authority_fd is not None:
+            if not authority_reused:
+                authority_name = control._log_authority_name(
+                    _authority_index, staging_inode)
+                try:
+                    os.link(
+                        staging_name, authority_name,
+                        src_dir_fd=lock._item_fd,
+                        dst_dir_fd=_authority_fd, follow_symlinks=False)
+                except FileExistsError:
+                    pass
+                except OSError as exc:
+                    raise control.ControlError(
+                        "transactional log authority could not be retained") from exc
+                os.fsync(_authority_fd)
+            found = control._find_log_authority(
+                _authority_fd, _authority_index, image, sync=True)
+            if found is None:
+                raise control.ControlRefusal(
+                    "transactional log authority is missing")
+            persisted_name, authority_identity = found
+            if persisted_name != authority_name:
+                raise control.ControlRefusal(
+                    "transactional log authority conflicts")
+            cleanup_identity = _opened_named_exact_identity(
+                lock._item_fd, staging_name, staging_fd, image)
+            if authority_identity[:2] != cleanup_identity[:2]:
+                raise control.ControlRefusal(
+                    "transactional log authority conflicts")
+            _after_log_authority_sync()
 
         control._validate_item_lock(lock)
         _before_log_install()
@@ -280,6 +422,19 @@ def _append_entry_locked(lock, entry, *, _operation_id=None):
                 installed_identity[:2] != staging_inode):
             raise control.ControlError(
                 "item log staging identity changed during install")
+        if _authority_fd is not None:
+            found = control._find_log_authority(
+                _authority_fd, _authority_index, image, sync=True)
+            if found is None:
+                raise control.ControlRefusal(
+                    "transactional log authority is missing")
+            persisted_name, authority_identity = found
+            if persisted_name != authority_name:
+                raise control.ControlRefusal(
+                    "transactional log authority conflicts")
+            if authority_identity[:2] != installed_identity[:2]:
+                raise control.ControlRefusal(
+                    "transactional log authority conflicts")
         cleanup_identity = installed_identity
         expected_installed_identity = installed_identity
         _after_log_install()
@@ -326,9 +481,15 @@ def append_event_locked(lock, event, data=None):
     return _append_entry_locked(lock, _entry(event, data))
 
 
-def append_event(repo, item_id, event, data=None, *, _lock=None):
+def append_event(repo, item_id, event, data=None, *, _lock=None,
+                 file_fd=None, append_span=None):
     from . import control
 
+    if file_fd is not None:
+        if _lock is not None:
+            raise control.ControlRefusal(
+                "log append cannot combine item lock and supplied descriptor")
+        return _append_event_descriptor(event, data, file_fd, append_span)
     if _lock is not None:
         control._validate_item_lock(_lock, repo=repo, item_id=item_id)
         return append_event_locked(_lock, event, data)

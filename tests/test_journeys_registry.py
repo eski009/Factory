@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 JOURNEYS = ROOT / "docs/factory/journeys"
 ITEM = ROOT / ".factory/items/0016-cost-circuit-breaker-on-engine-authorita"
+ITEM_0014 = ROOT / ".factory/items/0014-approach-gate-at-plan-judge-convergence-"
 
 
 def has_live_item():
@@ -100,6 +101,75 @@ class TestJ002Registration(unittest.TestCase):
             [s["id"] for s in covered["J-002"]["scenarios"]],
             ["S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9"])
         self.assertTrue(covered["J-001"]["scenarios"])
+
+
+class TestJ005Registration(unittest.TestCase):
+    def test_graph_entry_and_links_match_the_implemented_boundary(self):
+        entry = journey("J-005")
+        self.assertEqual(entry["slug"], "plan-approach-convergence-gate")
+        self.assertEqual(entry["criticality"], "high")
+        self.assertEqual(entry["status"], "draft")
+        self.assertEqual(
+            entry["contract"],
+            "contracts/J-005-plan-approach-convergence-gate.md")
+        for api in (
+                "scripts/factory/lib/convergence.py::current_context",
+                "scripts/factory/lib/convergence.py::record_judgement",
+                "scripts/factory/lib/convergence.py::require_authoritative",
+                "scripts/factory/lib/machine.py::_gate_implement",
+                "scripts/factory/lib/machine.py::advance"):
+            self.assertIn(api, entry["links"]["apis"])
+        for test in ("tests/test_approach_convergence.py",
+                     "tests/test_approach.py",
+                     "tests/test_plugin_coherence.py"):
+            self.assertIn(test, entry["links"]["tests"])
+
+    def test_every_j005_engine_symbol_and_test_link_exists(self):
+        entry = journey("J-005")
+        for api in entry["links"]["apis"]:
+            if "::" not in api:
+                self.assertTrue((ROOT / api).exists(), api)
+                continue
+            rel, symbol = api.split("::")
+            source = (ROOT / rel).read_text(encoding="utf-8")
+            self.assertIn(f"def {symbol}(", source)
+        for test in entry["links"]["tests"]:
+            self.assertTrue((ROOT / test).exists(), test)
+
+    def test_inventory_and_contract_name_the_commitments_and_no_browser(self):
+        inventory = (JOURNEYS / "inventory.md").read_text(encoding="utf-8")
+        self.assertIn("**J-005 — Plan approach convergence gate**", inventory)
+        contract = (JOURNEYS / "contracts/"
+                    "J-005-plan-approach-convergence-gate.md").read_text(
+                        encoding="utf-8")
+        for node in ("N1 plan exit requested", "N2 screen resolved",
+                     "N3 judgement recorded", "N4 pass admitted",
+                     "N5 rejection handed off", "N6 retry after interruption"):
+            self.assertIn(node, contract)
+        self.assertIn("No browser surface", contract)
+        self.assertIn("engine validates proof shape and freshness", contract)
+
+    def test_j003_names_plan_in_the_one_shared_firing_set(self):
+        contract = (JOURNEYS / "contracts/"
+                    "J-003-redesign-cap-decision.md").read_text(
+                        encoding="utf-8")
+        self.assertIn("{plan, review, verify, assure}", contract)
+        self.assertIn("same lifetime cap and answer watermark", contract)
+
+    @unittest.skipUnless(
+        (ITEM_0014 / "item.md").is_file(),
+        ".factory is gitignored and the live 0014 item is absent on CI")
+    def test_live_item_declares_both_journeys_and_all_scenarios(self):
+        meta = (ITEM_0014 / "item.md").read_text(encoding="utf-8")
+        self.assertIn("journeys: J-003,J-005", meta)
+        impact = json.loads((ITEM_0014 / "assurance/impact.json").read_text(
+            encoding="utf-8"))
+        covered = {row["id"]: row for row in impact["journeys"]}
+        self.assertEqual(set(covered), {"J-003", "J-005"})
+        self.assertEqual([s["id"] for s in covered["J-005"]["scenarios"]],
+                         [f"S{i}" for i in range(1, 9)])
+        self.assertEqual([s["id"] for s in covered["J-003"]["scenarios"]],
+                         [f"S{i}" for i in range(9, 14)])
 
 
 class TestJ001OracleNarrowing(unittest.TestCase):

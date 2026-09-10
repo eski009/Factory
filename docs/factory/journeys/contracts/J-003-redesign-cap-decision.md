@@ -9,6 +9,8 @@ neighbours, not the whole pipeline). Modelled on the ratified J-002 contract —
 this pause is deliberately the same decision shape as the cost breaker's, so a
 divergence between the two packets is a defect unless a bid records why._
 
+The shared firing set is `{plan, review, verify, assure}`. Every origin uses the same lifetime cap and answer watermark; `plan` adds reachability, not a second mechanism.
+
 - **Persona:** The Overnight Operator (`docs/factory/brain/personas.md`) — pays
   the token bill personally, was not watching the run, is skeptical by default.
 - **Trigger:** an `approach.rejected` request (`factory advance <id> spec` from

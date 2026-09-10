@@ -115,13 +115,15 @@
       "contract": "contracts/J-005-plan-approach-convergence-gate.md",
       "links": {
         "apis": [
+          "scripts/factory/lib/convergence.py::current_context",
+          "scripts/factory/lib/convergence.py::record_judgement",
+          "scripts/factory/lib/convergence.py::require_authoritative",
           "scripts/factory/lib/machine.py::_gate_implement",
           "scripts/factory/lib/machine.py::advance",
-          "skills/factory-plan/SKILL.md",
-          "skills/factory-dispatch/SKILL.md"
+          "skills/factory-plan/SKILL.md"
         ],
         "tests": [
-          "tests/test_machine.py",
+          "tests/test_approach_convergence.py",
           "tests/test_approach.py",
           "tests/test_plugin_coherence.py"
         ]

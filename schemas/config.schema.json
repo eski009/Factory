@@ -37,6 +37,14 @@
         "attribution": {"type": "boolean"}
       }
     },
+    "approach_convergence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled"],
+      "properties": {
+        "enabled": {"type": "boolean"}
+      }
+    },
     "tiers": {
       "type": "object",
       "additionalProperties": false,

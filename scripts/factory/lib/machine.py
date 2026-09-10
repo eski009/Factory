@@ -55,7 +55,7 @@ MAX_ASSURE_REJECTIONS = 2
 # from in APPROACH_FROM and to == APPROACH_TO - never by reason text
 # (bid-0086). The cap is LIFETIME-scoped: no transition, resume, or
 # redesign resets or re-scopes it.
-APPROACH_FROM = frozenset({"review", "verify", "assure"})
+APPROACH_FROM = frozenset({"plan", "review", "verify", "assure"})
 APPROACH_TO = "spec"
 MAX_APPROACH_REJECTIONS = 1
 
@@ -406,7 +406,27 @@ def prepare_implement_entry(repo, item_id, *, operation_key, reason=None,
         config=config, answer_bytes=answer_bytes)
     source = _prospective_implement_legality(
         item_id, meta, prospective_events)
-    _gate_implement(canonical_repo, meta, plan_bytes=plan_bytes)
+    approach_record = _gate_implement(
+        canonical_repo, meta, plan_bytes=plan_bytes)
+    if approach_record is not None:
+        record_relative = PurePosixPath(
+            ".factory", "items", item_id, "approach-judgements",
+            (f"{approach_record['planning_round']}-"
+             f"{approach_record['plan_sha256']}.json"))
+        record_snapshot = safeio.snapshot_path(
+            canonical_repo, record_relative)
+        try:
+            captured_record = json.loads(
+                record_snapshot.data.decode("utf-8", errors="strict"),
+                object_pairs_hook=control._strict_object,
+                parse_constant=control._reject_constant)
+        except (UnicodeError, ValueError, json.JSONDecodeError) as exc:
+            raise control.ControlRefusal(
+                "approach judgement changed after validation") from exc
+        if captured_record != approach_record:
+            raise control.ControlRefusal(
+                "approach judgement changed after validation")
+        prerequisites = prerequisites + (record_snapshot,)
 
     meta["stage"] = "implement"
     meta["updated"] = now
@@ -414,6 +434,11 @@ def prepare_implement_entry(repo, item_id, *, operation_key, reason=None,
     event_data = {"from": source, "to": "implement"}
     if reason:
         event_data["reason"] = reason
+    if approach_record is not None:
+        event_data["approach"] = {
+            "planning_round": approach_record["planning_round"],
+            "plan_sha256": approach_record["plan_sha256"],
+        }
     stage_event = control._normalize_events(({
         "event": "stage.advance", "ts": now, "data": event_data,
     },))[0]
@@ -1014,6 +1039,17 @@ def _gate_implement(repo, meta, *, plan_bytes=_UNSUPPLIED):
         valid = "- [ ]" in plan_text
     if not valid:
         raise GateError("plan.md with at least one '- [ ]' task required")
+    from . import convergence
+    if meta.get("stage") == "plan" and convergence.enabled(repo):
+        try:
+            record = convergence.require_authoritative(repo, meta)
+            if (plan_bytes is not _UNSUPPLIED and
+                    record["plan_sha256"] != control._digest_bytes(plan_bytes)):
+                raise convergence.ConvergenceError(
+                    "plan.md changed after approach validation")
+            return record
+        except convergence.ConvergenceError as exc:
+            raise GateError(str(exc)) from exc
 
 
 def _gate_review(repo, meta):
@@ -1184,6 +1220,7 @@ def _advance_locked(repo, item_id, to, reason, lock):
             "recovery")
     meta, body = items.load_item(repo, item_id)
     frm = meta["stage"]
+    approach_record = None
     # One ordered rule, before the branch dispatch: the waiting-human
     # resume branch applies no gate of its own (it checks only that the
     # destination equals paused-from), so without this a park with no
@@ -1244,15 +1281,36 @@ def _advance_locked(repo, item_id, to, reason, lock):
         expected = next_stage(meta, items.assurance_mode(repo, item_id))
         if to != expected:
             raise GateError(f"illegal transition {frm} -> {to} (next is {expected!r})")
-        GATES.get(to, lambda *_: None)(repo, meta)
+        gate_result = GATES.get(to, lambda *_: None)(repo, meta)
+        if frm == "plan" and to == "implement":
+            approach_record = gate_result
     meta["stage"] = to
     meta["updated"] = logs.now_stamp()
-    items.save_item(repo, meta, body)
     event_data = {"from": frm, "to": to}
     if reason:
         event_data["reason"] = reason
-    logs.append_event(
-        repo, item_id, "stage.advance", event_data, _lock=lock)
+    if approach_record is not None:
+        event_data["approach"] = {
+            "planning_round": approach_record["planning_round"],
+            "plan_sha256": approach_record["plan_sha256"],
+        }
+    if approach_record is not None:
+        from . import convergence
+        try:
+            with convergence.authorized_edge(
+                    repo, item_id, approach_record) as guarded:
+                item_fd, log_fd, verify = guarded
+                items.save_item(repo, meta, body, file_fd=item_fd)
+                verify()
+                logs.append_event(
+                    repo, item_id, "stage.advance", event_data,
+                    file_fd=log_fd)
+        except convergence.ConvergenceError as exc:
+            raise GateError(str(exc)) from exc
+    else:
+        items.save_item(repo, meta, body)
+        logs.append_event(
+            repo, item_id, "stage.advance", event_data, _lock=lock)
     # Computed after the append so the verdict sees the edge this transition
     # just created. This post-mutation call must remain total: tolerant
     # logs.read_events_with_stats and cost.summarize skip hostile log entries;
