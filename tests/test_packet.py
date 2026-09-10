@@ -127,13 +127,15 @@ class TestPacket(unittest.TestCase):
         section = text.split("## Spend\n")[1].split("\n\n## Respond")[0]
         lines = section.splitlines()
         self.assertEqual(len(lines), 3)
-        for line, tag in zip(lines, ("[proxy]", "[measured]", "[unmeasured]")):
+        for line, tag in zip(lines, ("[proxy]", "[unmeasured]", "[unmeasured]")):
             self.assertTrue(line.startswith(f"- {tag}"), line)
 
     def test_spend_section_is_honest_about_unmeasured(self):
         text = packet.render_packet(self.repo, "0001-thing")
         self.assertIn("UNMEASURED", text)
-        self.assertIn("- [measured] tokens: none logged", text)
+        self.assertIn(
+            "- [unmeasured] tokens: UNMEASURED — PARTIAL — measured leaf "
+            "events only; coverage incomplete", text)
         self.assertNotIn("$0", text)
         self.assertNotIn("≈$", text)
 
@@ -664,16 +666,36 @@ class TestCostDecisionPacket(unittest.TestCase):
 
     def test_measured_figure_is_labelled_or_loudly_unmeasured(self):
         text = packet.render_packet(self.repo, "0001-runaway")
-        self.assertIn("- [unmeasured] tokens: UNMEASURED "
-                      "(no spend events logged)", self.section(text))
+        self.assertIn(
+            "- [unmeasured] tokens: UNMEASURED — PARTIAL — measured leaf "
+            "events only; coverage incomplete", self.section(text))
         os.environ["FACTORY_NOW"] = "2026-08-02T05:00:00Z"
         logs.append_event(self.repo, "0001-runaway", "spend",
-                          {"provenance": "measured", "stage": "implement",
+                          {"provenance": "measured", "scope": "leaf",
+                           "stage": "implement",
                            "dispatches": 2, "tokens": {"total": 4914081}})
         os.environ["FACTORY_NOW"] = "2026-08-02T06:00:00Z"
         section = self.section(packet.render_packet(self.repo, "0001-runaway"))
-        self.assertIn("- [measured] tokens: total 4914081 (1 spend events) "
-                      "— LOWER BOUND", section)
+        self.assertIn(
+            "- [measured] tokens: total 4914081 (1 spend events) — PARTIAL "
+            "— measured leaf events only; coverage incomplete", section)
+        self.assertNotIn("LOWER BOUND", section)
+
+    def test_packet_markdown_uses_leaf_total_in_decision_and_receipt(self):
+        os.environ["FACTORY_NOW"] = "2026-08-02T05:00:00Z"
+        for scope, total in (("leaf", 119266), ("fork", 98841)):
+            logs.append_event(
+                self.repo, "0001-runaway", "spend",
+                {"provenance": "measured", "scope": scope,
+                 "stage": "implement", "dispatches": 1,
+                 "tokens": {"total": total}})
+        page = packet.render_packet(self.repo, "0001-runaway")
+        qualifier = "PARTIAL — measured leaf events only; coverage incomplete"
+        self.assertEqual(page.count(
+            f"total 119266 (1 spend events) — {qualifier}"), 2)
+        self.assertNotIn("218107", page)
+        self.assertNotIn("98841 (", page)
+        self.assertNotIn("LOWER BOUND", page)
 
     def test_backlog_line_names_both_counts(self):
         self.other("0002-p1", priority=1)

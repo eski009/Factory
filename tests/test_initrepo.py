@@ -445,12 +445,37 @@ class SpendValidateTest(unittest.TestCase):
         from scripts.factory.lib import logs
         logs.append_event(self.repo, "0001-x", "spend", data)
 
-    def test_schema_loads_and_requires_provenance(self):
+    def test_schema_recognizes_scope_without_requiring_it_for_legacy_reads(self):
         schema = initrepo.load_schema("spend-event")
         self.assertEqual(schema["required"], ["provenance"])
         self.assertEqual(schema["properties"]["provenance"]["enum"],
                          ["measured", "proxy", "unmeasured"])
+        self.assertEqual(schema["properties"]["scope"]["enum"],
+                         ["leaf", "fork"])
         self.assertNotIn("additionalProperties", schema)
+
+    def test_legacy_missing_scope_is_read_valid_but_not_write_valid(self):
+        data = {"provenance": "proxy", "stage": "implement",
+                "dispatches": 1}
+        self.assertEqual(initrepo.spend_event_errors(data, "x"), [])
+        self.assertEqual(
+            initrepo.spend_write_errors(data, "x"),
+            ["x: new spend event requires scope 'leaf' or 'fork'"])
+
+    def test_leaf_and_fork_are_valid_on_both_contracts(self):
+        for scope in ("leaf", "fork"):
+            data = {"provenance": "proxy", "scope": scope,
+                    "stage": "implement", "dispatches": 1}
+            self.assertEqual(initrepo.spend_event_errors(data, scope), [])
+            self.assertEqual(initrepo.spend_write_errors(data, scope), [])
+
+    def test_invalid_scope_is_flagged_by_read_and_write_contracts(self):
+        data = {"provenance": "proxy", "scope": "branch",
+                "stage": "implement", "dispatches": 1}
+        for errors in (initrepo.spend_event_errors(data, "x"),
+                       initrepo.spend_write_errors(data, "x")):
+            self.assertTrue(any("scope" in error and "'branch'" in error
+                                for error in errors), errors)
 
     def test_spend_missing_provenance_flagged_with_file_line(self):
         self.log_spend({"stage": "implement", "dispatches": 2})
@@ -486,7 +511,7 @@ class SpendValidateTest(unittest.TestCase):
 
     def test_spend_event_stage_assure_valid(self):
         errors = initrepo.spend_event_errors(
-            {"provenance": "proxy", "stage": "assure", "source": "factory-assure",
+            {"provenance": "proxy", "scope": "leaf", "stage": "assure", "source": "factory-assure",
              "dispatches": 1}, "x")
         self.assertEqual(errors, [])
 

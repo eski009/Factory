@@ -35,6 +35,9 @@ class CostTestCase(unittest.TestCase):
 
     def log_at(self, ts, event, data=None):
         os.environ["FACTORY_NOW"] = ts
+        if event == "spend" and isinstance(data, dict):
+            data = dict(data)
+            data.setdefault("scope", "leaf")
         logs.append_event(self.repo, ITEM, event, data)
 
     def advance_at(self, ts, frm, to):
@@ -122,12 +125,16 @@ class SummarizeTimelineTest(CostTestCase):
         summary = cost.summarize(self.repo, ITEM)
         expected = {"item", "window", "elapsed_seconds", "active_seconds",
                     "waiting_seconds", "advances", "rework_edges",
-                    "dispatches",
-                    "stages", "measured", "unmeasured", "invalid_spend_events",
-                    "corrupt_log_lines"}
+                    "dispatches", "stages", "measured", "unmeasured",
+                    "measured_scope", "coverage_complete", "scope_counts",
+                    "invalid_spend_events", "corrupt_log_lines"}
         self.assertEqual(set(summary), expected)
         self.assertIsNone(summary["measured"])
         self.assertEqual(summary["unmeasured"], "orchestrator main-loop tokens")
+        self.assertEqual(summary["measured_scope"], "leaf")
+        self.assertFalse(summary["coverage_complete"])
+        self.assertEqual(summary["scope_counts"],
+                         {"leaf": 0, "fork": 0, "unclassified": 0})
         json.dumps(summary, indent=2, sort_keys=True)
 
     def test_unknown_item_raises_item_error(self):
@@ -294,6 +301,77 @@ class SpendRollupTest(CostTestCase):
             sum(b["dispatches"] for b in summary["stages"].values()), 0)
 
 
+class SpendScopeAggregationTest(CostTestCase):
+    def append_raw(self, data):
+        path = paths.item_dir(self.repo, ITEM) / "log.jsonl"
+        event = {"event": "spend", "ts": "2026-07-03T10:00:00Z",
+                 "data": data}
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(event, sort_keys=True) + "\n")
+
+    def test_nested_measured_leaf_and_fork_sum_only_leaf(self):
+        self.log_at(
+            "2026-07-03T10:00:00Z", "spend",
+            {"provenance": "measured", "scope": "leaf", "stage": "spec",
+             "dispatches": 1, "tokens": {"total": 119266}})
+        self.log_at(
+            "2026-07-03T10:01:00Z", "spend",
+            {"provenance": "measured", "scope": "fork", "stage": "spec",
+             "dispatches": 1, "tokens": {"total": 98841}})
+        summary = cost.summarize(self.repo, ITEM)
+        self.assertEqual(summary["measured"],
+                         {"events": 1, "input": 0, "output": 0,
+                          "total": 119266})
+        self.assertEqual(summary["scope_counts"],
+                         {"leaf": 1, "fork": 1, "unclassified": 0})
+        self.assertEqual(summary["measured_scope"], "leaf")
+        self.assertFalse(summary["coverage_complete"])
+
+    def test_scope_and_provenance_are_independent_axes(self):
+        fixtures = (
+            ("measured", "leaf", 11),
+            ("proxy", "leaf", None),
+            ("unmeasured", "leaf", None),
+            ("measured", "fork", 23),
+            ("proxy", "fork", None),
+            ("unmeasured", "fork", None),
+        )
+        for index, (provenance, scope, total) in enumerate(fixtures):
+            data = {"provenance": provenance, "scope": scope,
+                    "stage": "implement", "dispatches": 1}
+            if total is not None:
+                data["tokens"] = {"total": total}
+            self.log_at(f"2026-07-03T10:0{index}:00Z", "spend", data)
+        summary = cost.summarize(self.repo, ITEM)
+        self.assertEqual(summary["measured"]["total"], 11)
+        self.assertEqual(summary["scope_counts"],
+                         {"leaf": 3, "fork": 3, "unclassified": 0})
+        self.assertEqual(summary["dispatches"], 6)
+
+    def test_missing_and_invalid_scope_are_unclassified_and_not_summed(self):
+        self.append_raw({"provenance": "measured", "stage": "implement",
+                         "dispatches": 1, "tokens": {"total": 40}})
+        self.append_raw({"provenance": "measured", "scope": "branch",
+                         "stage": "implement", "dispatches": 1,
+                         "tokens": {"total": 50}})
+        summary = cost.summarize(self.repo, ITEM)
+        self.assertIsNone(summary["measured"])
+        self.assertEqual(summary["scope_counts"],
+                         {"leaf": 0, "fork": 0, "unclassified": 2})
+        self.assertEqual(summary["invalid_spend_events"], 1)
+        self.assertEqual(summary["dispatches"], 2)
+
+    def test_invalid_payload_keeps_known_scope_but_is_excluded(self):
+        self.append_raw({"provenance": "proxy", "scope": "fork",
+                         "dispatches": 2, "tokens": {"total": 9}})
+        summary = cost.summarize(self.repo, ITEM)
+        self.assertEqual(summary["scope_counts"],
+                         {"leaf": 0, "fork": 1, "unclassified": 0})
+        self.assertEqual(summary["invalid_spend_events"], 1)
+        self.assertEqual(summary["dispatches"], 0)
+        self.assertIsNone(summary["measured"])
+
+
 class PerStageAttributionTest(CostTestCase):
     """AC3/AC4: the stage bucket is the unit of attribution, and the two
     provenance classes never share a line."""
@@ -347,10 +425,11 @@ class PerStageAttributionTest(CostTestCase):
         text = cost.render_text(self.seed())
         self.assertIn(
             "[measured] stage implement: tokens input 1000, output 200, "
-            "total 50 (2 spend events)", text)
+            "total 50 (2 spend events) — PARTIAL — measured leaf events "
+            "only; coverage incomplete", text)
         self.assertIn(
-            "[unmeasured] stage review: tokens UNMEASURED "
-            "(no spend events logged)", text)
+            "[unmeasured] stage review: tokens UNMEASURED — PARTIAL — "
+            "measured leaf events only; coverage incomplete", text)
         self.assertIn("[proxy] stage implement: active", text)
 
     def test_no_rendered_line_carries_two_provenance_tags(self):
@@ -375,7 +454,8 @@ class PerStageAttributionTest(CostTestCase):
         self.assertEqual(
             lines[3],
             "- [measured] stage implement: input 1000, output 200, total 50 "
-            "(2 events)")
+            "(2 events) — PARTIAL — measured leaf events only; coverage "
+            "incomplete")
 
     def test_receipt_unchanged_when_no_per_stage_measured_spend(self):
         self.advance_at("2026-07-03T00:00:00Z", "spec", "design")
@@ -408,7 +488,9 @@ class RenderTextTest(CostTestCase):
     def test_measured_line_and_stage_dispatches(self):
         text = cost.render_text(self.figure_summary())
         self.assertIn(
-            "[measured] tokens: input 800, output 150 (1 spend events)", text)
+            "[measured] tokens: input 800, output 150 (1 spend events) — "
+            "PARTIAL — measured leaf events only; coverage incomplete "
+            "(spend events: leaf 1, fork 0, unclassified 0)", text)
         self.assertIn(
             "[proxy] stage design: active 02h 30m, entries 1, dispatches 2",
             text)
@@ -419,7 +501,28 @@ class RenderTextTest(CostTestCase):
         text = cost.render_text(cost.summarize(self.repo, ITEM))
         self.assertIn(
             "[unmeasured] UNMEASURED: orchestrator main-loop tokens", text)
-        self.assertIn("[measured] tokens: none logged", text)
+        self.assertIn(
+            "[unmeasured] tokens: UNMEASURED — PARTIAL — measured leaf "
+            "events only; coverage incomplete (spend events: leaf 0, fork 0, "
+            "unclassified 0)", text)
+
+    def test_item_total_uses_exact_partial_leaf_qualifier(self):
+        text = cost.render_text(self.figure_summary())
+        self.assertIn(
+            "[measured] tokens: input 800, output 150 (1 spend events) — "
+            "PARTIAL — measured leaf events only; coverage incomplete "
+            "(spend events: leaf 1, fork 0, unclassified 0)", text)
+
+    def test_no_valid_leaf_is_unmeasured_never_zero(self):
+        self.log_at("2026-07-03T10:00:00Z", "spend",
+                    {"provenance": "measured", "scope": "fork",
+                     "tokens": {"total": 98}})
+        text = cost.render_text(cost.summarize(self.repo, ITEM))
+        self.assertIn(
+            "[unmeasured] tokens: UNMEASURED — PARTIAL — measured leaf "
+            "events only; coverage incomplete (spend events: leaf 0, fork 1, "
+            "unclassified 0)", text)
+        self.assertNotIn("tokens: 0", text)
 
     def test_forbidden_renderings_never_appear(self):
         for summary in (self.figure_summary(),
@@ -483,7 +586,11 @@ class RenderReceiptTest(CostTestCase):
         lines = receipt.splitlines()
         self.assertEqual(len(lines), 3)
         self.assertTrue(lines[0].startswith("- [proxy] active "))
-        self.assertEqual(lines[1], "- [measured] tokens: none logged")
+        self.assertEqual(
+            lines[1],
+            "- [unmeasured] tokens: UNMEASURED — PARTIAL — measured leaf "
+            "events only; coverage incomplete (spend events: leaf 0, fork 0, "
+            "unclassified 0)")
         self.assertEqual(
             lines[2], "- [unmeasured] UNMEASURED: orchestrator main-loop tokens")
 
@@ -495,9 +602,24 @@ class RenderReceiptTest(CostTestCase):
         os.environ["FACTORY_NOW"] = "2026-07-03T00:10:00Z"
         receipt = cost.render_receipt(cost.summarize(self.repo, ITEM))
         self.assertIn(
-            "- [measured] tokens: input 182340, output 21877 (1 events)",
+            "- [measured] tokens: input 182340, output 21877 (1 spend events) "
+            "— PARTIAL — measured leaf events only; coverage incomplete "
+            "(spend events: leaf 1, fork 0, unclassified 0)",
             receipt)
         self.assertIn("6 dispatches", receipt)
+
+    def test_receipt_qualifies_leaf_total_and_surfaces_scope_counts(self):
+        self.log_at("2026-07-03T00:00:00Z", "spend",
+                    {"provenance": "measured", "scope": "leaf",
+                     "tokens": {"total": 119266}})
+        self.log_at("2026-07-03T00:01:00Z", "spend",
+                    {"provenance": "measured", "scope": "fork",
+                     "tokens": {"total": 98841}})
+        receipt = cost.render_receipt(cost.summarize(self.repo, ITEM))
+        self.assertIn(
+            "- [measured] tokens: total 119266 (1 spend events) — PARTIAL — "
+            "measured leaf events only; coverage incomplete (spend events: "
+            "leaf 1, fork 1, unclassified 0)", receipt)
 
 
 class CorruptLogSurfacingTest(CostTestCase):
@@ -557,7 +679,9 @@ class CorruptLogSurfacingTest(CostTestCase):
         self.assertEqual(receipt, "\n".join([
             "- [proxy] active 00h 05m (waiting 00h 00m), "
             "0 advances, 0 dispatches, 0 rework edges",
-            "- [measured] tokens: none logged",
+            "- [unmeasured] tokens: UNMEASURED — PARTIAL — measured leaf "
+            "events only; coverage incomplete (spend events: leaf 0, fork 0, "
+            "unclassified 0)",
             "- [unmeasured] UNMEASURED: orchestrator main-loop tokens",
         ]))
 
@@ -588,6 +712,9 @@ class AggregateModeTest(unittest.TestCase):
 
     def log_at(self, item_id, ts, event, data=None):
         os.environ["FACTORY_NOW"] = ts
+        if event == "spend" and isinstance(data, dict):
+            data = dict(data)
+            data.setdefault("scope", "leaf")
         logs.append_event(self.repo, item_id, event, data)
 
     def seed(self):
@@ -614,14 +741,19 @@ class AggregateModeTest(unittest.TestCase):
         os.environ["FACTORY_NOW"] = "2026-07-03T02:00:00Z"
         return cost.summarize_all(self.repo)
 
-    def test_top_level_keys_are_exactly_items_and_coverage(self):
+    def test_top_level_exposes_leaf_aggregate_and_scope_metadata(self):
         summary = self.seed()
-        self.assertEqual(set(summary), {"items", "coverage"})
         self.assertEqual(
-            set(summary["coverage"]),
-            {"items_with_spend", "items_total", "advances_with_spend",
-             "advances_total", "done_items", "done_with_tier",
-             "unreadable_items"})
+            set(summary),
+            {"items", "coverage", "measured", "measured_scope",
+             "coverage_complete", "scope_counts"})
+        self.assertEqual(summary["measured"],
+                         {"events": 1, "input": 0, "output": 0,
+                          "total": 100})
+        self.assertEqual(summary["measured_scope"], "leaf")
+        self.assertFalse(summary["coverage_complete"])
+        self.assertEqual(summary["scope_counts"],
+                         {"leaf": 2, "fork": 0, "unclassified": 0})
 
     def test_coverage_figures_are_scanned_not_hardcoded(self):
         """AC8: seeded counts differ from this repo's 9/17."""
@@ -676,12 +808,20 @@ class AggregateModeTest(unittest.TestCase):
             "[coverage] spend events present for 2 of 3 items; "
             "2 of 4 stage advances carry one")
 
-    def test_measured_line_only_for_items_with_measured_spend(self):
+    def test_every_item_and_aggregate_has_qualified_leaf_readout(self):
         text = cost.render_all_text(self.seed())
-        self.assertIn("[measured] 0001-a: tokens total 100 (1 spend events) "
-                      "— LOWER BOUND (not summable)", text)
-        self.assertNotIn("[measured] 0002-b:", text)
-        self.assertNotIn("[measured] 0003-c:", text)
+        qualifier = "PARTIAL — measured leaf events only; coverage incomplete"
+        self.assertIn(
+            f"[measured] aggregate: tokens total 100 (1 spend events) — "
+            f"{qualifier}", text)
+        self.assertIn(
+            f"[measured] 0001-a: tokens total 100 (1 spend events) — "
+            f"{qualifier}", text)
+        self.assertIn(f"[unmeasured] 0002-b: tokens UNMEASURED — {qualifier}",
+                      text)
+        self.assertIn(f"[unmeasured] 0003-c: tokens UNMEASURED — {qualifier}",
+                      text)
+        self.assertNotIn("LOWER BOUND", text)
 
     def test_proxy_block_present_for_every_item(self):
         text = cost.render_all_text(self.seed())
@@ -696,23 +836,19 @@ class AggregateModeTest(unittest.TestCase):
                       "tokens; per-tier medians (1 of 2 done items carry a "
                       "tier)", text)
 
-    def test_no_cross_item_aggregate_in_text_or_json(self):
-        """AC6: the median clause is discharged as UNMEASURED, never as a
-        number, and nothing sums or averages across items."""
+    def test_cross_item_aggregate_contains_only_valid_measured_leaves(self):
         summary = self.seed()
         text = cost.render_all_text(summary)
-        # 0001-a is the only item with measured tokens (100). Neither a
-        # sum nor a mean of the population appears anywhere.
-        self.assertNotIn("total: 100", text)
+        self.assertIn("[measured] aggregate: tokens total 100", text)
         for line in text.splitlines():
             lowered = line.lower()
             self.assertNotRegex(lowered, r"median[: ]+\d")
             self.assertNotRegex(lowered, r"\b(mean|average)\b")
             self.assertNotIn("cost per item", lowered)
-            self.assertNotIn("across all items", lowered)
-        payload = json.dumps(summary, sort_keys=True)
-        json.loads(payload)
-        self.assertEqual(set(json.loads(payload)), {"items", "coverage"})
+        payload = json.loads(json.dumps(summary, sort_keys=True))
+        self.assertEqual(payload["measured"]["total"], 100)
+        self.assertEqual(payload["measured_scope"], "leaf")
+        self.assertFalse(payload["coverage_complete"])
 
     def test_every_figure_line_carries_one_tag(self):
         text = cost.render_all_text(self.seed())

@@ -354,6 +354,22 @@ class TestCostDecisionHtml(unittest.TestCase):
         self.assertLess(section.index("[proxy] rework edges: 2"),
                         section.index("[unmeasured] tokens:"))
 
+    def test_packet_html_uses_leaf_total_in_decision_and_receipt(self):
+        os.environ["FACTORY_NOW"] = "2026-08-02T05:00:00Z"
+        for scope, total in (("leaf", 119266), ("fork", 98841)):
+            logs.append_event(
+                self.repo, "0001-runaway", "spend",
+                {"provenance": "measured", "scope": scope,
+                 "stage": "implement", "dispatches": 1,
+                 "tokens": {"total": total}})
+        page = packet.render_packet_html(self.repo, "0001-runaway")
+        qualifier = "PARTIAL — measured leaf events only; coverage incomplete"
+        self.assertEqual(page.count(
+            f"total 119266 (1 spend events) — {qualifier}"), 2)
+        self.assertNotIn("218107", page)
+        self.assertNotIn("98841 (", page)
+        self.assertNotIn("LOWER BOUND", page)
+
     def test_html_recommendation_and_three_consequences(self):
         section = self.section()
         self.assertIn("Recommended: narrow", section)

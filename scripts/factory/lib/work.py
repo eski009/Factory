@@ -450,7 +450,8 @@ def _test_summary(test_result):
 
 
 def _log_spend(repo, item_id, backend, model, usage):
-    data = {"provenance": "proxy", "stage": "implement",
+    data = {"provenance": "proxy", "scope": "leaf",
+            "stage": "implement",
             "source": "factory-work", "dispatches": 1}
     if usage and any(usage.get(k) for k in ("input", "output", "total")):
         data["provenance"] = "measured"

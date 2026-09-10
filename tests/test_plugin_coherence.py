@@ -165,6 +165,138 @@ class PluginCoherenceTest(unittest.TestCase):
 
 
 class TestPluginCoherence(unittest.TestCase):
+    def test_every_spend_emission_instruction_names_origin_scope(self):
+        command = re.compile(r"factory log ITEM spend --data(?=\s)")
+
+        def payload_after(text, start, path):
+            """Return this command's balanced JSON payload, not its line."""
+            cursor = start
+            while cursor < len(text) and text[cursor].isspace():
+                cursor += 1
+            if cursor < len(text) and text[cursor] in "'\"":
+                quote = text[cursor]
+                cursor += 1
+            else:
+                quote = None
+            self.assertLess(cursor, len(text), f"{path}: missing spend data")
+            self.assertEqual(text[cursor], "{", f"{path}: spend data is not JSON")
+
+            begin = cursor
+            depth = 0
+            string_quote = None
+            escaped = False
+            while cursor < len(text):
+                char = text[cursor]
+                if string_quote:
+                    if escaped:
+                        escaped = False
+                    elif char == "\\":
+                        escaped = True
+                    elif char == string_quote:
+                        string_quote = None
+                elif char == '"':
+                    string_quote = char
+                elif char == "{":
+                    depth += 1
+                elif char == "}":
+                    depth -= 1
+                    if depth == 0:
+                        payload = text[begin:cursor + 1]
+                        if quote:
+                            self.assertLess(
+                                cursor + 1, len(text),
+                                f"{path}: unterminated spend-data quote")
+                            self.assertEqual(
+                                text[cursor + 1], quote,
+                                f"{path}: unterminated spend-data quote")
+                        return payload
+                cursor += 1
+            self.fail(f"{path}: unterminated spend JSON")
+
+        def top_level_scope(payload):
+            """Read only a top-level JSON scope field from a template payload."""
+            cursor = 0
+            depth = 0
+            while cursor < len(payload):
+                char = payload[cursor]
+                if char == '"':
+                    begin = cursor + 1
+                    cursor += 1
+                    escaped = False
+                    while cursor < len(payload):
+                        char = payload[cursor]
+                        if escaped:
+                            escaped = False
+                        elif char == "\\":
+                            escaped = True
+                        elif char == '"':
+                            break
+                        cursor += 1
+                    token = payload[begin:cursor]
+                    after = cursor + 1
+                    while after < len(payload) and payload[after].isspace():
+                        after += 1
+                    if depth == 1 and token == "scope" and (
+                            after < len(payload) and payload[after] == ":"):
+                        value = after + 1
+                        while value < len(payload) and payload[value].isspace():
+                            value += 1
+                        match = re.match(r'"([^"]+)"', payload[value:])
+                        return match.group(1) if match else None
+                elif char in "{[":
+                    depth += 1
+                elif char in "}]":
+                    depth -= 1
+                cursor += 1
+            return None
+
+        emitters = []
+        invalid = []
+        emitter_paths = set()
+        for path in sorted((ROOT / "skills").rglob("*.md")):
+            text = read(path)
+            for match in command.finditer(text):
+                payload = payload_after(text, match.end(), path)
+                line = text.count("\n", 0, match.start()) + 1
+                location = f"{path.relative_to(ROOT)}:{line}"
+                emitters.append(location)
+                emitter_paths.add(path.relative_to(ROOT).as_posix())
+                scope = top_level_scope(payload)
+                if scope not in {"leaf", "fork"}:
+                    invalid.append(f"{location}: {payload}")
+
+        self.assertTrue(emitters, "no literal Factory spend emitters found")
+        self.assertTrue(
+            {
+                "skills/capabilities/references/designsync.md",
+                "skills/factory-assure/SKILL.md",
+                "skills/factory-bug/SKILL.md",
+                "skills/factory-design/SKILL.md",
+                "skills/factory-dispatch/SKILL.md",
+                "skills/factory-implement/SKILL.md",
+                "skills/factory-review/SKILL.md",
+                "skills/factory-ship/SKILL.md",
+            }.issubset(emitter_paths),
+            f"expected spend-emitter surfaces missing: {emitter_paths}")
+        self.assertEqual(
+            invalid, [],
+            "every literal Factory spend emitter must declare a valid "
+            "origin scope in its own JSON payload:\n" + "\n".join(invalid))
+
+        dispatch = read(ROOT / "skills/factory-dispatch/SKILL.md")
+        self.assertIn(
+            '"scope":"leaf","stage":"<stage>","source":"<skill>"',
+            dispatch)
+        self.assertIn(
+            '"scope":"fork","stage":"<stage>",'
+            '"source":"factory-dispatch"', dispatch)
+        self.assertIn(
+            "Scope is assigned at origin and never inferred: stage-owned "
+            "inner dispatches or sibling aggregates are `leaf`; the "
+            "dispatcher-owned containing stage invocation is `fork` because "
+            "its usage can contain those child events. Provenance remains "
+            "independent of scope.", dispatch)
+
     def test_engine_comments_cite_symbols_not_source_lines(self):
         citations = []
         source_line = re.compile(r"[A-Za-z0-9_./-]+\.(?:py|md):\d+")

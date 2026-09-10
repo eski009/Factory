@@ -49,6 +49,19 @@ def spend_event_errors(data, path):
     return errors
 
 
+def spend_write_errors(data, path):
+    """Validate a newly emitted spend event before append.
+
+    Read validation intentionally accepts a missing scope for legacy ledgers;
+    current writes must carry the origin-known discriminator.
+    """
+    errors = spend_event_errors(data, path)
+    if isinstance(data, dict) and "scope" not in data:
+        errors.append(
+            f"{path}: new spend event requires scope 'leaf' or 'fork'")
+    return errors
+
+
 def init(repo, product=None, design_provider=None, designsync_project=None):
     repo = Path(repo)
     created = []

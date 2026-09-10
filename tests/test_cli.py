@@ -205,7 +205,9 @@ class CliTest(unittest.TestCase):
         code, out, _ = self.run_cli("cost", "0001-thing")
         self.assertEqual(code, 0)
         self.assertIn("[proxy] stage idea:", out)
-        self.assertIn("[measured] tokens: none logged", out)
+        self.assertIn(
+            "[unmeasured] tokens: UNMEASURED — PARTIAL — measured leaf "
+            "events only; coverage incomplete", out)
         self.assertIn(
             "[unmeasured] UNMEASURED: orchestrator main-loop tokens", out)
 
@@ -241,7 +243,9 @@ class CliTest(unittest.TestCase):
         code, out, _ = self.run_cli("cost", "--all", "--json")
         self.assertEqual(code, 0)
         payload = json.loads(out)
-        self.assertEqual(set(payload), {"items", "coverage"})
+        self.assertEqual(set(payload), {"items", "coverage", "measured",
+                                        "measured_scope", "coverage_complete",
+                                        "scope_counts"})
         self.assertEqual(len(payload["items"]), 1)
 
     def test_cost_with_neither_item_nor_all_is_refused(self):
@@ -274,6 +278,11 @@ class CliTest(unittest.TestCase):
         self.assertIn("spend", rows[0])
         self.assertNotIn("stages", rows[0]["spend"])
         self.assertEqual(rows[0]["spend"]["item"], "0001-thing")
+        self.assertEqual(rows[0]["spend"]["measured_scope"], "leaf")
+        self.assertFalse(rows[0]["spend"]["coverage_complete"])
+        self.assertEqual(rows[0]["spend"]["scope_counts"],
+                         {"leaf": 0, "fork": 0, "unclassified": 0})
+        self.assertIsNone(rows[0]["spend"]["measured"])
 
     def test_status_table_shows_tier_and_kind(self):
         self.run_cli("init")
@@ -283,26 +292,48 @@ class CliTest(unittest.TestCase):
         expected = f"{'0001-thing':<40} {'idea':<14} p{'-':<4} feature/mixed\n"
         self.assertEqual(out, expected)
 
-    def test_validate_exits_2_on_bad_spend_event(self):
+    def test_log_spend_missing_scope_refuses_before_append(self):
         self.run_cli("init")
         self.run_cli("add", "Thing")
-        self.run_cli("log", "0001-thing", "spend", "--data",
-                     '{"stage": "implement", "dispatches": 2}')
-        code, _, err = self.run_cli("validate")
-        self.assertEqual(code, 2)
-        self.assertIn("0001-thing/log.jsonl:2", err)
-        self.assertIn("provenance", err)
-
-    def test_log_spend_uses_unmodified_write_path(self):
-        self.run_cli("init")
-        self.run_cli("add", "Thing")
-        code, _, _ = self.run_cli(
+        log = Path(self.repo, ".factory/items/0001-thing/log.jsonl")
+        before = log.read_bytes()
+        code, _, err = self.run_cli(
             "log", "0001-thing", "spend", "--data",
             '{"provenance":"proxy","stage":"implement","dispatches":2}')
-        self.assertEqual(code, 0)
+        self.assertEqual(code, 2)
+        self.assertEqual(log.read_bytes(), before)
+        self.assertIn(
+            "refused: spend: new spend event requires scope 'leaf' or 'fork'",
+            err)
+
+    def test_log_spend_invalid_scope_refuses_before_append(self):
+        self.run_cli("init")
+        self.run_cli("add", "Thing")
+        log = Path(self.repo, ".factory/items/0001-thing/log.jsonl")
+        before = log.read_bytes()
+        code, _, err = self.run_cli(
+            "log", "0001-thing", "spend", "--data",
+            '{"provenance":"proxy","scope":"branch",'
+            '"stage":"implement","dispatches":2}')
+        self.assertEqual(code, 2)
+        self.assertEqual(log.read_bytes(), before)
+        self.assertIn(
+            "refused: spend.scope: 'branch' not one of ['leaf', 'fork']",
+            err)
+
+    def test_log_spend_accepts_leaf_and_fork(self):
+        self.run_cli("init")
+        self.run_cli("add", "Thing")
+        for scope in ("leaf", "fork"):
+            code, _, err = self.run_cli(
+                "log", "0001-thing", "spend", "--data",
+                json.dumps({"provenance": "proxy", "scope": scope,
+                            "stage": "implement", "dispatches": 1}))
+            self.assertEqual((code, err), (0, ""))
         log = Path(self.repo,
                    ".factory/items/0001-thing/log.jsonl").read_text()
-        self.assertIn('"event": "spend"', log)
+        self.assertIn('"scope": "leaf"', log)
+        self.assertIn('"scope": "fork"', log)
         code, _, _ = self.run_cli("validate")
         self.assertEqual(code, 0)
 

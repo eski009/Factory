@@ -40,7 +40,7 @@ Pushed artifacts (options.html, a chosen-direction note, built output) are conve
 Every MCP pull or push round-trip logs one spend event through the existing convention:
 
 ```
-factory log ITEM spend --data '{"provenance":"proxy","stage":"<stage>","source":"<skill>","note":"claude-design <pull|push> round-trip"}'
+factory log ITEM spend --data '{"provenance":"proxy","scope":"leaf","stage":"<stage>","source":"<skill>","note":"claude-design <pull|push> round-trip"}'
 ```
 
 Provenance is `proxy` with no `tokens` key, because main-loop MCP calls surface no harness token counts. Never estimate or invent token numbers, and never log `measured` without harness counts.
