@@ -1,5 +1,14 @@
 # Open Questions
 
+> Consolidated 2026-09-10: the entries below are the historical research and
+> review-question register. They retain original claims and may describe code
+> that has since changed (including old version numbers and retired harness
+> paths). They are not a second active backlog. The [current roadmap](../roadmap.md)
+> records delivered, rejected, superseded and deferred work; the
+> [consolidation report](../2026-09-10-consolidation.md) records verification.
+> Product audience, distribution/commercial intent and future release policy
+> remain owner decisions, not implementation blockers for this delivery batch.
+
 <!-- Unresolved questions that block confident work; each should name what
      would resolve it. Every claim should cite a source: (source: <path-or-url>) -->
 

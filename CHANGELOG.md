@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Opt-in plan convergence judgements, acceptance-feasibility contracts,
+  resumable task execution, and transactional handoffs with checkout ownership.
+- Disk-first lost-reply recovery binds evidence and continuation claims to the
+  current attempt; it does not replace a host-level pool supervisor.
+- A read-only derived ledger reports pinned Git inventory, explicit timing
+  provenance and individual test waves without treating them as a ship gate.
+- An offline frozen-cohort timing replay and factual report for item 0030;
+  no production runaway threshold is introduced.
+
 - Factory now ships a native Codex plugin manifest and Codex-valid shared skills
   for every pipeline stage and common command entry point. The host adapter preserves
   fresh-context, question, filesystem, and optional MCP semantics without
@@ -19,6 +28,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   role-based routing guidance for `gpt-5.6-terra` and `gpt-5.6-sol`.
 
 ### Changed
+
+- Measured spend totals include leaf events only and disclose incomplete or
+  unclassified coverage. Proxy-only stage events are visible without inventing
+  token measurements.
+- Independent review starts with adaptive seats selected from current-diff
+  risk signals. Finalized escalation must match synthesis adjudication;
+  degraded review requires digest-bound execution output records. Historical
+  optional Round 2 evidence cannot wedge a clean re-review.
+- Generic intake routes defects to reproduced-bug intake and records bug work
+  in the target roadmap. The obsolete tier-derived depth recorder stays archived.
+- Factory's own repository is developed directly, with no self-hosted runtime
+  or review-count loop. Development branches and old packets are consolidated;
+  the roadmap distinguishes delivery from deferred proposals.
 
 - Design execution now honors the selected provider instead of opportunistically
   switching after an explicit choice. Legacy repositories retain the previous

@@ -217,13 +217,13 @@ Run `python3 -m unittest tests.test_ledger tests.test_logs -v`.
 `skills/factory-status/SKILL.md` and `skills/factory-ship/SKILL.md`; create
 `tests/test_cli_ledger.py`; extend plugin-coherence tests.
 
-- [ ] Add `factory ledger --base SHA --head SHA [--product-path PATH]
+- [x] Add `factory ledger --base SHA --head SHA [--product-path PATH]
   [--admin-path PATH] [--json]` with stable usage/refusal behavior.
-- [ ] Render all sections and provenance tags exactly as above; output is
+- [x] Render all sections and provenance tags exactly as above; output is
   deterministic for a fixed repository state and range.
-- [ ] Document how verify/ship producers log waves and spans, and how status
+- [x] Document how verify/ship producers log waves and spans, and how status
   links to the ledger without treating it as a delivery gate or a speed claim.
-- [ ] Preserve `factory cost` byte-for-byte and keep ledger read-only.
+- [x] Preserve `factory cost` byte-for-byte and keep ledger read-only.
 
 Run:
 
@@ -240,3 +240,10 @@ git diff --check
   deciding whether repeated waves were necessary, cross-item token totals,
   performance/velocity claims, evidence validity gates (FH-04), or receipt
   reuse (FH-03).
+
+## Completion — 2026-09-10
+
+All three tasks are integrated on main. CLI and integration evidence is in
+`docs/factory/2026-09-10-consolidation.md`. The ledger itself preserves cost
+behavior; the separately integrated 0029 accounting change deliberately
+updates the default spend snapshots and partial-coverage disclosure.
