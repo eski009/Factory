@@ -29,6 +29,36 @@ Run this skill in a fresh context using the capabilities skill's `references/hos
 
 At step 2's fan-out points, when each dispatch batch completes, the orchestrating session logs one spend event per council round — `factory log ITEM spend --data '{"provenance":"measured","stage":"review","source":"factory-review","dispatches":<n>,"tokens":{"total":<n>}}'` (include `"input"`/`"output"` instead or additionally when the harness reports them) with `dispatches` = the seat count for that round — plus one more event for the walk subagent when it is dispatched, all using the token counts the harness reports for those subagents. If the harness surfaces no token usage, log the same event with `"provenance":"proxy"` and **no** `tokens` key. Never estimate or invent token numbers; the orchestrator's own main-loop burn is never logged as measured. The engine neither requires nor verifies these events at gates.
 
+## Lost-reply reconciliation
+
+Read the capabilities skill's
+`references/disk-first-reconciliation.md`. Run `factory reconcile begin`
+before dispatching this child, treating the council invocation as
+`review:council-synthesis`, with exact inputs
+`.factory/items/ITEM/reviews/seed-context.md` and
+`.factory/items/ITEM/spec.md`, exact evidence
+`.factory/items/ITEM/reviews/synthesis.md`, and no `--worktree` because the
+council is repository-only. Use the same exact input/evidence set for discovery
+and inspection; any separately dispatched branch walk gets its own checkpoint
+with its concrete input, report evidence, and canonical `--worktree CHECKOUT`.
+
+After dispatch, perform exactly one host-native wait, capped at 60 seconds. On
+an unanswered wait, or a `still running` re-entry, use the host adapter to
+establish that exact child's writer state as `active` or `terminal`, then run
+`factory reconcile inspect` before any failure accounting, retry, or
+replacement. If state cannot be established, stop. An active writer returns
+`still running` and causes no second wait, failure count, retry, or replacement.
+
+Adopt a terminal complete current-attempt synthesis, then continue the existing
+end-to-end walk and judgement; do not equate transport completion with
+approval. Before logging an outcome, advancing, or filing bids, re-read the
+current item stage and complete current event log and perform only the normal
+side effects still missing. If the transition already landed, adopt it; retain
+`review:post-transition-learning` as a named missing obligation and file only
+learnings not already recorded. This recovery does not cover 0032's pool
+exhaustion, `no-synthesis` policy, whole-fan-out coordination, or arbitrary
+prior council runs.
+
 ## Notes
 
 - Rounds are lifetime-scoped, not scoped to this stage entry — a rejection from an earlier pass through `review` still counts toward the cap even if the item cycled through `implement` since.

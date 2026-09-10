@@ -37,3 +37,39 @@ Before Round 1, run `factory reputation --json`. Use scores to order which agent
 ## After synthesis
 
 Material findings (anything that should change durable product memory, not just this item) go to the `council-judgement` skill to be filed as bids. Do not edit `docs/factory/brain/` directly from this skill.
+
+## Lost-reply reconciliation
+
+Read the capabilities skill's
+`references/disk-first-reconciliation.md`. Checkpoint each selected seat
+separately, then checkpoint each orchestrator synthesis separately. Run
+`factory reconcile begin` before dispatching this child: a Round N seat uses
+obligation `council:round-N:ROLE`, exact inputs `reviews/seed-context.md`, the
+seat's `docs/factory/council/ROLE.md`, and (for Round 2) the current-attempt
+`reviews/synthesis-1.md`, plus exact evidence
+`reviews/round-N/ROLE.md`. Synthesis uses obligation
+`council:synthesis-N`, the current-attempt seed and exact selected-seat files
+as inputs, and exact evidence `reviews/synthesis-1.md` or final
+`reviews/synthesis.md`. These children are repository-only, so omit
+`--worktree` consistently; if a future child is checkout-bound, begin,
+discover, and inspect must all use its same canonical `--worktree CHECKOUT`.
+
+After every dispatch, perform exactly one host-native wait, capped at 60
+seconds. On an unanswered wait, or a `still running` re-entry, use the host
+adapter to establish that exact child's writer state as `active` or `terminal`,
+then run `factory reconcile inspect` before any failure accounting, retry, or
+replacement. If state cannot be established, stop. An active writer returns
+`still running` and causes no second wait, failure count, retry, or replacement.
+
+Only files bound to the current attempt may be adopted. For a terminal partial
+round, claim one continuation and dispatch only missing selected seats from
+that same attempt. Never reuse arbitrary prior council files and never
+reconstruct a report that a read-only seat did not return. A complete set of
+current-attempt seats permits the separately checkpointed synthesis; a complete
+current-attempt synthesis is adopted under its substantive verdict, not
+regenerated.
+
+Before finalization, re-read the current item stage and complete current event
+log and perform only the normal side effects still missing. This recovery does
+not cover 0032's pool exhaustion, `no-synthesis` policy, whole-fan-out
+coordination across attempts, or arbitrary prior council runs.

@@ -36,7 +36,10 @@ Review asked "is the code sound"; verify asked "do the checks pass"; this stage 
 
 ## Dispatch — one fresh journey-reviewer subagent per affected journey
 
-**Fresh round:** delete the prior round's assurance outputs first —
+**Fresh round:** first apply the lost-reply reconciliation section below. If it
+finds a bound current attempt, inspect and route that attempt without deleting
+its evidence. Only after establishing that no current-attempt evidence must be
+preserved, delete the prior round's assurance outputs —
 `run-manifest.json`, `expectations.md`, `verdicts.json`, `screenshots/`,
 `console.ndjson`, `network.ndjson`, `blockers.md` (keep `impact.json`; only
 the spec stage rewrites it) — so no stale evidence can satisfy this round's
@@ -106,3 +109,41 @@ the explicit branches below.
 ## Spend
 
 Log one spend event per reviewer dispatch batch, per the dispatch convention: `factory log ITEM spend --data '{"provenance":"measured","stage":"assure","source":"factory-assure","dispatches":<n>,"tokens":{"total":<n>}}'` with harness-reported counts, or `"provenance":"proxy"` and no `tokens` key when the harness reports none. Never estimate.
+
+## Lost-reply reconciliation
+
+Read the capabilities skill's
+`references/disk-first-reconciliation.md`. Checkpoint every branch and base
+journey separately. Before each checkpoint, write the resolved merge-base SHA
+to `.factory/items/ITEM/assurance/reconciliation/JOURNEY-base-sha.txt`. Run
+`factory reconcile begin` before dispatching this child, using obligation
+`assure:branch:JOURNEY` or `assure:base:JOURNEY` and exact inputs
+`.factory/items/ITEM/assurance/impact.json`,
+`docs/factory/journeys/contracts/JOURNEY.md`, and the journey's exact
+`assurance/reconciliation/JOURNEY-base-sha.txt`; enumerate the exact structured
+`.factory/items/ITEM/assurance/journeys/JOURNEY/report.json` and every required
+screenshot, DOM, console, network, or transcript leaf as `--evidence`. Use the
+same canonical `--worktree CHECKOUT` at begin, discovery, and inspection when
+the walk is checkout-bound; otherwise omit it consistently.
+
+After dispatch, perform exactly one host-native wait, capped at 60 seconds. On
+an unanswered wait, or a `still running` re-entry, use the host adapter to
+establish that exact child's writer state as `active` or `terminal`, then run
+`factory reconcile inspect` before any failure accounting, retry, replacement,
+or deletion. If state cannot be established, stop. An active writer returns
+`still running` and causes no second wait, failure count, retry, replacement,
+or evidence mutation.
+
+Inspect before deleting any prior assurance round. Preserve all evidence bound
+to the current attempt. For a terminal partial journey, claim at most one
+continuation and cover only missing scenario coverage; never repeat scenarios
+whose exact structured report and typed evidence are complete. A complete
+transport result is not a verdict: read the report under the existing
+blindness, attribution, polish, and human-gate rules, and never infer a pass
+from screenshots or files alone.
+
+Before composing gate artifacts, rerouting, or transitioning, re-read the
+current item stage and complete current event log and perform only the normal
+side effects still missing. This recovery does not cover 0032's pool
+exhaustion, `no-synthesis` policy, whole-fan-out coordination, or arbitrary
+prior council runs.

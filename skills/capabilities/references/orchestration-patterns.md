@@ -61,3 +61,9 @@ These patterns assume nothing about the orchestrating model — they are how the
 ## See also
 
 `references/model-tiering.md` — which tier of model each of these patterns needs (transcription-tier implementers depend on pattern 1 being followed to the letter; pattern 4's whole-branch walk depends on the most-capable tier being the one doing it).
+
+`disk-first-reconciliation.md` — the begin-before-dispatch, one bounded
+host-native wait, writer-state inspection, and durable adoption protocol for a
+lost child reply. Its single-handoff recovery is deliberately narrower than
+0032: pool exhaustion, `no-synthesis`, whole-fan-out coordination, and arbitrary
+prior council runs remain excluded.

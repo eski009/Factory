@@ -35,6 +35,46 @@ With feasibility enabled, read the capabilities skill's `references/plan-feasibi
 
 At every subagent fan-out point for this item — in step 3, when each per-task implementer or reviewer dispatch (or batch) completes, and equally for the rework-path dispatches under Rework entry — the orchestrating session logs one spend event: `factory log ITEM spend --data '{"provenance":"measured","stage":"implement","source":"factory-implement","dispatches":<n>,"tokens":{"total":<n>}}'` (include `"input"`/`"output"` instead or additionally when the harness reports them) using the token counts the harness reports for those subagents. If the harness surfaces no token usage, log the same event with `"provenance":"proxy"` and **no** `tokens` key. Never estimate or invent token numbers; the orchestrator's own main-loop burn is never logged as measured. The engine neither requires nor verifies these events at gates — this is convention, not a gate.
 
+## Lost-reply reconciliation
+
+Read the capabilities skill's
+`references/disk-first-reconciliation.md`. Checkpoint the implementer and its
+fresh reviewer as two separate child obligations. Run `factory reconcile
+begin` before dispatching this child. For the implementer, the complete command
+is `factory reconcile begin ITEM --stage implement
+--obligation implement:task-N --input .factory/items/ITEM/plan.md
+.factory/items/ITEM/spec.md --evidence
+.factory/items/ITEM/reviews/task-N.md --worktree CHECKOUT --json`. Immediately
+before the reviewer dispatch, begin `implement:review-task-N` with those same
+exact plan/spec inputs, task evidence path, and canonical `--worktree CHECKOUT`
+binding. The begin checkpoint must exist before the child starts; use the
+same exact inputs, evidence, and worktree for discovery and inspection.
+
+After either dispatch, perform exactly one host-native wait, capped at 60
+seconds. On an unanswered wait, or a `still running` re-entry, use the host
+adapter to establish that exact child's writer state as `active` or `terminal`,
+then run `factory reconcile inspect` before any failure accounting, retry, fix
+dispatch, or replacement. If state cannot be established, stop. An active
+writer returns `still running` and causes no second wait, failure count, retry,
+fix, or replacement.
+
+For a terminal partial implementer, claim at most one continuation and preserve
+all committed and uncommitted changes; the continuation receives the original
+task, plan/spec hashes, ticket when enabled, and checkout, and performs only
+missing implementation or test work. A complete implementation whose reviewer
+has not been dispatched starts the separate reviewer checkpoint and dispatches
+the reviewer, never another implementer. Persist the implementer result and the
+reviewer's separate spec-compliance and quality verdicts in the task evidence;
+both the implementation and review verdicts are required. Commits, tests, plan
+checkboxes, or either verdict alone never mean pass.
+
+Before task finalization, re-read the current item stage and complete current
+event log and perform only the normal side effects still missing, including
+tests, evidence finalization, marker finalization, spend, completion, and the
+stage transition in their existing order. This recovery does not cover 0032's
+pool exhaustion, `no-synthesis` policy, whole-fan-out coordination, or
+arbitrary prior council runs.
+
 ## Notes
 
 - Never advance past a red suite — a false `implement.completed` would let a broken branch reach `review` looking finished.

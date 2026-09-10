@@ -299,6 +299,133 @@ class TestPluginCoherence(unittest.TestCase):
         self.assertIn("factory provision", ref)
         self.assertIn("factory cleanup", ref)
 
+    def test_lost_reply_reconciliation_is_wired_through_every_parent(self):
+        parent_paths = (
+            "skills/factory-dispatch/SKILL.md",
+            "skills/factory-implement/SKILL.md",
+            "skills/council-review/SKILL.md",
+            "skills/factory-review/SKILL.md",
+            "skills/factory-triage/SKILL.md",
+            "skills/factory-assure/SKILL.md",
+        )
+        for relative in parent_paths:
+            with self.subTest(skill=relative):
+                text = read(ROOT / relative)
+                self.assertIn("references/disk-first-reconciliation.md", text)
+                section = " ".join(
+                    text.split("## Lost-reply reconciliation", 1)[1].split())
+                lower = section.lower()
+                self.assertIn("factory reconcile begin", section)
+                self.assertIn("before dispatching this child", lower)
+                self.assertLess(
+                    lower.index("factory reconcile begin"),
+                    lower.index("before dispatching this child"))
+                self.assertEqual(section.count("exactly one host-native wait"), 1)
+                self.assertIn("60 seconds", section)
+                self.assertIn("host adapter", section)
+                self.assertIn("`active` or `terminal`", section)
+                self.assertIn("factory reconcile inspect", section)
+                self.assertIn("before any failure", section)
+                self.assertIn("active writer returns `still running`", section)
+                self.assertTrue(
+                    "no second wait" in section or "do not wait again" in section)
+                self.assertIn("retry", section)
+                self.assertIn("replacement", section)
+                self.assertIn("exact", section)
+                self.assertIn("--worktree", section)
+                self.assertIn("current item stage", section)
+                self.assertIn("complete current event log", section)
+                self.assertIn("only the normal side effects still missing", section)
+                for excluded in (
+                        "0032", "pool exhaustion", "`no-synthesis`",
+                        "whole-fan-out", "arbitrary prior council runs"):
+                    self.assertIn(excluded, section)
+                self.assertLess(
+                    section.index("exactly one host-native wait"),
+                    section.index("factory reconcile inspect"))
+                self.assertLess(
+                    section.index("factory reconcile inspect"),
+                    section.index("before any failure"))
+
+        dispatch = " ".join(
+            read(ROOT / "skills/factory-dispatch/SKILL.md").split())
+        self.assertNotIn("returned report is the only thing", dispatch)
+        self.assertIn("before dispatching this child in step 4", dispatch)
+
+        implement = " ".join(
+            read(ROOT / "skills/factory-implement/SKILL.md").split())
+        for exact in (
+                "implement:task-N", "implement:review-task-N",
+                ".factory/items/ITEM/plan.md",
+                ".factory/items/ITEM/spec.md",
+                ".factory/items/ITEM/reviews/task-N.md",
+                "--worktree CHECKOUT"):
+            self.assertIn(exact, implement)
+        self.assertIn("two separate child obligations", implement)
+        self.assertIn("committed and uncommitted changes", implement)
+        self.assertIn("only missing implementation or test work", implement)
+        self.assertIn("dispatches the reviewer, never another implementer", implement)
+        self.assertIn("both the implementation and review verdicts", implement)
+        self.assertIn("or either verdict alone never mean pass", implement)
+
+        council = " ".join(
+            read(ROOT / "skills/council-review/SKILL.md").split())
+        for exact in (
+                "council:round-N:ROLE", "council:synthesis-N",
+                "reviews/seed-context.md", "reviews/round-N/ROLE.md",
+                "reviews/synthesis-1.md", "reviews/synthesis.md"):
+            self.assertIn(exact, council)
+        self.assertIn("Checkpoint each selected seat separately", council)
+        self.assertIn("current attempt", council)
+        self.assertIn("dispatch only missing selected seats", council)
+        self.assertIn("never reconstruct a report", council)
+
+        review = " ".join(
+            read(ROOT / "skills/factory-review/SKILL.md").split())
+        self.assertIn("review:council-synthesis", review)
+        self.assertIn("continue the existing end-to-end walk and judgement", review)
+        self.assertIn("review:post-transition-learning", review)
+
+        triage = " ".join(
+            read(ROOT / "skills/factory-triage/SKILL.md").split())
+        self.assertIn("triage:council-synthesis", triage)
+        self.assertIn("triage judgement and finalization", triage)
+        self.assertIn("metadata or roadmap", triage)
+        self.assertIn("triage:post-transition-learning", triage)
+
+        assure = " ".join(
+            read(ROOT / "skills/factory-assure/SKILL.md").split())
+        for exact in (
+                "assure:branch:JOURNEY", "assure:base:JOURNEY",
+                ".factory/items/ITEM/assurance/impact.json",
+                "docs/factory/journeys/contracts/JOURNEY.md",
+                "assurance/reconciliation/JOURNEY-base-sha.txt",
+                ".factory/items/ITEM/assurance/journeys/JOURNEY/report.json"):
+            self.assertIn(exact, assure)
+        self.assertIn("Checkpoint every branch and base journey separately", assure)
+        self.assertIn("Inspect before deleting any prior assurance round", assure)
+        self.assertIn("only missing scenario coverage", assure)
+        self.assertIn("never infer a pass from screenshots", assure)
+
+    def test_disk_first_protocol_cross_links_and_preserves_0032_boundary(self):
+        capabilities = read(ROOT / "skills/capabilities/SKILL.md")
+        patterns = " ".join(read(
+            ROOT / "skills/capabilities/references/orchestration-patterns.md"
+        ).split())
+        protocol = " ".join(read(
+            ROOT / "skills/capabilities/references/"
+                   "disk-first-reconciliation.md"
+        ).split())
+        for text in (capabilities, patterns):
+            self.assertIn("disk-first-reconciliation.md", text)
+        for excluded in (
+                "pool exhaustion", "no-synthesis", "whole-fan-out",
+                "arbitrary prior council runs"):
+            self.assertIn(excluded, protocol)
+            self.assertIn(excluded, patterns)
+        self.assertIn("0032", protocol)
+        self.assertIn("0032", patterns)
+
     def test_plan_feasibility_skill_wiring_is_complete(self):
         reference = (ROOT / "skills/capabilities/references/"
                      "plan-feasibility.md")
