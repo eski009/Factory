@@ -260,6 +260,213 @@ class ReconciliationCliTest(ReconciliationFixture):
         self.assertEqual(repeated.stdout, self.expected_json(stopped))
 
 
+class ParentProtocolIntegrationTest(ReconciliationFixture):
+    def setUp(self):
+        super().setUp()
+        _git(self.repo, "checkout", "-q", "-b", f"factory/{self.item_id}")
+        self.spec_path = f".factory/items/{self.item_id}/spec.md"
+        self.write(self.spec_path, "# Spec\n\nImplementation contract.\n")
+        self.log_path = (
+            self.repo / ".factory/items" / self.item_id / "log.jsonl")
+
+    def checkpoint(self, obligation, evidence, *, inputs=None, worktree=None):
+        return reconciliation.begin(
+            self.repo, self.item_id, "plan", obligation,
+            inputs or [self.input_path, self.spec_path], evidence,
+            worktree=worktree)["attempt_id"]
+
+    def assert_result(self, result, classification, action):
+        self.assertEqual(
+            (result["classification"], result["action"]),
+            (classification, action), result)
+
+    def claim_path(self, attempt):
+        return (self.repo / ".factory/items" / self.item_id /
+                "reconciliation" / attempt / "continuations/claim.json")
+
+    def test_parent_protocol_replays_every_observed_lost_reply_seam(self):
+        initial_events = self.log_path.read_bytes()
+
+        committed_evidence = [
+            f".factory/items/{self.item_id}/worker/task-1.json"]
+        committed_attempt = self.checkpoint(
+            "implement:task-1", committed_evidence, worktree=self.repo)
+        tracked = self.repo / "seed.txt"
+        tracked.write_text("committed implementation delta\n", encoding="utf-8")
+        _git(self.repo, "add", "seed.txt")
+        _git(self.repo, "commit", "-q", "-m", "committed implementation")
+        committed_bytes = tracked.read_bytes()
+        committed = reconciliation.inspect(
+            self.repo, self.item_id, committed_attempt, "terminal", self.repo)
+        self.assert_result(committed, "partial", "continue")
+        committed_claim = reconciliation.claim_continuation(
+            self.repo, self.item_id, committed_attempt, committed)
+        self.assertEqual(committed_claim["action"], "continue")
+        self.assertEqual(tracked.read_bytes(), committed_bytes)
+        self.assertEqual(self.log_path.read_bytes(), initial_events)
+        self.assertTrue(self.claim_path(committed_attempt).is_file())
+
+        uncommitted_evidence = [
+            f".factory/items/{self.item_id}/worker/task-2.json"]
+        uncommitted_attempt = self.checkpoint(
+            "implement:task-2", uncommitted_evidence, worktree=self.repo)
+        tracked.write_text(
+            "uncommitted implementation delta\n", encoding="utf-8")
+        uncommitted_bytes = tracked.read_bytes()
+        uncommitted = reconciliation.inspect(
+            self.repo, self.item_id, uncommitted_attempt,
+            "terminal", self.repo)
+        self.assert_result(uncommitted, "partial", "continue")
+        uncommitted_claim = reconciliation.claim_continuation(
+            self.repo, self.item_id, uncommitted_attempt, uncommitted)
+        self.assertEqual(uncommitted_claim["action"], "continue")
+        self.assertEqual(tracked.read_bytes(), uncommitted_bytes)
+        self.assertEqual(self.log_path.read_bytes(), initial_events)
+        self.assertTrue(self.claim_path(uncommitted_attempt).is_file())
+        tracked.write_bytes(committed_bytes)
+
+        implementation_report = (
+            f".factory/items/{self.item_id}/worker/task-3.json")
+        implementation_attempt = self.checkpoint(
+            "implement:task-3", [implementation_report], worktree=self.repo)
+        self.write(implementation_report, '{"status":"complete"}\n')
+        implemented = reconciliation.inspect(
+            self.repo, self.item_id, implementation_attempt,
+            "terminal", self.repo)
+        self.assert_result(implemented, "complete", "adopt")
+
+        reviewer_report = (
+            f".factory/items/{self.item_id}/reviews/task-3.md")
+        reviewer_attempt = self.checkpoint(
+            "implement:review-task-3", [reviewer_report],
+            inputs=[self.input_path, self.spec_path, implementation_report],
+            worktree=self.repo)
+        missing_review = reconciliation.inspect(
+            self.repo, self.item_id, reviewer_attempt, "terminal", self.repo)
+        self.assert_result(missing_review, "absent", "count-failure")
+
+        seed = f".factory/items/{self.item_id}/reviews/seed-context.md"
+        self.write(seed, "current council seed\n")
+        seats = [
+            f".factory/items/{self.item_id}/reviews/round-1/{role}.md"
+            for role in ("product", "architecture", "engineering-quality")]
+        seats_attempt = self.checkpoint(
+            "review:council-round-1", seats, inputs=[seed])
+        for seat in seats:
+            self.write(seat, f"complete seat: {Path(seat).stem}\n")
+        complete_seats = reconciliation.inspect(
+            self.repo, self.item_id, seats_attempt, "terminal")
+        self.assert_result(complete_seats, "complete", "adopt")
+
+        synthesis = f".factory/items/{self.item_id}/reviews/synthesis.md"
+        synthesis_attempt = self.checkpoint(
+            "review:council-synthesis", [synthesis], inputs=[seed, *seats])
+        self.write(synthesis, "# Complete synthesis\n\nNo blocking findings.\n")
+        complete_synthesis = reconciliation.inspect(
+            self.repo, self.item_id, synthesis_attempt, "terminal")
+        self.assert_result(complete_synthesis, "complete", "adopt")
+
+        impact = f".factory/items/{self.item_id}/assurance/impact.json"
+        contract = "docs/factory/journeys/contracts/J-001.md"
+        base_sha = (
+            f".factory/items/{self.item_id}/assurance/"
+            "reconciliation/J-001-base-sha.txt")
+        self.write(impact, '{"journeys":["J-001"]}\n')
+        self.write(contract, "# J-001\n\n## Run & fixtures\n\nRun it.\n")
+        self.write(base_sha, _git(self.repo, "rev-parse", "HEAD").stdout)
+        assurance_report = (
+            f".factory/items/{self.item_id}/assurance/"
+            "journeys/J-001/report.json")
+        assurance_evidence = (
+            f".factory/items/{self.item_id}/assurance/"
+            "transcripts/J-001-S1.txt")
+        assurance_attempt = self.checkpoint(
+            "assure:J-001", [assurance_report, assurance_evidence],
+            inputs=[impact, contract, base_sha])
+        self.write(assurance_evidence, "$ app --journey J-001\npartial\n")
+        partial_assurance = reconciliation.inspect(
+            self.repo, self.item_id, assurance_attempt, "terminal")
+        self.assert_result(partial_assurance, "partial", "continue")
+
+        stable_input = (self.repo / self.input_path).read_bytes()
+        stale_attempt = self.checkpoint("plan:stale", [
+            f".factory/items/{self.item_id}/reviews/stale.json"])
+        (self.repo / self.input_path).write_bytes(stable_input + b"changed\n")
+        stale = reconciliation.inspect(
+            self.repo, self.item_id, stale_attempt, "terminal")
+        self.assert_result(stale, "contradictory", "stop")
+        (self.repo / self.input_path).write_bytes(stable_input)
+
+        wrong_checkout_attempt = self.checkpoint(
+            "implement:wrong-checkout", [
+                f".factory/items/{self.item_id}/worker/wrong.json"],
+            worktree=self.repo)
+        wrong_checkout = self.repo / "not-the-registered-worktree"
+        wrong_checkout.mkdir()
+        wrong = reconciliation.inspect(
+            self.repo, self.item_id, wrong_checkout_attempt,
+            "terminal", wrong_checkout)
+        self.assert_result(wrong, "contradictory", "stop")
+
+        active_evidence = [
+            f".factory/items/{self.item_id}/reviews/active.json",
+            f".factory/items/{self.item_id}/reviews/active-tests.json"]
+        active_attempt = self.checkpoint("review:active", active_evidence)
+        self.write(active_evidence[0], '{"status":"running"}\n')
+        active = reconciliation.inspect(
+            self.repo, self.item_id, active_attempt, "active")
+        self.assert_result(active, "partial", "wait-active")
+        self.assertFalse(self.claim_path(active_attempt).exists())
+
+        repeated_evidence = [
+            f".factory/items/{self.item_id}/reviews/partial.json",
+            f".factory/items/{self.item_id}/reviews/partial-tests.json"]
+        repeated_attempt = self.checkpoint(
+            "review:partial", repeated_evidence)
+        self.write(repeated_evidence[0], '{"status":"partial"}\n')
+        unchanged_partial = reconciliation.inspect(
+            self.repo, self.item_id, repeated_attempt, "terminal")
+        self.assert_result(unchanged_partial, "partial", "continue")
+        claims = [
+            reconciliation.claim_continuation(
+                self.repo, self.item_id, repeated_attempt,
+                unchanged_partial)
+            for _ in range(2)]
+        self.assertEqual([claim["action"] for claim in claims],
+                         ["continue", "stop"])
+        self.assertEqual(claims[1]["reason"], "already-claimed")
+        self.assertEqual(
+            list(self.claim_path(repeated_attempt).parent.glob("claim.json")),
+            [self.claim_path(repeated_attempt)])
+
+        transition_attempt = self.checkpoint(
+            "plan:finalize", [
+                f".factory/items/{self.item_id}/reviews/final.json"])
+        meta, body = items.load_item(self.repo, self.item_id)
+        meta["stage"] = "implement"
+        meta["updated"] = "2026-09-08T01:00:00Z"
+        items.save_item(self.repo, meta, body)
+        logs.append_event(
+            self.repo, self.item_id, "stage.advance",
+            {"from": "plan", "to": "implement"})
+        transitioned_events = self.log_path.read_bytes()
+        transitioned = reconciliation.inspect(
+            self.repo, self.item_id, transition_attempt, "terminal")
+        self.assert_result(transitioned, "complete", "adopt")
+        self.assertEqual(self.log_path.read_bytes(), transitioned_events)
+        stage_advances = [
+            event for event in logs.read_events(self.repo, self.item_id)
+            if event["event"] == "stage.advance"]
+        self.assertEqual(len(stage_advances), 1)
+
+        no_authorization = (
+            missing_review, stale, wrong, active, transitioned,
+            complete_seats, complete_synthesis, implemented)
+        self.assertNotIn("continue", [row["action"]
+                                      for row in no_authorization])
+        self.assertEqual(self.log_path.read_bytes(), transitioned_events)
+
+
 class BeginDiscoverTest(ReconciliationFixture):
     def test_unsafe_duplicate_and_overlapping_paths_are_refused(self):
         bad_inputs = ("/absolute", "../escape", "a//b", "a\\b", "")
@@ -636,6 +843,28 @@ class WorktreeStateTest(ReconciliationFixture):
     def setUp(self):
         super().setUp()
         _git(self.repo, "checkout", "-q", "-b", f"factory/{self.item_id}")
+
+    def test_reconciliation_metadata_is_not_checkout_progress(self):
+        attempt = self.begin(worktree=self.repo)["attempt_id"]
+        unchanged = self.inspect(attempt, worktree=self.repo)
+        self.assertEqual(
+            (unchanged["classification"], unchanged["action"]),
+            ("absent", "count-failure"))
+
+        (self.repo / "seed.txt").write_text(
+            "real child progress\n", encoding="utf-8")
+        partial = self.inspect(attempt, worktree=self.repo)
+        self.assertEqual(
+            (partial["classification"], partial["action"]),
+            ("partial", "continue"))
+        claimed = reconciliation.claim_continuation(
+            self.repo, self.item_id, attempt, partial)
+        repeated = reconciliation.claim_continuation(
+            self.repo, self.item_id, attempt, partial)
+        self.assertEqual(claimed["action"], "continue")
+        self.assertEqual(
+            (repeated["action"], repeated["reason"]),
+            ("stop", "already-claimed"))
 
     def test_further_edit_to_dirty_file_changes_checkout_fingerprint(self):
         dirty = self.repo / "seed.txt"

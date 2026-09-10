@@ -25,3 +25,32 @@ Run this skill in a fresh context using the capabilities skill's `references/hos
 7. Update `docs/factory/roadmap.md`: one line per item, in priority order, following the file's existing format (`- [priority] <item-id> <title> (stage)`).
 8. File bids for any durable learning worth remembering past this item (market read, scope rationale, a newly confirmed constraint) via the `council-judgement` skill. Triage findings about this item alone don't need a bid — only findings that should outlive it.
 9. Exit per the Contract above: `spec` if building, `blocked` + packet if not.
+
+## Lost-reply reconciliation
+
+Read the capabilities skill's
+`references/disk-first-reconciliation.md`. Run `factory reconcile begin`
+before dispatching this child, treating the council invocation as
+`triage:council-synthesis`, with exact input
+`.factory/items/ITEM/reviews/seed-context.md`, exact evidence
+`.factory/items/ITEM/reviews/synthesis.md`, and no `--worktree` because the
+council is repository-only. Use that same exact input/evidence binding for
+discovery and inspection; any future checkout-bound child must use the same
+canonical `--worktree CHECKOUT` at begin, discovery, and inspection.
+
+After dispatch, perform exactly one host-native wait, capped at 60 seconds. On
+an unanswered wait, or a `still running` re-entry, use the host adapter to
+establish that exact child's writer state as `active` or `terminal`, then run
+`factory reconcile inspect` before any failure accounting, retry, or
+replacement. If state cannot be established, stop. An active writer returns
+`still running` and causes no second wait, failure count, retry, or replacement.
+
+Adopt a terminal complete current-attempt synthesis, then continue the existing
+triage judgement and finalization; transport completion is not a build verdict.
+Before writing triage, editing item metadata or roadmap, advancing, creating a
+packet, or filing bids, re-read the current item stage and complete current
+event log and perform only the normal side effects still missing. If the
+transition already landed, adopt it; retain `triage:post-transition-learning`
+as a named missing obligation and file only learnings not already recorded.
+This recovery does not cover 0032's pool exhaustion, `no-synthesis` policy,
+whole-fan-out coordination, or arbitrary prior council runs.

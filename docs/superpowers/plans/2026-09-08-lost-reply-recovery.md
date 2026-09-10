@@ -403,50 +403,50 @@ factory reconcile inspect ITEM ATTEMPT --writer-state active|terminal
 
 ## Task 3 — Wire every observed seam and prove integration
 
-- [ ] Update `skills/factory-dispatch/SKILL.md`: create a stage checkpoint
+- [x] Update `skills/factory-dispatch/SKILL.md`: create a stage checkpoint
   before step-4 dispatch; after one 60-second unanswered wait or on a returned
   “still running” re-entry, inspect before failure accounting or replacement.
   Remove “returned report is the only thing” as an authority claim.
-- [ ] Update `skills/factory-implement/SKILL.md`: checkpoint each implementer
+- [x] Update `skills/factory-implement/SKILL.md`: checkpoint each implementer
   and reviewer separately using plan/spec hashes, canonical worktree, and the
   task evidence path. A partial implementation preserves committed and
   uncommitted changes; after a terminal writer it claims one continuation for
   only missing implementation/test work. A complete implementation with no
   review dispatches the reviewer, not another implementer. Both verdicts remain
   required; commits, tests, or checkboxes alone never mean pass.
-- [ ] Update `skills/council-review/SKILL.md`: checkpoint each selected seat
+- [x] Update `skills/council-review/SKILL.md`: checkpoint each selected seat
   against seed hash and its exact round file, then checkpoint synthesis. Reuse
   only current-attempt files. Dispatch only missing seats within that same
   attempt; do not add pool/no-synthesis recovery or reconstruct a report that
   the read-only seat never returned.
-- [ ] Update `skills/factory-review/SKILL.md` and
+- [x] Update `skills/factory-review/SKILL.md` and
   `skills/factory-triage/SKILL.md`: checkpoint their council child and adopt a
   current synthesis before continuing the existing walk/judgement/triage
   finalization. Re-read stage/events so review outcomes, transitions, roadmap
   edits, and bids are not duplicated. Post-transition learning remains a named
   missing obligation rather than being silently skipped.
-- [ ] Update `skills/factory-assure/SKILL.md`: checkpoint every journey against
+- [x] Update `skills/factory-assure/SKILL.md`: checkpoint every journey against
   impact/contract/base-SHA inputs and its exact structured report/evidence
   paths. Inspect before deleting a prior round; preserve current-attempt
   evidence and continue only missing scenario coverage. Do not infer verdicts
   from screenshots or weaken blindness/human gates.
-- [ ] Cross-link the protocol from `skills/capabilities/SKILL.md` and
+- [x] Cross-link the protocol from `skills/capabilities/SKILL.md` and
   `skills/capabilities/references/orchestration-patterns.md`.
-- [ ] Extend `tests/test_plugin_coherence.py` to assert every parent skill
+- [x] Extend `tests/test_plugin_coherence.py` to assert every parent skill
   names the begin-before-dispatch and inspect-before-retry order, the 60-second
   single wait, active-writer stop, exact evidence binding, and the 0032 scope
   exclusions. These are static contract checks; behavioral classification and
   continuation proofs stay in `tests/test_reconciliation.py`.
-- [ ] Add an integration test in `tests/test_reconciliation.py` that replays:
+- [x] Add an integration test in `tests/test_reconciliation.py` that replays:
   committed and uncommitted implementation deltas, missing reviewer evidence,
   complete council seats, completed synthesis, partial assurance evidence,
   interrupted finalization with an already-recorded transition, stale input,
   wrong checkout, active writer, and repeated unchanged partial evidence.
   Assert classifications, continuation counts, unchanged worktree bytes,
   unchanged existing events, and zero authorization for duplicate dispatch.
-- [ ] Run `python3 -m unittest tests.test_reconciliation tests.test_plugin_coherence -v`.
-- [ ] Run `python3 -m unittest discover -s tests -v`.
-- [ ] Run `git diff --check` and verify only this plan, the new engine/tests/
+- [x] Run `python3 -m unittest tests.test_reconciliation tests.test_plugin_coherence -v`.
+- [x] Run `python3 -m unittest discover -s tests -v`.
+- [x] Run `git diff --check` and verify only this plan, the new engine/tests/
   reference, `factory.py`, the six named parent skills, and the two capability
   references changed.
 

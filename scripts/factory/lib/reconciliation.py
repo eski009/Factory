@@ -777,22 +777,37 @@ def _feed_record(digest, label, raw):
     digest.update(raw)
 
 
-def _capture_checkout_state(checkout, chain, checkout_index, ops=DEFAULT_OPS):
+def _checkout_pathspec(item_id):
+    return (
+        "--", ".",
+        f":(top,exclude,literal).factory/items/{item_id}/reconciliation")
+
+
+def _capture_checkout_state(checkout, item_id, chain, checkout_index,
+                            ops=DEFAULT_OPS):
+    # Checkpoint and claim publications live inside the implementation
+    # checkout in ordinary Factory repositories. They are engine bookkeeping,
+    # not child progress, and including them would make every new checkpoint
+    # look partial and make a claim invalidate its own inspected fingerprint.
+    checkout_paths = _checkout_pathspec(item_id)
     head = _run_git(checkout, "rev-parse", "--verify", "HEAD").strip()
     if not re.fullmatch(rb"[0-9a-f]{40}", head):
         raise ReconciliationError("checkout HEAD is invalid")
     status_raw = _run_git(
-        checkout, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+        checkout, "status", "--porcelain=v1", "-z", "--untracked-files=all",
+        *checkout_paths)
     unstaged = _run_git(
         checkout, "diff", "--no-ext-diff", "--no-textconv", "--binary",
-        "HEAD", "--")
+        "HEAD", *checkout_paths)
     staged = _run_git(
         checkout, "diff", "--cached", "--no-ext-diff", "--no-textconv",
-        "--binary", "HEAD", "--")
+        "--binary", "HEAD", *checkout_paths)
     untracked_raw = _run_git(
-        checkout, "ls-files", "--others", "--exclude-standard", "-z")
+        checkout, "ls-files", "--others", "--exclude-standard", "-z",
+        *checkout_paths)
     tracked_raw = _run_git(
-        checkout, "diff", "--name-only", "--no-renames", "-z", "HEAD", "--")
+        checkout, "diff", "--name-only", "--no-renames", "-z", "HEAD",
+        *checkout_paths)
     untracked_paths = [
         os.fsdecode(value) for value in untracked_raw.split(b"\0") if value]
     records = [
@@ -813,7 +828,7 @@ def _checkout_snapshot(repo_path, item_id, supplied, ops=DEFAULT_OPS,
     checkout, checkout_index, chain = _open_absolute_chain(checkout, ops)
     try:
         captured = _capture_checkout_state(
-            checkout, chain, checkout_index, ops)
+            checkout, item_id, chain, checkout_index, ops)
         if durable:
             if (type(baseline_head) is not str
                     or re.fullmatch(r"[0-9a-f]{40}", baseline_head) is None):
@@ -828,7 +843,7 @@ def _checkout_snapshot(repo_path, item_id, supplied, ops=DEFAULT_OPS,
             current_head = captured[0].decode("ascii")
             committed_paths = _run_git(
                 checkout, "diff", "--name-only", "--no-renames", "-z",
-                baseline_head, current_head, "--")
+                baseline_head, current_head, *_checkout_pathspec(item_id))
             changed_paths.update(
                 os.fsdecode(value) for value in committed_paths.split(b"\0")
                 if value)
@@ -844,7 +859,7 @@ def _checkout_snapshot(repo_path, item_id, supplied, ops=DEFAULT_OPS,
                 raise ReconciliationError(
                     "checkout observation could not be made durable") from exc
         if _capture_checkout_state(
-                checkout, chain, checkout_index, ops) != captured:
+                checkout, item_id, chain, checkout_index, ops) != captured:
             raise ReconciliationError("checkout changed while snapshotting")
         (head, status_raw, unstaged, staged, untracked_raw, tracked_raw,
          records) = captured

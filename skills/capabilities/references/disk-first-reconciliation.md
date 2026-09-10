@@ -5,6 +5,11 @@ repository checkpoint and the durable state written after it are the recovery
 authority; a missing transport reply is not evidence that the child did no
 work.
 
+This protocol covers one parent-child handoff and its current attempt only.
+Item 0032 remains responsible for pool exhaustion, `no-synthesis` policy,
+whole-fan-out coordination across attempts, and resuming arbitrary prior
+council runs.
+
 Resolve the runner exactly as described by `host-adapter.md`. The commands
 below use `FACTORY_PLUGIN_ROOT` as the resolved plugin root:
 

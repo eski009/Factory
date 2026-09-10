@@ -40,10 +40,9 @@ Run these steps in order, every stage transition, in every mode:
 4. **Invoke the mapped skill in a fresh context** for the item, passing the item
    id as the skill argument. Use the host adapter: an isolated Claude task or a
    fresh Codex subagent. It sees nothing of this session — the argument plus
-   on-disk state is its entire input, and its returned report is the only thing
-   that comes back. Let the skill do the stage's work and its own `factory
-   advance` on success; read its returned report for the outcome and treat a
-   reported failure or pause exactly as the stopping rules below prescribe.
+   on-disk state is its entire input. Let the skill do the stage's work and its
+   own `factory advance` on success; reconcile its report with the durable
+   checkpoint and repository state before applying the stopping rules below.
 5. **Re-check mode:**
    - step: stop here.
    - item: continue with the same tracked item ID at its new stage — go back to step 0. Stop only when that item itself reaches `done`, `blocked`, or `waiting-human`; never switch to a different item mid-run just because `factory next` would now return one.
@@ -62,6 +61,35 @@ Run these steps in order, every stage transition, in every mode:
 For any fan-out or design rendering, follow the capabilities skill.
 
 **Parallel implement pool.** When the **Headless worker** capability is present (capabilities skill) and more than one actionable item is at `implement`, you MAY hand implementation to the `factory-workers` skill instead of running factory-implement one item at a time: it runs a bounded pool of out-of-process workers (one worktree each) and advances each through the same `review` gate. It is an opportunistic throughput upgrade — the top-K items are assumed independent (worktree isolation makes a wrong guess a merge conflict at `ship`, not corruption). Without the capability, or with only one item at `implement`, stay on the normal per-item path.
+
+## Lost-reply reconciliation
+
+Read the capabilities skill's
+`references/disk-first-reconciliation.md`. Run `factory reconcile begin` for
+obligation `dispatch:STAGE` before dispatching this child in step 4; the begin
+checkpoint must exist before the child starts. Give `--input` every exact
+repository-relative input named by the mapped stage contract and `--evidence`
+every exact artifact path that contract promises for this invocation. Never
+substitute a directory, glob, transcript, or returned summary for those paths.
+If the child is bound to an existing checkout, resolve its canonical path
+before `begin`, pass it as `--worktree CHECKOUT`, and use that same binding for
+discovery and inspection; otherwise omit `--worktree` consistently.
+
+After dispatch, perform exactly one host-native wait, capped at 60 seconds. On
+an unanswered wait, or when re-entering after this stage returned `still
+running`, use the host adapter to establish the exact child's writer state as
+`active` or `terminal`, then run `factory reconcile inspect` before any failure
+accounting, retry, or replacement. If the host cannot establish either state,
+stop. An active writer returns `still running` from this invocation: do not
+wait again, count failure, retry, or dispatch a replacement. A later invocation
+discovers the same exact attempt and inspects it before considering new work.
+
+For a terminal writer, follow the protocol matrix exactly. Re-read the current
+item stage and complete current event log before finalization, and perform only
+the normal side effects still missing; an existing stage transition is adopted,
+not replayed. This recovery does not cover 0032's pool exhaustion,
+`no-synthesis` policy, whole-fan-out coordination, or arbitrary prior council
+runs.
 
 ### Spend logging
 
