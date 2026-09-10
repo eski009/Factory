@@ -24,6 +24,195 @@ def load_replay():
 replay = load_replay()
 
 
+class FailClosedCliTest(unittest.TestCase):
+    def run_cli(self, *args):
+        return subprocess.run([sys.executable, str(SCRIPT), *map(str, args)],
+                              capture_output=True, text=True)
+
+    def test_corrupt_fixture_json_preserves_accepted_report(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            bad = root / "bad.json"
+            bad.write_text("{broken", encoding="utf-8")
+            output = root / "report.md"
+            output.write_bytes(b"accepted report\n")
+            result = self.run_cli("replay", "--fixture", bad,
+                                  "--output", output)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("cannot read frozen fixture", result.stderr)
+            self.assertEqual(output.read_bytes(), b"accepted report\n")
+
+    def test_missing_required_record_with_recomputed_digest_still_refuses(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            document = json.loads(FIXTURE.read_text(encoding="utf-8"))
+            frozen = document["items"][replay.ITEM_0015]
+            frozen["records"] = [row for row in frozen["records"]
+                                 if row["event"] != "item.created"]
+            frozen["record_count"] = len(frozen["records"])
+            frozen["records_sha256"] = replay.records_digest(frozen["records"])
+            bad = root / "missing-record.json"
+            bad.write_text(json.dumps(document), encoding="utf-8")
+            output = root / "report.md"
+            output.write_bytes(b"accepted report\n")
+            result = self.run_cli("replay", "--fixture", bad,
+                                  "--output", output)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("exactly one item.created", result.stderr)
+            self.assertEqual(output.read_bytes(), b"accepted report\n")
+
+    def test_changed_manifest_refuses_instead_of_changing_denominator(self):
+        with tempfile.TemporaryDirectory() as td:
+            bad = Path(td) / "changed.json"
+            document = json.loads(FIXTURE.read_text(encoding="utf-8"))
+            document["cohorts"]["primary"]["ids"].append("9999-future-done")
+            bad.write_text(json.dumps(document), encoding="utf-8")
+            result = self.run_cli("replay", "--fixture", bad)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("cohort manifests or labels", result.stderr)
+            self.assertEqual(result.stdout, "")
+
+    def test_verify_detects_report_drift(self):
+        with tempfile.TemporaryDirectory() as td:
+            bad_report = Path(td) / "report.md"
+            bad_report.write_text("misleading replacement\n", encoding="utf-8")
+            result = self.run_cli("verify", "--fixture", FIXTURE,
+                                  "--report", bad_report)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("accepted report differs from replay", result.stderr)
+
+    def test_replay_succeeds_without_factory_directory_or_network(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            copied_fixture = root / FIXTURE.name
+            copied_fixture.write_bytes(FIXTURE.read_bytes())
+            first = self.run_cli("replay", "--fixture", copied_fixture)
+            second = self.run_cli("replay", "--fixture", copied_fixture)
+            self.assertEqual(first.returncode, 0)
+            self.assertEqual(first.stdout, second.stdout)
+            self.assertNotIn(str(ROOT / ".factory"), first.stdout)
+
+
+
+class AcceptedSweepTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.document = replay.load_fixture(FIXTURE)
+        cls.profiles = replay.build_profiles(cls.document)
+
+    def test_first_implement_comparison_facts_are_exact(self):
+        facts = replay.comparison_facts(self.document)
+        self.assertEqual(facts["0015"], {
+            "adjacent_gaps": 11, "positive_gaps": 10,
+            "uncapped_seconds": 10046, "cap_1_score": 10,
+        })
+        self.assertEqual(facts["0016"], {
+            "adjacent_gaps": 15, "positive_gaps": 13,
+            "uncapped_seconds": 9499, "cap_1_score": 13,
+        })
+
+    def test_every_integer_cap_has_the_exact_separator_state(self):
+        for cap in range(1, 43728):
+            row = replay.sweep_row(self.profiles, cap)
+            with self.subTest(cap=cap):
+                if cap <= 6204:
+                    self.assertEqual(row["threshold"], row["score_0015"] + 1)
+                    self.assertGreater(row["score_0016"], row["score_0015"])
+                elif cap == 6205:
+                    self.assertEqual((row["score_0015"], row["score_0016"]),
+                                     (9499, 9499))
+                    self.assertIsNone(row["threshold"])
+                else:
+                    self.assertGreater(row["score_0015"], row["score_0016"])
+                    self.assertIsNone(row["threshold"])
+
+    def test_representative_caps_are_exact_and_stable(self):
+        analysis = replay.analyse(self.document)
+        self.assertEqual([row["cap"] for row in analysis["representative_rows"]],
+                         [1, 30, 60, 120, 300, 600, 900, 1800, 3600,
+                          5000, 6000, 6204, 6205, 7200])
+
+    def test_through_1800_only_0016_is_parked_in_both_cohorts(self):
+        for cap in (1, 30, 60, 120, 300, 600, 900, 1800):
+            row = replay.sweep_row(self.profiles, cap)
+            self.assertEqual(row["primary_parked"], [replay.ITEM_0016])
+            self.assertEqual(row["secondary_parked"], [replay.ITEM_0016])
+
+    def test_6204_has_exact_independent_parked_sets(self):
+        row = replay.sweep_row(self.profiles, 6204)
+        self.assertEqual(row["threshold"], 9499)
+        self.assertEqual(row["primary_parked"], [
+            "0002-claude-design-mcp-as-the-single-source-o",
+            "0003-interactive-decision-pages-clickable-cho",
+            replay.ITEM_0016,
+        ])
+        self.assertEqual(row["secondary_parked"], [
+            "0002-claude-design-mcp-as-the-single-source-o",
+            "0003-interactive-decision-pages-clickable-cho",
+            replay.ITEM_0016,
+            "0031-the-cost-packet-s-decision-copy-is-churn",
+        ])
+
+    def test_no_separator_has_no_threshold_and_no_parked_set(self):
+        for cap in (6205, 7200):
+            row = replay.sweep_row(self.profiles, cap)
+            self.assertIsNone(row["threshold"])
+            self.assertIsNone(row["primary_parked"])
+            self.assertIsNone(row["secondary_parked"])
+
+
+class ReportTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.document = replay.load_fixture(FIXTURE)
+        cls.rendered = replay.render_report(cls.document)
+
+    def test_headline_conclusion_and_limits_are_plain(self):
+        required = (
+            "# Within-corpus separation exists; no runaway threshold is calibrated or recommended",
+            "Primary cohort: n=13",
+            "Secondary snapshot: n=16@a1c04a5",
+            "the difference is 547 seconds",
+            "0016 completed and shipped",
+            "Neither cohort contains a labelled positive runaway",
+            "materially event-cadence-driven",
+            "external ParkSnap run is absent and not reconstructed",
+            "Conclusion: within-corpus separation exists; no runaway threshold is calibrated or recommended.",
+        )
+        for text in required:
+            with self.subTest(text=text):
+                self.assertIn(text, " ".join(self.rendered.split()))
+
+    def test_report_has_separate_tables_and_exact_boundary_rows(self):
+        self.assertIn("## Primary representative rows — n=13", self.rendered)
+        self.assertIn("## Secondary representative rows — n=16@a1c04a5", self.rendered)
+        self.assertEqual(self.rendered.count("| 6,204 | 9,498 | 9,499 | 9,499 |"), 2)
+        self.assertEqual(self.rendered.count(
+            "| 6,205 | 9,499 | 9,499 | none | no separating threshold |"), 2)
+        self.assertEqual(self.rendered.count(
+            "| 7,200 | 10,046 | 9,499 | none | no separating threshold |"), 2)
+
+    def test_report_discloses_each_of_the_sixteen_sources(self):
+        section = self.rendered.split("## Source-input disclosure", 1)[1]
+        for item_id in replay.SECONDARY_IDS:
+            self.assertEqual(section.count(f"| {item_id} |"), 1)
+        self.assertIn("All 16 declared logs are present", section)
+        self.assertTrue(all(not frozen["disclosure"][key]
+                            for frozen in self.document["items"].values()
+                            for key in replay.DISCLOSURE_KEYS))
+
+    def test_replay_stdout_is_byte_identical_twice(self):
+        command = [sys.executable, str(SCRIPT), "replay", "--fixture", str(FIXTURE)]
+        first = subprocess.run(command, check=True, capture_output=True).stdout
+        second = subprocess.run(command, check=True, capture_output=True).stdout
+        self.assertEqual(first, second)
+        self.assertEqual(first, self.rendered.encode("utf-8"))
+
+    def test_checked_in_report_is_exact_generated_output(self):
+        self.assertEqual(REPORT.read_bytes(), self.rendered.encode("utf-8"))
+
+
+
 def event(ts, name="spend", data=None):
     row = {"event": name, "ts": ts}
     if data is not None:

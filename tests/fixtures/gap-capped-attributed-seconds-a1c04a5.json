@@ -1,0 +1,4752 @@
+{
+  "provenance": {
+    "snapshot_date": "2026-09-07",
+    "source_revision": "a1c04a5564124fdd9078c6d051085570a32bbd6e",
+    "source_label": "a1c04a5",
+    "source": "gitignored .factory/items/<declared-id>/log.jsonl",
+    "park_snap": "external, absent, and not reconstructed"
+  },
+  "cohorts": {
+    "primary": {
+      "machine_label": "primary",
+      "human_label": "n=13",
+      "ids": [
+        "0001-focus-group-research-structured-intervie",
+        "0002-claude-design-mcp-as-the-single-source-o",
+        "0003-interactive-decision-pages-clickable-cho",
+        "0004-per-item-cost-meter-measure-and-report-t",
+        "0007-tolerant-log-reading-corrupt-log-jsonl-l",
+        "0008-design-mirror-refinements-pull-bid-diver",
+        "0009-finish-the-never-bricks-promise-crash-pr",
+        "0010-factory-bug-command-understand-replicate",
+        "0012-adapt-the-design-options-decision-block-",
+        "0013-assure-attribution-gate-only-on-regressi",
+        "0015-approach-rejected-a-redesign-loop-back-t",
+        "0016-cost-circuit-breaker-on-engine-authorita",
+        "0025-round-scope-all-rework-gates-implement-c"
+      ]
+    },
+    "secondary": {
+      "machine_label": "secondary",
+      "human_label": "n=16@a1c04a5",
+      "ids": [
+        "0001-focus-group-research-structured-intervie",
+        "0002-claude-design-mcp-as-the-single-source-o",
+        "0003-interactive-decision-pages-clickable-cho",
+        "0004-per-item-cost-meter-measure-and-report-t",
+        "0007-tolerant-log-reading-corrupt-log-jsonl-l",
+        "0008-design-mirror-refinements-pull-bid-diver",
+        "0009-finish-the-never-bricks-promise-crash-pr",
+        "0010-factory-bug-command-understand-replicate",
+        "0012-adapt-the-design-options-decision-block-",
+        "0013-assure-attribution-gate-only-on-regressi",
+        "0015-approach-rejected-a-redesign-loop-back-t",
+        "0016-cost-circuit-breaker-on-engine-authorita",
+        "0025-round-scope-all-rework-gates-implement-c",
+        "0027-packet-respond-falls-through-to-factory-",
+        "0031-the-cost-packet-s-decision-copy-is-churn",
+        "0033-bugs-run-less-pipeline-make-stage-member"
+      ]
+    }
+  },
+  "items": {
+    "0001-focus-group-research-structured-intervie": {
+      "records": [
+        {
+          "event": "item.created",
+          "ts": "2026-07-10T15:20:11Z"
+        },
+        {
+          "data": {
+            "from": "idea",
+            "to": "triage"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T18:11:59Z"
+        },
+        {
+          "data": {
+            "priority": 1
+          },
+          "event": "priority.set",
+          "ts": "2026-07-10T18:16:42Z"
+        },
+        {
+          "data": {
+            "from": "triage",
+            "to": "spec"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T18:18:32Z"
+        },
+        {
+          "data": {
+            "from": "spec",
+            "to": "plan"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T18:25:40Z"
+        },
+        {
+          "data": {
+            "from": "plan",
+            "to": "implement"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T18:28:21Z"
+        },
+        {
+          "data": {
+            "tasks": 4,
+            "tests": "216 unittest OK (212 pre-existing + 4 new structural); scope audit clean"
+          },
+          "event": "implement.completed",
+          "ts": "2026-07-10T18:43:20Z"
+        },
+        {
+          "data": {
+            "from": "implement",
+            "to": "review"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T18:43:20Z"
+        },
+        {
+          "event": "review.approved",
+          "ts": "2026-07-10T18:48:46Z"
+        },
+        {
+          "data": {
+            "from": "review",
+            "to": "verify"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T18:48:46Z"
+        },
+        {
+          "data": {
+            "criteria": "16/16",
+            "tests": "216 unittest OK"
+          },
+          "event": "verify.green",
+          "ts": "2026-07-10T18:58:19Z"
+        },
+        {
+          "data": {
+            "from": "verify",
+            "to": "ship"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T18:58:19Z"
+        },
+        {
+          "data": {
+            "mode": "auto",
+            "ref": "a682d9b"
+          },
+          "event": "ship.merged",
+          "ts": "2026-07-10T18:59:10Z"
+        },
+        {
+          "data": {
+            "from": "ship",
+            "to": "done"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T18:59:10Z"
+        }
+      ],
+      "record_count": 14,
+      "records_sha256": "e74ab3c5337a06a46ed60a4cf2458f73ec1fc7d0903bc91c320d75b9ccd0ebdf",
+      "source_log_sha256": "72e752dd5cde5aaf59ba2f358c7034fcc3e829ff3c33bbe41ce86620526f0367",
+      "disclosure": {
+        "present": true,
+        "parseable_timestamped_records": 14,
+        "blank_lines": 0,
+        "corrupt_json_lines": 0,
+        "missing_timestamps": 0,
+        "unparseable_timestamps": 0
+      }
+    },
+    "0002-claude-design-mcp-as-the-single-source-o": {
+      "records": [
+        {
+          "event": "item.created",
+          "ts": "2026-07-10T15:46:25Z"
+        },
+        {
+          "data": {
+            "priority": 3
+          },
+          "event": "priority.set",
+          "ts": "2026-07-10T18:16:42Z"
+        },
+        {
+          "data": {
+            "from": "idea",
+            "to": "triage"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T21:41:10Z"
+        },
+        {
+          "data": {
+            "priority": 4
+          },
+          "event": "priority.set",
+          "ts": "2026-07-10T21:45:25Z"
+        },
+        {
+          "data": {
+            "from": "triage",
+            "to": "spec"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T21:46:00Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "factory-spec",
+            "stage": "spec",
+            "tokens": {
+              "total": 58083
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-10T22:45:07Z"
+        },
+        {
+          "data": {
+            "from": "spec",
+            "to": "plan"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T22:45:16Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "factory-plan",
+            "stage": "plan",
+            "tokens": {
+              "total": 81710
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-10T22:52:29Z"
+        },
+        {
+          "data": {
+            "from": "plan",
+            "to": "implement"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T22:52:29Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "note": "task1 implementer 58429 + reviewer 48925",
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 107354
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-10T22:58:07Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "note": "task2 implementer 58652 + reviewer 43002",
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 101654
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-10T22:59:13Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "note": "task3 implementer 62833 + reviewer 38728",
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 101561
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-10T23:00:17Z"
+        },
+        {
+          "data": {
+            "tasks": 3,
+            "tests": "258 unittest OK (253 baseline + 5 new structure); scope audit clean; prose-only"
+          },
+          "event": "implement.completed",
+          "ts": "2026-07-10T23:00:17Z"
+        },
+        {
+          "data": {
+            "from": "implement",
+            "to": "review"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T23:00:17Z"
+        },
+        {
+          "data": {
+            "dispatches": 6,
+            "note": "council round-1: 6 seats",
+            "provenance": "measured",
+            "source": "factory-review",
+            "stage": "review",
+            "tokens": {
+              "total": 208550
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-10T23:04:00Z"
+        },
+        {
+          "event": "review.approved",
+          "ts": "2026-07-10T23:04:00Z"
+        },
+        {
+          "data": {
+            "from": "review",
+            "to": "verify"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T23:04:00Z"
+        },
+        {
+          "data": {
+            "criteria": "12/12",
+            "tests": "258 unittest OK"
+          },
+          "event": "verify.green",
+          "ts": "2026-07-10T23:04:39Z"
+        },
+        {
+          "data": {
+            "from": "verify",
+            "to": "ship"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T23:04:39Z"
+        },
+        {
+          "data": {
+            "mode": "auto",
+            "ref": "edf1f20"
+          },
+          "event": "ship.merged",
+          "ts": "2026-07-10T23:05:04Z"
+        },
+        {
+          "data": {
+            "from": "ship",
+            "to": "done"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T23:05:04Z"
+        }
+      ],
+      "record_count": 21,
+      "records_sha256": "8e1b00b40a884a6b08737ab2fafda9e3f4a1fbf0cc4b8598f09f4a5cdb512ef5",
+      "source_log_sha256": "ae17d31c03803d2bffef127ec082378c00125c71b771dc3e813a217b90a0daef",
+      "disclosure": {
+        "present": true,
+        "parseable_timestamped_records": 21,
+        "blank_lines": 0,
+        "corrupt_json_lines": 0,
+        "missing_timestamps": 0,
+        "unparseable_timestamps": 0
+      }
+    },
+    "0003-interactive-decision-pages-clickable-cho": {
+      "records": [
+        {
+          "event": "item.created",
+          "ts": "2026-07-10T15:51:29Z"
+        },
+        {
+          "data": {
+            "priority": 2
+          },
+          "event": "priority.set",
+          "ts": "2026-07-10T18:16:42Z"
+        },
+        {
+          "data": {
+            "from": "idea",
+            "to": "triage"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T21:25:58Z"
+        },
+        {
+          "data": {
+            "from": "triage",
+            "to": "spec"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T21:31:07Z"
+        },
+        {
+          "data": {
+            "from": "spec",
+            "to": "design"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T21:38:26Z"
+        },
+        {
+          "data": {
+            "from": "design",
+            "reason": "pick a design option: see docs/factory/packets/0003-interactive-decision-pages-clickable-cho-design.md",
+            "to": "waiting-human"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T21:40:56Z"
+        },
+        {
+          "data": {
+            "option": "a"
+          },
+          "event": "design.choice",
+          "ts": "2026-07-11T07:22:52Z"
+        },
+        {
+          "data": {
+            "from": "waiting-human",
+            "to": "design"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-11T07:22:52Z"
+        },
+        {
+          "data": {
+            "from": "design",
+            "to": "plan"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-11T07:22:52Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "factory-plan",
+            "stage": "plan",
+            "tokens": {
+              "total": 121790
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-11T07:34:08Z"
+        },
+        {
+          "data": {
+            "from": "plan",
+            "to": "implement"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-11T07:34:08Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "note": "task1 implementer 59503 + reviewer 41149",
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 100652
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-11T07:37:26Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "note": "task2 implementer 72828 + reviewer 63930",
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 136758
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-11T07:43:17Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "note": "task3 implementer 72420 + reviewer 57696",
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 130116
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-11T07:44:31Z"
+        },
+        {
+          "data": {
+            "tasks": 4,
+            "tests": "322 unittest OK (308 baseline + 14 new); AC11 none-round-trip executed live on a fixture repo; AC21 token grep clean; single-writer grep clean"
+          },
+          "event": "implement.completed",
+          "ts": "2026-07-11T07:44:31Z"
+        },
+        {
+          "data": {
+            "from": "implement",
+            "to": "review"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-11T07:44:31Z"
+        },
+        {
+          "data": {
+            "dispatches": 6,
+            "note": "council round-1: 6 seats",
+            "provenance": "measured",
+            "source": "factory-review",
+            "stage": "review",
+            "tokens": {
+              "total": 208168
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-11T07:48:06Z"
+        },
+        {
+          "event": "review.approved",
+          "ts": "2026-07-11T07:48:06Z"
+        },
+        {
+          "data": {
+            "from": "review",
+            "to": "verify"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-11T07:48:06Z"
+        },
+        {
+          "data": {
+            "criteria": "22/22",
+            "tests": "322 unittest OK"
+          },
+          "event": "verify.green",
+          "ts": "2026-07-11T07:51:14Z"
+        },
+        {
+          "data": {
+            "from": "verify",
+            "to": "ship"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-11T07:51:14Z"
+        },
+        {
+          "data": {
+            "mode": "auto",
+            "ref": "c69298c"
+          },
+          "event": "ship.merged",
+          "ts": "2026-07-11T07:51:44Z"
+        },
+        {
+          "data": {
+            "from": "ship",
+            "to": "done"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-11T07:51:44Z"
+        }
+      ],
+      "record_count": 23,
+      "records_sha256": "808e30ea0764a12dcfb736e6215eee6618fed4bae99599e8e2205f6e58087497",
+      "source_log_sha256": "ef24671a50912d84a793d638a9dfb4b04499e0a60489dbb6aec3a0ebdf95c3f8",
+      "disclosure": {
+        "present": true,
+        "parseable_timestamped_records": 23,
+        "blank_lines": 0,
+        "corrupt_json_lines": 0,
+        "missing_timestamps": 0,
+        "unparseable_timestamps": 0
+      }
+    },
+    "0004-per-item-cost-meter-measure-and-report-t": {
+      "records": [
+        {
+          "event": "item.created",
+          "ts": "2026-07-10T18:16:43Z"
+        },
+        {
+          "data": {
+            "priority": 3
+          },
+          "event": "priority.set",
+          "ts": "2026-07-10T21:45:25Z"
+        },
+        {
+          "data": {
+            "from": "idea",
+            "to": "triage"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T21:46:17Z"
+        },
+        {
+          "data": {
+            "from": "triage",
+            "to": "spec"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T21:50:39Z"
+        },
+        {
+          "data": {
+            "from": "spec",
+            "to": "plan"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T21:57:45Z"
+        },
+        {
+          "data": {
+            "dispatches": 6,
+            "provenance": "measured",
+            "source": "factory-triage",
+            "stage": "triage",
+            "tokens": {
+              "total": 160965
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-10T22:12:24Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "factory-spec",
+            "stage": "spec",
+            "tokens": {
+              "total": 69159
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-10T22:12:24Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "factory-plan",
+            "stage": "plan",
+            "tokens": {
+              "total": 147199
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-10T22:12:24Z"
+        },
+        {
+          "data": {
+            "from": "plan",
+            "to": "implement"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T22:12:32Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "note": "task1 implementer 79892 + task1 reviewer 48805",
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 128697
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-10T22:16:17Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "note": "task2 implementer 74606 + task2 reviewer 55914",
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 130520
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-10T22:19:39Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "note": "task3 implementer 73845 + task3 reviewer 60244",
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 134089
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-10T22:20:21Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "note": "task4 implementer 65908 + task4 reviewer 48992",
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 114900
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-10T22:21:20Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "note": "task5 implementer 73887 + task5 reviewer 51843",
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 125730
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-10T22:23:22Z"
+        },
+        {
+          "data": {
+            "tasks": 5,
+            "tests": "251 unittest OK (216 baseline + 35 new); validate exit 0; scope audit clean"
+          },
+          "event": "implement.completed",
+          "ts": "2026-07-10T22:23:22Z"
+        },
+        {
+          "data": {
+            "from": "implement",
+            "to": "review"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T22:23:22Z"
+        },
+        {
+          "data": {
+            "dispatches": 6,
+            "note": "council round-1: 6 seats (32542+26520+34352+27063+26579+46069)",
+            "provenance": "measured",
+            "source": "factory-review",
+            "stage": "review",
+            "tokens": {
+              "total": 193125
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-10T22:28:09Z"
+        },
+        {
+          "data": {
+            "round": 1
+          },
+          "event": "review.rejected",
+          "ts": "2026-07-10T22:28:09Z"
+        },
+        {
+          "data": {
+            "from": "review",
+            "to": "implement"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T22:28:10Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "note": "rework task6 implementer 95029 + reviewer 63586",
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 158615
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-10T22:35:57Z"
+        },
+        {
+          "data": {
+            "tasks": 6,
+            "tests": "253 unittest OK; rework fixed blocking finding; validate exit 0"
+          },
+          "event": "implement.completed",
+          "ts": "2026-07-10T22:35:57Z"
+        },
+        {
+          "data": {
+            "from": "implement",
+            "to": "review"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T22:35:57Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "note": "round-2 delta: product seat",
+            "provenance": "measured",
+            "source": "factory-review",
+            "stage": "review",
+            "tokens": {
+              "total": 22301
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-10T22:37:59Z"
+        },
+        {
+          "event": "review.approved",
+          "ts": "2026-07-10T22:37:59Z"
+        },
+        {
+          "data": {
+            "from": "review",
+            "to": "verify"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T22:37:59Z"
+        },
+        {
+          "data": {
+            "criteria": "12/12",
+            "tests": "253 unittest OK"
+          },
+          "event": "verify.green",
+          "ts": "2026-07-10T22:38:58Z"
+        },
+        {
+          "data": {
+            "from": "verify",
+            "to": "ship"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T22:38:58Z"
+        },
+        {
+          "data": {
+            "mode": "auto",
+            "ref": "7bad3fd"
+          },
+          "event": "ship.merged",
+          "ts": "2026-07-10T22:39:35Z"
+        },
+        {
+          "data": {
+            "from": "ship",
+            "to": "done"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T22:39:35Z"
+        }
+      ],
+      "record_count": 29,
+      "records_sha256": "5832ac32e173f76009f34f1e1b5789245f646af0430e4ae9a0875e1cb257be84",
+      "source_log_sha256": "86918f62c582308c569339984c36c4d358224ab65e6c228d188a80c6559b3a2d",
+      "disclosure": {
+        "present": true,
+        "parseable_timestamped_records": 29,
+        "blank_lines": 0,
+        "corrupt_json_lines": 0,
+        "missing_timestamps": 0,
+        "unparseable_timestamps": 0
+      }
+    },
+    "0007-tolerant-log-reading-corrupt-log-jsonl-l": {
+      "records": [
+        {
+          "event": "item.created",
+          "ts": "2026-07-10T22:28:10Z"
+        },
+        {
+          "data": {
+            "from": "idea",
+            "to": "triage"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T23:05:53Z"
+        },
+        {
+          "data": {
+            "priority": 5
+          },
+          "event": "priority.set",
+          "ts": "2026-07-10T23:10:14Z"
+        },
+        {
+          "data": {
+            "from": "triage",
+            "to": "spec"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T23:10:14Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "factory-spec",
+            "stage": "spec",
+            "tokens": {
+              "total": 42837
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-10T23:15:09Z"
+        },
+        {
+          "data": {
+            "from": "spec",
+            "to": "plan"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T23:15:20Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "factory-plan",
+            "stage": "plan",
+            "tokens": {
+              "total": 106258
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-10T23:23:04Z"
+        },
+        {
+          "data": {
+            "from": "plan",
+            "to": "implement"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T23:23:04Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "note": "task1 implementer 70492 + reviewer 55328",
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 125820
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-10T23:28:46Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "note": "task2 implementer 77446 + reviewer 61164",
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 138610
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-10T23:30:36Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "note": "task3 implementer 69333 + reviewer 51553",
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 120886
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-10T23:32:42Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "note": "task4 implementer 69256 + reviewer 38167",
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 107423
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-10T23:33:13Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "note": "task5 implementer 71938 + reviewer 36806",
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 108744
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-10T23:36:44Z"
+        },
+        {
+          "data": {
+            "tasks": 5,
+            "tests": "286 unittest OK (258 baseline + 28 new); two review-driven addenda (utf8 boundaries, validate crash-fix); validate exit 0"
+          },
+          "event": "implement.completed",
+          "ts": "2026-07-10T23:36:44Z"
+        },
+        {
+          "data": {
+            "from": "implement",
+            "to": "review"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T23:36:44Z"
+        },
+        {
+          "data": {
+            "dispatches": 6,
+            "note": "council round-1: 6 seats",
+            "provenance": "measured",
+            "source": "factory-review",
+            "stage": "review",
+            "tokens": {
+              "total": 215848
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-10T23:40:55Z"
+        },
+        {
+          "event": "review.approved",
+          "ts": "2026-07-10T23:40:55Z"
+        },
+        {
+          "data": {
+            "from": "review",
+            "to": "verify"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T23:40:55Z"
+        },
+        {
+          "data": {
+            "criteria": "15/15",
+            "tests": "286 unittest OK"
+          },
+          "event": "verify.green",
+          "ts": "2026-07-10T23:41:18Z"
+        },
+        {
+          "data": {
+            "from": "verify",
+            "to": "ship"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T23:41:18Z"
+        },
+        {
+          "data": {
+            "mode": "auto",
+            "ref": "7fd449f"
+          },
+          "event": "ship.merged",
+          "ts": "2026-07-10T23:41:49Z"
+        },
+        {
+          "data": {
+            "from": "ship",
+            "to": "done"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T23:41:49Z"
+        }
+      ],
+      "record_count": 22,
+      "records_sha256": "ad078d277295b4aad4a2e4007ab88d66f643d2b867624f0cfda19b293d5acd4d",
+      "source_log_sha256": "8cde65f6e9ea9ee9e6033832e6dab2fe52781ae36aa0bc34a44214d99ecd9d71",
+      "disclosure": {
+        "present": true,
+        "parseable_timestamped_records": 22,
+        "blank_lines": 0,
+        "corrupt_json_lines": 0,
+        "missing_timestamps": 0,
+        "unparseable_timestamps": 0
+      }
+    },
+    "0008-design-mirror-refinements-pull-bid-diver": {
+      "records": [
+        {
+          "event": "item.created",
+          "ts": "2026-07-10T23:04:00Z"
+        },
+        {
+          "data": {
+            "from": "idea",
+            "to": "triage"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T23:05:53Z"
+        },
+        {
+          "data": {
+            "priority": 6
+          },
+          "event": "priority.set",
+          "ts": "2026-07-10T23:10:14Z"
+        },
+        {
+          "data": {
+            "from": "triage",
+            "to": "spec"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T23:10:14Z"
+        },
+        {
+          "data": {
+            "from": "spec",
+            "to": "plan"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T23:42:22Z"
+        },
+        {
+          "data": {
+            "from": "plan",
+            "to": "implement"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T23:42:47Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "note": "task1 implementer 54714 + reviewer 28199",
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 82913
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-10T23:47:09Z"
+        },
+        {
+          "data": {
+            "tasks": 1,
+            "tests": "289 unittest OK (286 baseline + 3); survivors intact; scope clean"
+          },
+          "event": "implement.completed",
+          "ts": "2026-07-10T23:47:09Z"
+        },
+        {
+          "data": {
+            "from": "implement",
+            "to": "review"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T23:47:10Z"
+        },
+        {
+          "data": {
+            "dispatches": 6,
+            "note": "council round-1: 6 seats (13162+13012+14243+13138+16363+13137)",
+            "provenance": "measured",
+            "source": "factory-review",
+            "stage": "review",
+            "tokens": {
+              "total": 83055
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-10T23:49:40Z"
+        },
+        {
+          "event": "review.approved",
+          "ts": "2026-07-10T23:49:40Z"
+        },
+        {
+          "data": {
+            "from": "review",
+            "to": "verify"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T23:49:40Z"
+        },
+        {
+          "data": {
+            "criteria": "4/4",
+            "tests": "289 unittest OK"
+          },
+          "event": "verify.green",
+          "ts": "2026-07-10T23:49:43Z"
+        },
+        {
+          "data": {
+            "from": "verify",
+            "to": "ship"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T23:49:43Z"
+        },
+        {
+          "data": {
+            "mode": "auto",
+            "ref": "5f5e9fd"
+          },
+          "event": "ship.merged",
+          "ts": "2026-07-10T23:50:07Z"
+        },
+        {
+          "data": {
+            "from": "ship",
+            "to": "done"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T23:50:08Z"
+        }
+      ],
+      "record_count": 16,
+      "records_sha256": "a5916b40f99b1c3aab8d26fc35012bcb13fe4c6d5def0cdb886b424f814d0fd1",
+      "source_log_sha256": "1a58be5d822f1dd6e4fad772290fdb60605da5bae1817450d01b87f76bdbb47e",
+      "disclosure": {
+        "present": true,
+        "parseable_timestamped_records": 16,
+        "blank_lines": 0,
+        "corrupt_json_lines": 0,
+        "missing_timestamps": 0,
+        "unparseable_timestamps": 0
+      }
+    },
+    "0009-finish-the-never-bricks-promise-crash-pr": {
+      "records": [
+        {
+          "event": "item.created",
+          "ts": "2026-07-10T23:40:55Z"
+        },
+        {
+          "data": {
+            "from": "idea",
+            "to": "triage"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T23:50:33Z"
+        },
+        {
+          "data": {
+            "priority": 7
+          },
+          "event": "priority.set",
+          "ts": "2026-07-10T23:53:53Z"
+        },
+        {
+          "data": {
+            "dispatches": 6,
+            "note": "6 seats",
+            "provenance": "measured",
+            "source": "factory-triage",
+            "stage": "triage",
+            "tokens": {
+              "total": 128272
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-10T23:53:53Z"
+        },
+        {
+          "data": {
+            "from": "triage",
+            "to": "spec"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T23:53:53Z"
+        },
+        {
+          "data": {
+            "from": "spec",
+            "to": "plan"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-10T23:54:33Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "factory-plan",
+            "stage": "plan",
+            "tokens": {
+              "total": 136683
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-11T00:05:10Z"
+        },
+        {
+          "data": {
+            "from": "plan",
+            "to": "implement"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-11T00:05:10Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "note": "task1 implementer 85098 + reviewer 71312",
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 156410
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-11T00:11:35Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "note": "task2 implementer 68729 + reviewer 52929",
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 121658
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-11T00:12:57Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "note": "task3 implementer 66924 + reviewer 57080",
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 124004
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-11T00:15:21Z"
+        },
+        {
+          "data": {
+            "tasks": 3,
+            "tests": "306 unittest OK (289 baseline + 17 new); validate exit 0; scope 12 files"
+          },
+          "event": "implement.completed",
+          "ts": "2026-07-11T00:15:21Z"
+        },
+        {
+          "data": {
+            "from": "implement",
+            "to": "review"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-11T00:15:21Z"
+        },
+        {
+          "data": {
+            "dispatches": 6,
+            "note": "council round-1: 6 seats",
+            "provenance": "measured",
+            "source": "factory-review",
+            "stage": "review",
+            "tokens": {
+              "total": 204269
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-11T00:19:09Z"
+        },
+        {
+          "data": {
+            "round": 1
+          },
+          "event": "review.rejected",
+          "ts": "2026-07-11T00:19:09Z"
+        },
+        {
+          "data": {
+            "from": "review",
+            "to": "implement"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-11T00:19:09Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "note": "rework task4 implementer",
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 67909
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-11T00:22:17Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "note": "round-2 delta: customer",
+            "provenance": "measured",
+            "source": "factory-review",
+            "stage": "review",
+            "tokens": {
+              "total": 13763
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-11T00:22:17Z"
+        },
+        {
+          "data": {
+            "tasks": 4,
+            "tests": "308 unittest OK; rework closed the CTA loop; validate exit 0"
+          },
+          "event": "implement.completed",
+          "ts": "2026-07-11T00:22:17Z"
+        },
+        {
+          "event": "review.approved",
+          "ts": "2026-07-11T00:22:17Z"
+        },
+        {
+          "data": {
+            "criteria": "9/9",
+            "tests": "308 unittest OK"
+          },
+          "event": "verify.green",
+          "ts": "2026-07-11T00:22:17Z"
+        },
+        {
+          "data": {
+            "from": "implement",
+            "to": "review"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-11T00:22:45Z"
+        },
+        {
+          "data": {
+            "from": "review",
+            "to": "verify"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-11T00:22:45Z"
+        },
+        {
+          "data": {
+            "criteria": "9/9",
+            "tests": "308 unittest OK"
+          },
+          "event": "verify.green",
+          "ts": "2026-07-11T00:22:48Z"
+        },
+        {
+          "data": {
+            "from": "verify",
+            "to": "ship"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-11T00:22:48Z"
+        },
+        {
+          "data": {
+            "mode": "auto",
+            "ref": "fd84dd2"
+          },
+          "event": "ship.merged",
+          "ts": "2026-07-11T00:23:10Z"
+        },
+        {
+          "data": {
+            "from": "ship",
+            "to": "done"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-11T00:23:10Z"
+        }
+      ],
+      "record_count": 27,
+      "records_sha256": "4362d97841891ad9e861b7540b69fe2baac564a72d50a1712a72c3711a732ac7",
+      "source_log_sha256": "1489bab35434122657c0d423c86da28793f15b8e7daf834e1ddf3cffefff3b7b",
+      "disclosure": {
+        "present": true,
+        "parseable_timestamped_records": 27,
+        "blank_lines": 0,
+        "corrupt_json_lines": 0,
+        "missing_timestamps": 0,
+        "unparseable_timestamps": 0
+      }
+    },
+    "0010-factory-bug-command-understand-replicate": {
+      "records": [
+        {
+          "event": "item.created",
+          "ts": "2026-07-11T08:48:13Z"
+        },
+        {
+          "data": {
+            "from": "idea",
+            "to": "triage"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-11T08:51:08Z"
+        },
+        {
+          "data": {
+            "dispatches": 6,
+            "provenance": "measured",
+            "source": "council-review",
+            "stage": "triage",
+            "tokens": {
+              "total": 130917
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-11T08:56:55Z"
+        },
+        {
+          "data": {
+            "dispatches": 3,
+            "provenance": "measured",
+            "source": "council-review",
+            "stage": "triage",
+            "tokens": {
+              "total": 42223
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-11T08:59:20Z"
+        },
+        {
+          "data": {
+            "priority": 8
+          },
+          "event": "priority.set",
+          "ts": "2026-07-11T09:00:30Z"
+        },
+        {
+          "data": {
+            "from": "triage",
+            "to": "spec"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-11T09:02:09Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "factory-spec",
+            "stage": "spec",
+            "tokens": {
+              "total": 55616
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-11T09:09:29Z"
+        },
+        {
+          "data": {
+            "from": "spec",
+            "to": "plan"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-11T09:10:36Z"
+        },
+        {
+          "data": {
+            "from": "plan",
+            "to": "implement"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-11T09:15:03Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 85680
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-11T09:19:49Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 89705
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-11T09:23:12Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 87580
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-11T09:29:11Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 76217
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-11T09:33:02Z"
+        },
+        {
+          "data": {
+            "tasks": 4,
+            "tests": "332 green (322 baseline + 10 new: 5 items bug-field, 1 schema, 4 gate); live factory validate clean"
+          },
+          "event": "implement.completed",
+          "ts": "2026-07-11T09:33:23Z"
+        },
+        {
+          "data": {
+            "from": "implement",
+            "to": "review"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-11T09:33:23Z"
+        },
+        {
+          "data": {
+            "dispatches": 6,
+            "provenance": "measured",
+            "source": "factory-review",
+            "stage": "review",
+            "tokens": {
+              "total": 192242
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-11T09:39:31Z"
+        },
+        {
+          "event": "review.approved",
+          "ts": "2026-07-11T09:40:20Z"
+        },
+        {
+          "data": {
+            "from": "review",
+            "to": "verify"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-11T09:40:20Z"
+        },
+        {
+          "data": {
+            "criteria": "12/12",
+            "tests": "332/332 unittest OK"
+          },
+          "event": "verify.green",
+          "ts": "2026-07-11T09:43:02Z"
+        },
+        {
+          "data": {
+            "from": "verify",
+            "to": "ship"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-11T09:43:02Z"
+        },
+        {
+          "data": {
+            "mode": "auto",
+            "ref": "4703ba78a56ea973a99a71c1c126c7aa49abd59d"
+          },
+          "event": "ship.merged",
+          "ts": "2026-07-11T09:43:57Z"
+        },
+        {
+          "data": {
+            "from": "ship",
+            "to": "done"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-11T09:43:57Z"
+        }
+      ],
+      "record_count": 22,
+      "records_sha256": "e4ea163a01496f3a4f60429ac0142818b4bde54767a82b374ccd86d4cf94dc12",
+      "source_log_sha256": "18cb4192f7698b47b41902aae44063c8f689c77990d002df6a09849a83296a9c",
+      "disclosure": {
+        "present": true,
+        "parseable_timestamped_records": 22,
+        "blank_lines": 0,
+        "corrupt_json_lines": 0,
+        "missing_timestamps": 0,
+        "unparseable_timestamps": 0
+      }
+    },
+    "0012-adapt-the-design-options-decision-block-": {
+      "records": [
+        {
+          "event": "item.created",
+          "ts": "2026-07-13T09:31:00Z"
+        },
+        {
+          "data": {
+            "from": "idea",
+            "to": "triage"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-13T10:24:35Z"
+        },
+        {
+          "data": {
+            "from": "triage",
+            "to": "spec"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-13T12:05:53Z"
+        },
+        {
+          "data": {
+            "from": "spec",
+            "to": "design"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-13T12:08:02Z"
+        },
+        {
+          "data": {
+            "from": "design",
+            "reason": "pick a design option: see docs/factory/packets/0012-adapt-the-design-options-decision-block--design.md \u2014 view: https://claude.ai/code/artifact/829ba10f-385d-4a18-a221-e5353e05f41f",
+            "to": "waiting-human"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-13T12:14:38Z"
+        },
+        {
+          "data": {
+            "dispatches": 6,
+            "provenance": "measured",
+            "source": "council-review",
+            "stage": "triage",
+            "tokens": {
+              "total": 110868
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-13T12:15:06Z"
+        },
+        {
+          "data": {
+            "option": "a"
+          },
+          "event": "design.choice",
+          "ts": "2026-07-13T12:23:14Z"
+        },
+        {
+          "data": {
+            "from": "waiting-human",
+            "to": "design"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-13T12:23:41Z"
+        },
+        {
+          "data": {
+            "from": "design",
+            "to": "plan"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-13T12:23:41Z"
+        },
+        {
+          "data": {
+            "from": "plan",
+            "to": "implement"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-13T12:27:12Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 42473
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-13T12:31:29Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 70840
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-13T12:35:40Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 23479
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-13T12:36:51Z"
+        },
+        {
+          "data": {
+            "tasks": 2,
+            "tests": "334 unittest tests pass; added 2 grep-over-skill coherence guards"
+          },
+          "event": "implement.completed",
+          "ts": "2026-07-13T12:36:51Z"
+        },
+        {
+          "data": {
+            "from": "implement",
+            "to": "review"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-13T12:37:29Z"
+        },
+        {
+          "data": {
+            "dispatches": 6,
+            "provenance": "measured",
+            "source": "factory-review",
+            "stage": "review",
+            "tokens": {
+              "total": 125079
+            }
+          },
+          "event": "spend",
+          "ts": "2026-07-13T12:44:16Z"
+        },
+        {
+          "event": "review.approved",
+          "ts": "2026-07-13T12:45:13Z"
+        },
+        {
+          "data": {
+            "from": "review",
+            "to": "verify"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-13T12:45:13Z"
+        },
+        {
+          "data": {
+            "criteria": "9/9",
+            "tests": "334/334 unittest pass"
+          },
+          "event": "verify.green",
+          "ts": "2026-07-13T12:47:13Z"
+        },
+        {
+          "data": {
+            "from": "verify",
+            "to": "ship"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-13T12:47:13Z"
+        },
+        {
+          "data": {
+            "mode": "auto",
+            "ref": "a98876a"
+          },
+          "event": "ship.merged",
+          "ts": "2026-07-13T12:48:18Z"
+        },
+        {
+          "data": {
+            "from": "ship",
+            "to": "done"
+          },
+          "event": "stage.advance",
+          "ts": "2026-07-13T12:48:18Z"
+        }
+      ],
+      "record_count": 22,
+      "records_sha256": "cc41c5899a3f99a858d4af9790df2d381745cb57bbc32cb2be85d6e627ebbe5a",
+      "source_log_sha256": "e24373a5b1fe73552535ba79fdf29925dd0ac96d223877e7fcd193de462c5e4e",
+      "disclosure": {
+        "present": true,
+        "parseable_timestamped_records": 22,
+        "blank_lines": 0,
+        "corrupt_json_lines": 0,
+        "missing_timestamps": 0,
+        "unparseable_timestamps": 0
+      }
+    },
+    "0013-assure-attribution-gate-only-on-regressi": {
+      "records": [
+        {
+          "event": "item.created",
+          "ts": "2026-08-02T07:19:00Z"
+        },
+        {
+          "data": {
+            "priority": 1
+          },
+          "event": "priority.set",
+          "ts": "2026-08-02T07:20:53Z"
+        },
+        {
+          "data": {
+            "from": "idea",
+            "to": "triage"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T07:24:15Z"
+        },
+        {
+          "data": {
+            "tier": "feature"
+          },
+          "event": "tier.set",
+          "ts": "2026-08-02T07:39:48Z"
+        },
+        {
+          "data": {
+            "from": "triage",
+            "to": "spec"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T07:42:23Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "factory-dispatch",
+            "stage": "triage",
+            "tokens": {
+              "total": 87877
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T07:42:54Z"
+        },
+        {
+          "data": {
+            "journeys": "J-001"
+          },
+          "event": "journeys.set",
+          "ts": "2026-08-02T07:55:04Z"
+        },
+        {
+          "data": {
+            "from": "spec",
+            "to": "plan"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T07:55:40Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "factory-spec:spec-writer",
+            "stage": "spec",
+            "tokens": {
+              "total": 119266
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T07:55:45Z"
+        },
+        {
+          "data": {
+            "from": "plan",
+            "to": "implement"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T08:10:30Z"
+        },
+        {
+          "data": {
+            "from": "implement",
+            "reason": "sequencing: 0016 (the cost instrument) builds first - 0013's 11-task plan is re-judged with measured per-stage numbers on return",
+            "to": "waiting-human"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T08:12:25Z"
+        },
+        {
+          "data": {
+            "priority": 2
+          },
+          "event": "priority.set",
+          "ts": "2026-08-02T08:32:25Z"
+        },
+        {
+          "data": {
+            "from": "waiting-human",
+            "to": "implement"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T16:05:08Z"
+        },
+        {
+          "data": {
+            "basis": "implement measured 57-77% of item cost on comparable items",
+            "kept_despite_directive": "task 6 factory file-base-defect (bid-0054 dedupe constraint; task 10 dependency)",
+            "mode": "step - human sign-off required before implement dispatch",
+            "moved_acs": [
+              13,
+              14,
+              15
+            ],
+            "moved_to": "0024-assure-readout-periphery-known-fails-fir",
+            "shed_tasks": [
+              7,
+              8
+            ]
+          },
+          "event": "plan.narrowed",
+          "ts": "2026-08-02T16:33:33Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 89693
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T16:49:19Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 85941
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T16:54:39Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 65919
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T16:58:42Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 71930
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T17:03:01Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 122479
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T17:09:55Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 100579
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T17:16:51Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 95780
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T17:22:11Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 88165
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T17:28:05Z"
+        },
+        {
+          "data": {
+            "tasks": 8,
+            "tests": "810 tests OK (skipped=7), two identical consecutive runs; default-path goldens byte-identical since Task 1"
+          },
+          "event": "implement.completed",
+          "ts": "2026-08-02T17:29:02Z"
+        },
+        {
+          "data": {
+            "from": "implement",
+            "to": "review"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T17:29:02Z"
+        },
+        {
+          "data": {
+            "dispatches": 10,
+            "note": "council rounds 1+2 (6+4 seats), harness-reported aggregate for the forked council session",
+            "provenance": "measured",
+            "source": "factory-review",
+            "stage": "review",
+            "tokens": {
+              "total": 140094
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T17:44:28Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "note": "whole-branch walk subagent (most-capable tier)",
+            "provenance": "measured",
+            "source": "factory-review",
+            "stage": "review",
+            "tokens": {
+              "total": 115493
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T17:45:48Z"
+        },
+        {
+          "event": "review.approved",
+          "ts": "2026-08-02T17:45:48Z"
+        },
+        {
+          "data": {
+            "from": "review",
+            "to": "verify"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T17:45:48Z"
+        },
+        {
+          "data": {
+            "commit": "c47bf0b",
+            "fixes": [
+              "F1",
+              "F2a",
+              "F2b",
+              "F3",
+              "F5",
+              "W-F3"
+            ],
+            "note": "rework performed at stage verify with NO backward stage.advance edge - the breaker rework counter is structurally blind to this round (bid-0081 live instance); suite 813 green twice"
+          },
+          "event": "verify.fix_round",
+          "ts": "2026-08-02T18:03:10Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "verify-fix-round",
+            "stage": "verify",
+            "tokens": {
+              "total": 86726
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T18:03:11Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "note": "verify re-entry forked session; harness reported no token counts",
+            "provenance": "proxy",
+            "source": "factory-verify",
+            "stage": "verify"
+          },
+          "event": "spend",
+          "ts": "2026-08-02T18:08:26Z"
+        },
+        {
+          "data": {
+            "criteria": "16/16",
+            "tests": "813 passed, 0 failed, 7 skipped - two identical consecutive runs"
+          },
+          "event": "verify.green",
+          "ts": "2026-08-02T18:08:26Z"
+        },
+        {
+          "data": {
+            "from": "verify",
+            "to": "assure"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T18:08:26Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "factory-assure",
+            "stage": "assure",
+            "tokens": {
+              "total": 134343
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T18:28:26Z"
+        },
+        {
+          "data": {
+            "ambiguity": "J-001/S9 - fresh-round deletion is skill-side, question recorded for the contract owner",
+            "failing": "J-001/S5 - empty and malformed owner arms refused by schema layer without journey/scenario/owner-rule naming; sibling rule message falsely claims coverage",
+            "round": 1
+          },
+          "event": "assure.rejected",
+          "ts": "2026-08-02T18:28:26Z"
+        },
+        {
+          "data": {
+            "from": "assure",
+            "to": "implement"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T18:28:26Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "assure-round-1-rework",
+            "stage": "implement",
+            "tokens": {
+              "total": 70504
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T18:34:48Z"
+        },
+        {
+          "data": {
+            "commit": "6552144",
+            "round": 2,
+            "scope": "J-001/S5 fix only - schema owner pattern relaxed, rule 10 already correct, 2 red-first tests, suite 815 green twice"
+          },
+          "event": "implement.completed",
+          "ts": "2026-08-02T18:34:48Z"
+        },
+        {
+          "data": {
+            "from": "implement",
+            "to": "review"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T18:34:48Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "note": "rework-round whole-branch delta walk subagent (most-capable tier)",
+            "provenance": "measured",
+            "source": "factory-review",
+            "stage": "review",
+            "tokens": {
+              "total": 108905
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T18:49:13Z"
+        },
+        {
+          "data": {
+            "dispatches": 6,
+            "note": "rework-round council, 1 round (6 seats; round 2 skipped, unanimous convergence) - harness-reported aggregate for the forked council session",
+            "provenance": "measured",
+            "source": "factory-review",
+            "stage": "review",
+            "tokens": {
+              "total": 122492
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T18:50:24Z"
+        },
+        {
+          "data": {
+            "blocking": 0,
+            "council": "6 seats, 1 round, unanimous SHIP",
+            "round": "rework-delta dd27071..6552144",
+            "walk": "most-capable subagent, 6 arms + red-first + suite 815 OK skipped=7 twice"
+          },
+          "event": "review.approved",
+          "ts": "2026-08-02T18:51:24Z"
+        },
+        {
+          "data": {
+            "from": "review",
+            "to": "verify"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T18:51:24Z"
+        },
+        {
+          "data": {
+            "D1": "spec amended in place (owner schema, owner-in-tagged, rule 7 split, fingerprint recipe, assumption 4)",
+            "D2": "DEFERRED, not dropped: machine.py rule-2 message should say attribution/base/owner - rides 0024s first machine.py edit",
+            "W2-F8": "merge with explicit pathspecs only; 0012 plan.md deletion in worktree is unowned"
+          },
+          "event": "review.handback",
+          "ts": "2026-08-02T18:53:30Z"
+        },
+        {
+          "data": {
+            "criteria": "16/16",
+            "tests": "815 passed, 0 failed, 7 skipped, two identical consecutive runs"
+          },
+          "event": "verify.green",
+          "ts": "2026-08-02T19:02:11Z"
+        },
+        {
+          "data": {
+            "from": "verify",
+            "to": "assure"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T19:02:11Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "factory-assure",
+            "stage": "assure",
+            "tokens": {
+              "total": 128970
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T19:23:28Z"
+        },
+        {
+          "data": {
+            "non_blocking_fails": 2,
+            "note": "both pre-existing with fairness controls in transcripts; 9/9 required scenarios pass",
+            "owners": [
+              "0025-round-scope-all-rework-gates-implement-c",
+              "0023-packet-furniture-and-readout-polish-drop"
+            ],
+            "round": 2
+          },
+          "event": "assure.passed",
+          "ts": "2026-08-02T19:23:28Z"
+        },
+        {
+          "data": {
+            "from": "assure",
+            "to": "ship"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T19:23:28Z"
+        },
+        {
+          "data": {
+            "mode": "auto",
+            "ref": "3596906373abc71427f1506d2127d1ba7be41a5f"
+          },
+          "event": "ship.merged",
+          "ts": "2026-08-02T19:27:13Z"
+        },
+        {
+          "data": {
+            "from": "ship",
+            "to": "done"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T19:27:13Z"
+        }
+      ],
+      "record_count": 51,
+      "records_sha256": "25537b582c161ed80ebb5466ae8d206fe74b1ec4bad44d4805a6167aa3aa6b58",
+      "source_log_sha256": "5867fc97b7cab87fb536e85f8a111f39693d68038fb78707bd4b5b88394fc489",
+      "disclosure": {
+        "present": true,
+        "parseable_timestamped_records": 51,
+        "blank_lines": 0,
+        "corrupt_json_lines": 0,
+        "missing_timestamps": 0,
+        "unparseable_timestamps": 0
+      }
+    },
+    "0015-approach-rejected-a-redesign-loop-back-t": {
+      "records": [
+        {
+          "event": "item.created",
+          "ts": "2026-08-02T07:19:00Z"
+        },
+        {
+          "data": {
+            "priority": 3
+          },
+          "event": "priority.set",
+          "ts": "2026-08-02T07:20:53Z"
+        },
+        {
+          "data": {
+            "from": "idea",
+            "to": "triage"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T19:29:40Z"
+        },
+        {
+          "data": {
+            "tier": "feature"
+          },
+          "event": "tier.set",
+          "ts": "2026-08-02T19:40:46Z"
+        },
+        {
+          "data": {
+            "from": "triage",
+            "to": "spec"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T19:43:30Z"
+        },
+        {
+          "data": {
+            "journeys": "J-001,J-002,J-003"
+          },
+          "event": "journeys.set",
+          "ts": "2026-08-02T19:58:35Z"
+        },
+        {
+          "data": {
+            "from": "spec",
+            "to": "plan"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T19:59:06Z"
+        },
+        {
+          "data": {
+            "from": "plan",
+            "to": "implement"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T20:16:16Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 111973
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T22:08:48Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 92550
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T22:13:06Z"
+        },
+        {
+          "data": {
+            "dispatches": 4,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 178155
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T22:25:54Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 86805
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T22:30:45Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 88017
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T22:34:40Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 97796
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T22:39:26Z"
+        },
+        {
+          "data": {
+            "dispatches": 4,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 147231
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T22:50:04Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 91612
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T22:56:23Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 72936
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T23:01:24Z"
+        },
+        {
+          "data": {
+            "tasks": 9,
+            "tests": "882 OK (skipped=7) twice consecutively; +44 new (42 in tests/test_approach.py, incl. 2 inheritance; 3 coherence; 0016 byte-guard re-pinned); default-path goldens byte-untouched; breaker.py byte-unchanged"
+          },
+          "event": "implement.completed",
+          "ts": "2026-08-02T23:03:42Z"
+        },
+        {
+          "data": {
+            "from": "implement",
+            "to": "review"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T23:03:42Z"
+        },
+        {
+          "data": {
+            "dispatches": 6,
+            "note": "council-review attempt 1, malfunctioned and produced no synthesis; harness-reported cumulative subagent tokens for the instance; 6 = round-1 seat dispatches evidenced on disk, later real dispatches by that instance not separately attributable",
+            "provenance": "measured",
+            "source": "factory-review",
+            "stage": "review",
+            "tokens": {
+              "total": 1499591
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T23:19:50Z"
+        },
+        {
+          "data": {
+            "dispatches": 13,
+            "provenance": "measured",
+            "source": "council-review-attempt-1",
+            "stage": "review",
+            "tokens": {
+              "total": 543483
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-03T06:02:47Z"
+        },
+        {
+          "data": {
+            "dispatches": 4,
+            "provenance": "proxy",
+            "source": "council-review-attempt-2-aborted",
+            "stage": "review"
+          },
+          "event": "spend",
+          "ts": "2026-08-03T06:02:47Z"
+        },
+        {
+          "data": {
+            "blocking": 0,
+            "findings": "5 MEDIUM + 10 LOW with named remedies, 5 bid candidates; hand-back conditions carried to verify/ship",
+            "note": "attempt-1 synthesis adopted by orchestrator after the review fork died on the session limit; attempt-2 partials preserved under reviews/attempt-2-partial/",
+            "verdict": "APPROVE WITH FINDINGS"
+          },
+          "event": "review.approved",
+          "ts": "2026-08-03T06:02:47Z"
+        },
+        {
+          "data": {
+            "from": "review",
+            "to": "verify"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-03T06:02:47Z"
+        },
+        {
+          "data": {
+            "criteria": "22/22",
+            "qualifiers": "AC13 proxy-discharged (engine-edge replay + prose greps; literal ParkSnap replay is a named non-goal); AC21 verdicts.json and J-001 regression clauses are assure-stage outputs enforced by the ship gate",
+            "tests": "882 passed, 7 skipped, 0 failed (two identical consecutive runs; merged tree confirmed)"
+          },
+          "event": "verify.green",
+          "ts": "2026-08-03T06:25:05Z"
+        },
+        {
+          "data": {
+            "from": "verify",
+            "to": "assure"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-03T06:25:16Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-assure",
+            "stage": "assure",
+            "tokens": {
+              "total": 303060
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-03T06:48:23Z"
+        },
+        {
+          "data": {
+            "failing": "J-003/S5 spec-exit refusal names only one unmet requirement; J-003/S6 missing - answer: line leaks Python None to the operator",
+            "note": "both fails are message quality in 0015 new code; all mechanisms correct; two pre-existing findings re-routed to 0027 and bid-0119",
+            "passing": 11,
+            "round": 1
+          },
+          "event": "assure.rejected",
+          "ts": "2026-08-03T06:48:23Z"
+        },
+        {
+          "data": {
+            "from": "assure",
+            "to": "implement"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-03T06:48:23Z"
+        },
+        {
+          "data": {
+            "from": "fail",
+            "note": "the rework round for J-003/S6 (real defect) stands; S5 required no production change and is now pinned by an exact-message test",
+            "reason": "false positive - the gate already names both unmet requirements in one refusal; reviewer generalised from two single-unmet arms",
+            "scenario": "J-003/S5",
+            "to": "pass",
+            "verified_by": [
+              "source inspection at 58561e4",
+              "verbatim CLI reproduction of the both-unmet state",
+              "pre-existing test_refusal_names_both_missing_pieces green at 58561e4"
+            ]
+          },
+          "event": "assure.verdict_corrected",
+          "ts": "2026-08-03T06:57:01Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "assure-round-1-rework",
+            "stage": "implement",
+            "tokens": {
+              "total": 73008
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-03T06:57:01Z"
+        },
+        {
+          "data": {
+            "commit": "18a02b0",
+            "round": 2,
+            "scope": "J-003/S6 real fix (no Python literal in the malformed-answer refusal) + S5 exact-message pin; suite 884 green twice; goldens untouched"
+          },
+          "event": "implement.completed",
+          "ts": "2026-08-03T06:57:01Z"
+        },
+        {
+          "data": {
+            "from": "implement",
+            "to": "review"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-03T06:57:01Z"
+        },
+        {
+          "data": {
+            "dispatches": 9,
+            "note": "round-3 council fan-out, 6 round-1 + 3 round-2 seats; harness reported one aggregate for the council agent, not split per round. Walk done inline by the orchestrator, no walk subagent.",
+            "provenance": "measured",
+            "source": "factory-review",
+            "stage": "review",
+            "tokens": {
+              "total": 135475
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-03T07:27:20Z"
+        },
+        {
+          "event": "review.approved",
+          "ts": "2026-08-03T07:27:28Z"
+        },
+        {
+          "data": {
+            "from": "review",
+            "to": "verify"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-03T07:27:28Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "record-corrections-and-metavar",
+            "stage": "verify",
+            "tokens": {
+              "total": 73204
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-03T07:41:37Z"
+        },
+        {
+          "data": {
+            "authority": "implements the review councils own converged remedy, judgement on bid-0127, specified verbatim by three seats",
+            "change": "one string literal (missing-field refusal metavar) + test assertions",
+            "disclosure": "not re-adjudicated by council; verify exercises all five arms; to be named in the ship record",
+            "new_head": "5fea92c",
+            "reviewed_head": "18a02b0"
+          },
+          "event": "post_review_delta",
+          "ts": "2026-08-03T07:41:37Z"
+        },
+        {
+          "data": {
+            "dispatches": 0,
+            "note": "verify round 2 at 5fea92c: suite x2 (884 OK skipped=7), five-arm CLI re-exercise, spec-exit both-unmet, zero-approach byte-identity, breaker/REWORK_FROM identity. No subagents dispatched.",
+            "provenance": "measured",
+            "source": "factory-verify",
+            "stage": "verify",
+            "tokens": {
+              "total": 96000
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-03T07:51:15Z"
+        },
+        {
+          "data": {
+            "criteria": "22/22",
+            "tests": "884 tests, OK (skipped=7), exit 0, two identical consecutive runs"
+          },
+          "event": "verify.green",
+          "ts": "2026-08-03T07:51:21Z"
+        },
+        {
+          "data": {
+            "from": "verify",
+            "to": "assure"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-03T07:51:21Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-assure-round-2",
+            "stage": "assure",
+            "tokens": {
+              "total": 320418
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-03T08:22:57Z"
+        },
+        {
+          "data": {
+            "non_blocking_fails": 0,
+            "note": "two reviewer fail verdicts re-scored by the orchestrator and disclosed in the packet, manifest and verdict notes; findings routed to 0027 (p2) and 0028",
+            "round": 2,
+            "scenarios": 13
+          },
+          "event": "assure.passed",
+          "ts": "2026-08-03T08:22:57Z"
+        },
+        {
+          "data": {
+            "from": "assure",
+            "to": "ship"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-03T08:22:57Z"
+        },
+        {
+          "data": {
+            "mode": "auto",
+            "ref": "9cd4190f765ce2e7a89bead3d98cc5168b0e596e"
+          },
+          "event": "ship.merged",
+          "ts": "2026-08-03T08:27:23Z"
+        },
+        {
+          "data": {
+            "from": "ship",
+            "to": "done"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-03T08:27:29Z"
+        }
+      ],
+      "record_count": 46,
+      "records_sha256": "4de825a1d1980c0c070acca84eed42c8d507cf81db6ec3d758cf54b8e1790806",
+      "source_log_sha256": "7d6d3ece5883f5ffbce5b8746b5cd01bd627c53de7b061f39cd3c0c95f1f04b6",
+      "disclosure": {
+        "present": true,
+        "parseable_timestamped_records": 46,
+        "blank_lines": 0,
+        "corrupt_json_lines": 0,
+        "missing_timestamps": 0,
+        "unparseable_timestamps": 0
+      }
+    },
+    "0016-cost-circuit-breaker-on-engine-authorita": {
+      "records": [
+        {
+          "event": "item.created",
+          "ts": "2026-08-02T07:19:00Z"
+        },
+        {
+          "data": {
+            "priority": 4
+          },
+          "event": "priority.set",
+          "ts": "2026-08-02T07:20:53Z"
+        },
+        {
+          "data": {
+            "from": "idea",
+            "to": "triage"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T08:13:02Z"
+        },
+        {
+          "data": {
+            "tier": "feature"
+          },
+          "event": "tier.set",
+          "ts": "2026-08-02T08:31:34Z"
+        },
+        {
+          "data": {
+            "priority": 1
+          },
+          "event": "priority.set",
+          "ts": "2026-08-02T08:32:25Z"
+        },
+        {
+          "data": {
+            "from": "triage",
+            "to": "spec"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T08:36:41Z"
+        },
+        {
+          "data": {
+            "journeys": "J-001,J-002"
+          },
+          "event": "journeys.set",
+          "ts": "2026-08-02T08:55:47Z"
+        },
+        {
+          "data": {
+            "from": "spec",
+            "to": "plan"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T08:56:35Z"
+        },
+        {
+          "data": {
+            "from": "plan",
+            "to": "implement"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T09:14:35Z"
+        },
+        {
+          "data": {
+            "by": "human",
+            "changed": [
+              "spec.md sections 3 and AC9",
+              "plan.md Task 5, architecture header, risk 3"
+            ],
+            "consequence": "0013 unparks at 0016 ship, not at a set-A merge",
+            "decision": "drop the mid-item merge of set A to main",
+            "reason": "the merge crossed main on the unit suite alone - no review, verify or assure; factory-implement reserves merging to ship"
+          },
+          "event": "plan.amended",
+          "ts": "2026-08-02T09:37:50Z"
+        },
+        {
+          "data": {
+            "action": "factory advance 0013-assure-attribution-gate-only-on-regressi implement",
+            "when": "after 0016 merges at ship",
+            "why": "0013 is parked waiting-human from implement pending the cost instrument"
+          },
+          "event": "ship.obligation",
+          "ts": "2026-08-02T09:37:50Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 140269
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T09:47:41Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 124267
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T09:54:11Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 122229
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T10:00:53Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 103226
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T10:06:57Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 144590
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T10:16:03Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 122713
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T10:23:40Z"
+        },
+        {
+          "data": {
+            "dispatches": 4,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 387879
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T10:48:54Z"
+        },
+        {
+          "data": {
+            "dispatches": 4,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 296157
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T11:13:12Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 174505
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T11:24:38Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 151736
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T11:34:34Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 221929
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T11:52:04Z"
+        },
+        {
+          "data": {
+            "tasks": 12,
+            "tests": "python3 -m unittest discover -s tests: Ran 692 tests, OK (baseline 555); fresh clone with no live .factory state: Ran 692, OK (skipped=5)"
+          },
+          "event": "implement.completed",
+          "ts": "2026-08-02T11:52:54Z"
+        },
+        {
+          "data": {
+            "from": "implement",
+            "to": "review"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T11:52:54Z"
+        },
+        {
+          "data": {
+            "dispatches": 6,
+            "provenance": "measured",
+            "source": "factory-review",
+            "stage": "review",
+            "tokens": {
+              "total": 466635
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T12:06:46Z"
+        },
+        {
+          "data": {
+            "dispatches": 5,
+            "provenance": "measured",
+            "source": "factory-review",
+            "stage": "review",
+            "tokens": {
+              "total": 118151
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T12:13:44Z"
+        },
+        {
+          "data": {
+            "round": 1
+          },
+          "event": "review.rejected",
+          "ts": "2026-08-02T12:16:41Z"
+        },
+        {
+          "data": {
+            "from": "review",
+            "to": "implement"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T12:16:41Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 255369
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T12:42:39Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 178067
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T13:00:00Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "proxy",
+            "source": "factory-implement",
+            "stage": "implement"
+          },
+          "event": "spend",
+          "ts": "2026-08-02T13:00:00Z"
+        },
+        {
+          "data": {
+            "blocking_findings_closed": "B1, B2",
+            "rework_round": 1,
+            "tasks": 2,
+            "tests": "python3 -m unittest discover -s tests: Ran 715 tests, OK (rework round 1 entry: 709; pre-rework branch head: 692); factory validate: ok"
+          },
+          "event": "implement.completed",
+          "ts": "2026-08-02T13:03:06Z"
+        },
+        {
+          "data": {
+            "from": "implement",
+            "to": "review"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T13:03:06Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "proxy",
+            "source": "factory-implement",
+            "stage": "implement"
+          },
+          "event": "spend",
+          "ts": "2026-08-02T13:03:19Z"
+        },
+        {
+          "data": {
+            "dispatches": 6,
+            "note": "council pass 2 round 1, six seats",
+            "provenance": "proxy",
+            "source": "factory-review",
+            "stage": "review"
+          },
+          "event": "spend",
+          "ts": "2026-08-02T13:30:23Z"
+        },
+        {
+          "data": {
+            "dispatches": 6,
+            "note": "council pass 2 round 2, six seats recalled",
+            "provenance": "proxy",
+            "source": "factory-review",
+            "stage": "review"
+          },
+          "event": "spend",
+          "ts": "2026-08-02T13:30:23Z"
+        },
+        {
+          "data": {
+            "round": 2
+          },
+          "event": "review.rejected",
+          "ts": "2026-08-02T13:30:38Z"
+        },
+        {
+          "data": {
+            "from": "review",
+            "to": "implement"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T13:30:38Z"
+        },
+        {
+          "data": {
+            "rework_edges": 2,
+            "threshold": 2
+          },
+          "event": "cost.breaker",
+          "ts": "2026-08-02T13:30:38Z"
+        },
+        {
+          "data": {
+            "from": "implement",
+            "reason": "cost breaker: 2 rework edges (threshold 2)",
+            "to": "waiting-human"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T13:32:57Z"
+        },
+        {
+          "data": {
+            "answer": "continue",
+            "rework_edges": 2
+          },
+          "event": "cost.answered",
+          "ts": "2026-08-02T14:04:27Z"
+        },
+        {
+          "data": {
+            "from": "waiting-human",
+            "to": "implement"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T14:04:27Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 241399
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T14:22:49Z"
+        },
+        {
+          "data": {
+            "dispatches": 3,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 332627
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T14:51:24Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 128000
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T14:58:12Z"
+        },
+        {
+          "data": {
+            "blocking_findings_closed": "B3",
+            "rework_round": 2,
+            "ride_alongs_closed": "F5, F6, F7, F8, F9, F10, N1, N2",
+            "tasks": 2,
+            "tests": "python3 -m unittest discover -s tests: Ran 738 tests, OK (rework round 2 entry: 715); factory validate: clean"
+          },
+          "event": "implement.completed",
+          "ts": "2026-08-02T14:58:12Z"
+        },
+        {
+          "data": {
+            "from": "implement",
+            "to": "review"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T14:58:12Z"
+        },
+        {
+          "data": {
+            "blocking": 0,
+            "council": "skipped by human direction",
+            "method": "grep verification of pass-2 binding remedy, 2 mutation tests, end-to-end CLI walk on both config arms",
+            "non_blocking": 1,
+            "pass": 3,
+            "tests": "Ran 738 tests, OK"
+          },
+          "event": "review.approved",
+          "ts": "2026-08-02T15:05:02Z"
+        },
+        {
+          "data": {
+            "from": "review",
+            "to": "verify"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T15:05:02Z"
+        },
+        {
+          "data": {
+            "criteria": "27/27",
+            "tests": "738 passed, 0 failed"
+          },
+          "event": "verify.green",
+          "ts": "2026-08-02T15:25:11Z"
+        },
+        {
+          "data": {
+            "from": "verify",
+            "to": "assure"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T15:25:11Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-assure",
+            "stage": "assure",
+            "tokens": {
+              "total": 239882
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T16:01:27Z"
+        },
+        {
+          "data": {
+            "contract_status": "both draft",
+            "human_direction": "2026-08-02 end the run at this pass; contract-level findings filed not reworked; J-001 contract amended 3->4 permitted diffs citing S11 evidence",
+            "journeys": "J-001,J-002",
+            "scenarios": "11/11"
+          },
+          "event": "assure.passed",
+          "ts": "2026-08-02T16:01:27Z"
+        },
+        {
+          "data": {
+            "from": "assure",
+            "to": "ship"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T16:01:27Z"
+        },
+        {
+          "data": {
+            "mode": "auto",
+            "ref": "45652c72e1d5cb3f792ee5d2274b493790857411"
+          },
+          "event": "ship.merged",
+          "ts": "2026-08-02T16:03:40Z"
+        },
+        {
+          "data": {
+            "from": "ship",
+            "to": "done"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T16:03:40Z"
+        }
+      ],
+      "record_count": 56,
+      "records_sha256": "a9636c7be98ff5e0613d98eae6671bf34e63fe8bd34ef44680d5c92a9c5c42dd",
+      "source_log_sha256": "42c829c798ae8ec856bde15875429fddfc4f173fd58842bde7a3e4bf27c62e5c",
+      "disclosure": {
+        "present": true,
+        "parseable_timestamped_records": 56,
+        "blank_lines": 0,
+        "corrupt_json_lines": 0,
+        "missing_timestamps": 0,
+        "unparseable_timestamps": 0
+      }
+    },
+    "0025-round-scope-all-rework-gates-implement-c": {
+      "records": [
+        {
+          "event": "item.created",
+          "ts": "2026-08-02T19:21:45Z"
+        },
+        {
+          "data": {
+            "from": "idea",
+            "to": "triage"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T20:17:00Z"
+        },
+        {
+          "data": {
+            "priority": 2
+          },
+          "event": "priority.set",
+          "ts": "2026-08-02T20:27:20Z"
+        },
+        {
+          "data": {
+            "tier": "bug"
+          },
+          "event": "tier.set",
+          "ts": "2026-08-02T20:27:20Z"
+        },
+        {
+          "data": {
+            "from": "triage",
+            "to": "spec"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T20:28:25Z"
+        },
+        {
+          "data": {
+            "journeys": "J-001"
+          },
+          "event": "journeys.set",
+          "ts": "2026-08-02T20:33:30Z"
+        },
+        {
+          "data": {
+            "from": "spec",
+            "to": "plan"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T20:34:02Z"
+        },
+        {
+          "data": {
+            "from": "plan",
+            "to": "implement"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T20:50:00Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 117440
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T20:59:12Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 146097
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T21:04:12Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 145441
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T21:12:03Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 119948
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T21:18:08Z"
+        },
+        {
+          "data": {
+            "tasks": 4,
+            "tests": "838 tests OK (skipped=7) on two identical consecutive runs, PYTHONDONTWRITEBYTECODE=1; 815 baseline + 23 new round-scope guards; default_path goldens byte-untouched (empty porcelain)"
+          },
+          "event": "implement.completed",
+          "ts": "2026-08-02T21:19:26Z"
+        },
+        {
+          "data": {
+            "from": "implement",
+            "to": "review"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T21:19:26Z"
+        },
+        {
+          "data": {
+            "dispatches": 3,
+            "provenance": "measured",
+            "source": "factory-review",
+            "stage": "review",
+            "tokens": {
+              "total": 77875
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T21:32:18Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "factory-review",
+            "stage": "review",
+            "tokens": {
+              "total": 91993
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T21:34:10Z"
+        },
+        {
+          "event": "review.approved",
+          "ts": "2026-08-02T21:34:52Z"
+        },
+        {
+          "data": {
+            "from": "review",
+            "to": "verify"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T21:34:52Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "note": "verify forked session; harness reported no token counts",
+            "provenance": "proxy",
+            "source": "factory-verify",
+            "stage": "verify"
+          },
+          "event": "spend",
+          "ts": "2026-08-02T21:42:47Z"
+        },
+        {
+          "data": {
+            "criteria": "10/10",
+            "tests": "838 OK (skipped=7) x2"
+          },
+          "event": "verify.green",
+          "ts": "2026-08-02T21:42:47Z"
+        },
+        {
+          "data": {
+            "from": "verify",
+            "to": "assure"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T21:42:52Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "factory-assure",
+            "stage": "assure",
+            "tokens": {
+              "total": 95908
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-02T21:55:47Z"
+        },
+        {
+          "data": {
+            "non_blocking_fails": 0,
+            "round": 1
+          },
+          "event": "assure.passed",
+          "ts": "2026-08-02T21:55:47Z"
+        },
+        {
+          "data": {
+            "from": "assure",
+            "to": "ship"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T21:55:47Z"
+        },
+        {
+          "data": {
+            "mode": "auto",
+            "ref": "9e5b014637a92d342b39a51c41eff07af3f08ddd"
+          },
+          "event": "ship.merged",
+          "ts": "2026-08-02T21:58:23Z"
+        },
+        {
+          "data": {
+            "from": "ship",
+            "to": "done"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-02T21:58:23Z"
+        }
+      ],
+      "record_count": 26,
+      "records_sha256": "fc8671cc7572a0dc9955a5b486eeb52ed95e80b5b163f01833a240e91e480751",
+      "source_log_sha256": "8c16b311b81e24c5b3accde42c571b27af04925c93f6a27402cee6cfca01e20c",
+      "disclosure": {
+        "present": true,
+        "parseable_timestamped_records": 26,
+        "blank_lines": 0,
+        "corrupt_json_lines": 0,
+        "missing_timestamps": 0,
+        "unparseable_timestamps": 0
+      }
+    },
+    "0027-packet-respond-falls-through-to-factory-": {
+      "records": [
+        {
+          "event": "item.created",
+          "ts": "2026-08-03T06:44:41Z"
+        },
+        {
+          "data": {
+            "priority": 2
+          },
+          "event": "priority.set",
+          "ts": "2026-08-03T08:21:40Z"
+        },
+        {
+          "data": {
+            "from": "idea",
+            "to": "triage"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-03T08:58:26Z"
+        },
+        {
+          "data": {
+            "tier": "bug"
+          },
+          "event": "tier.set",
+          "ts": "2026-08-03T09:18:26Z"
+        },
+        {
+          "data": {
+            "from": "triage",
+            "to": "spec"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-03T09:21:21Z"
+        },
+        {
+          "data": {
+            "journeys": "J-001,J-002,J-003"
+          },
+          "event": "journeys.set",
+          "ts": "2026-08-03T09:28:03Z"
+        },
+        {
+          "data": {
+            "from": "spec",
+            "to": "plan"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-03T09:28:35Z"
+        },
+        {
+          "data": {
+            "from": "plan",
+            "to": "implement"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-03T09:40:19Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 86848
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-03T09:50:38Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 77336
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-03T09:56:04Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 67195
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-03T10:00:11Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 68898
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-03T10:04:53Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 74761
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-03T10:05:02Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "factory-implement",
+            "stage": "implement",
+            "tokens": {
+              "total": 66521
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-03T10:10:39Z"
+        },
+        {
+          "data": {
+            "tasks": 4,
+            "tests": "python3 -m unittest discover -s tests: Ran 903 tests, OK, 0 skipped with live .factory state (884 baseline + 19 new); two consecutive identical runs; tests/fixtures/default_path/ byte-identical"
+          },
+          "event": "implement.completed",
+          "ts": "2026-08-03T10:15:29Z"
+        },
+        {
+          "data": {
+            "from": "implement",
+            "to": "review"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-03T10:15:29Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "factory-review",
+            "stage": "review",
+            "tokens": {
+              "total": 126811
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-03T10:29:38Z"
+        },
+        {
+          "data": {
+            "round": 1
+          },
+          "event": "review.rejected",
+          "ts": "2026-08-03T10:29:38Z"
+        },
+        {
+          "data": {
+            "from": "review",
+            "to": "implement"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-03T10:29:43Z"
+        },
+        {
+          "data": {
+            "artifact": "assurance/impact.json",
+            "change": "universal any-packet clause narrowed to waiting-human parks",
+            "code_change": "none owed - the code is correct; spec AC6 is matrix-scoped and unaffected",
+            "reason": "false as written - a blocked-stage cost pause renders the verb bullet with no decision section; verified by the reviewer through both renderers",
+            "residual": "the blocked-pause divergence is recorded, and explicitly NOT to be discharged via the is_cost_pause extraction",
+            "scenario": "S5"
+          },
+          "event": "spec.amended",
+          "ts": "2026-08-03T10:33:27Z"
+        },
+        {
+          "data": {
+            "round": 2,
+            "scope": "documentation-only: impact.json S5 narrowed per review round 1; no code touched; branch head unchanged at c01eac8"
+          },
+          "event": "implement.completed",
+          "ts": "2026-08-03T10:33:27Z"
+        },
+        {
+          "data": {
+            "from": "implement",
+            "to": "review"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-03T10:33:27Z"
+        },
+        {
+          "data": {
+            "dispatches": 0,
+            "note": "round 2: subagent pool exhausted, single-reasoner inline review, no fan-out",
+            "provenance": "proxy",
+            "source": "factory-review",
+            "stage": "review"
+          },
+          "event": "spend",
+          "ts": "2026-08-03T10:39:42Z"
+        },
+        {
+          "event": "review.approved",
+          "ts": "2026-08-03T10:39:42Z"
+        },
+        {
+          "data": {
+            "from": "review",
+            "to": "verify"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-03T10:39:42Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "factory-verify",
+            "stage": "verify",
+            "tokens": {
+              "total": 151974
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-03T11:06:33Z"
+        },
+        {
+          "data": {
+            "criteria": "15/15",
+            "goldens": "tree e693c482 identical at 916272e and c01eac8",
+            "head": "c01eac8",
+            "logged_late": "verify completed green but could not write its own artifacts - the volume hit 0 bytes; orchestrator logged this from the stage report once space returned",
+            "matrix": "18 cells, no failures, both renderers",
+            "non_vacuity": "every check re-rendered on main and shown to differ; assure-origin cost park renders confirm+waive on main, one cost-answer bullet on the branch",
+            "tests": "903 OK, exit 0, three runs (two back-to-back identical), skipped=7 WITHOUT live .factory state - the gitignored-state guards, item 0022s defect not this items"
+          },
+          "event": "verify.green",
+          "ts": "2026-08-03T11:06:33Z"
+        },
+        {
+          "data": {
+            "from": "verify",
+            "to": "assure"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-03T11:06:33Z"
+        },
+        {
+          "data": {
+            "dispatches": 0,
+            "provenance": "proxy",
+            "source": "orchestrator-inline-drive",
+            "stage": "assure"
+          },
+          "event": "spend",
+          "ts": "2026-08-03T13:06:32Z"
+        },
+        {
+          "data": {
+            "assure_passed_withheld": "deliberately not logged - the human decides: factory confirm, factory waive, or re-run assurance with a fresh reviewer in a new session",
+            "finding_routed": "continue consequence line hardcodes implement for all park origins - to 0031 (p3), not gated here",
+            "independence": "NOT MET - subagent pool exhausted 200/200, no fresh-context reviewer available; drive performed by the implementation-aware orchestrator",
+            "non_vacuity": "every behavioural check re-rendered on pre-change engine 916272e and shown to differ",
+            "scenarios": "11/11 driven, all pass against their declared text"
+          },
+          "event": "assure.degraded",
+          "ts": "2026-08-03T13:06:32Z"
+        },
+        {
+          "data": {
+            "from": "assure",
+            "reason": "assurance ran DEGRADED: 11/11 scenarios pass but no fresh-context reviewer was available (subagent pool exhausted), so the walk was run by the implementation-aware orchestrator - confirm, waive, or re-run assure in a fresh session",
+            "to": "waiting-human"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-03T13:06:33Z"
+        },
+        {
+          "data": {
+            "action": "degraded round archived to assurance/degraded-round-1/, gate artifacts cleared, item returned to assure for a blind walk",
+            "blocker": "subagent pool exhausted 200/200 in this session - the fresh reviewer must be dispatched from a NEW session",
+            "by": "human",
+            "reason": "degraded independence - the orchestrator ran the walk because no fresh-context reviewer was available"
+          },
+          "event": "assure.rerun_requested",
+          "ts": "2026-08-03T14:02:54Z"
+        },
+        {
+          "data": {
+            "from": "waiting-human",
+            "to": "assure"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-03T14:02:54Z"
+        },
+        {
+          "data": {
+            "from": "assure",
+            "reason": "blocker: no fresh-context reviewer available - subagent pool exhausted 200/200 at session start (a /clear does not reset it), so the blind re-walk the human asked for could not be dispatched; raise CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION or start a new harness session and re-run, or factory waive to accept the archived degraded round. See assurance/blockers.md",
+            "to": "waiting-human"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-03T15:15:59Z"
+        },
+        {
+          "data": {
+            "dispatches": 0,
+            "provenance": "proxy",
+            "source": "factory-assure",
+            "stage": "assure"
+          },
+          "event": "spend",
+          "ts": "2026-08-03T15:16:05Z"
+        },
+        {
+          "data": {
+            "by": "human",
+            "reason": "blind re-walk; pool now available"
+          },
+          "event": "assure.rerun_requested",
+          "ts": "2026-08-03T15:33:34Z"
+        },
+        {
+          "data": {
+            "from": "waiting-human",
+            "reason": "blind re-walk with a fresh-context reviewer",
+            "to": "assure"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-03T15:33:38Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "factory-assure",
+            "stage": "assure",
+            "tokens": {
+              "total": 136649
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-03T15:52:03Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "factory-assure",
+            "stage": "assure",
+            "tokens": {
+              "total": 118606
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-03T16:06:14Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "factory-assure",
+            "stage": "assure",
+            "tokens": {
+              "total": 148640
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-03T16:22:46Z"
+        },
+        {
+          "data": {
+            "blind": true,
+            "journeys": "J-001,J-002,J-003",
+            "non_blocking_fails": 0,
+            "round": 2,
+            "scenarios_passed": 11,
+            "scenarios_total": 11
+          },
+          "event": "assure.passed",
+          "ts": "2026-08-03T16:25:57Z"
+        },
+        {
+          "data": {
+            "from": "assure",
+            "reason": "assurance passed 11/11 blind (round 2) - awaiting human adjudication of 2 unresolved judgement calls: J-001 N3/N4 shipped-with-known-fails oracle did not render (reviewer ambiguity), and raw Python dict reprs leak into packet copy (craft, corroborated by 2 reviewers). factory confirm to ship.",
+            "to": "waiting-human"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-03T16:25:57Z"
+        },
+        {
+          "event": "assure.confirmed",
+          "ts": "2026-08-03T17:30:46Z"
+        },
+        {
+          "data": {
+            "from": "waiting-human",
+            "reason": "human confirmed assurance (factory confirm)",
+            "to": "assure"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-03T17:30:56Z"
+        },
+        {
+          "data": {
+            "from": "assure",
+            "reason": "assurance confirmed by human; 11/11 blind pass",
+            "to": "ship"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-03T17:30:56Z"
+        },
+        {
+          "data": {
+            "mode": "auto",
+            "ref": "0bd2a3636c6ac46cb5ce6d0f2ea70be4d1ef4aec"
+          },
+          "event": "ship.merged",
+          "ts": "2026-08-03T17:32:41Z"
+        },
+        {
+          "data": {
+            "from": "ship",
+            "to": "done"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-03T17:32:41Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "measured",
+            "source": "factory-dispatch",
+            "stage": "ship",
+            "tokens": {
+              "total": 57158
+            }
+          },
+          "event": "spend",
+          "ts": "2026-08-03T17:34:24Z"
+        }
+      ],
+      "record_count": 48,
+      "records_sha256": "da80ecf713b734a5d855d5b45ca24ba40aac3ed9156e62a69cb7cb82df247722",
+      "source_log_sha256": "6820ce0b02c8c87af4d243aab514c9bfb091590036dab6425da11e71dddd6444",
+      "disclosure": {
+        "present": true,
+        "parseable_timestamped_records": 48,
+        "blank_lines": 0,
+        "corrupt_json_lines": 0,
+        "missing_timestamps": 0,
+        "unparseable_timestamps": 0
+      }
+    },
+    "0031-the-cost-packet-s-decision-copy-is-churn": {
+      "records": [
+        {
+          "event": "item.created",
+          "ts": "2026-08-03T08:51:06Z"
+        },
+        {
+          "data": {
+            "priority": 7
+          },
+          "event": "priority.set",
+          "ts": "2026-08-03T08:56:35Z"
+        },
+        {
+          "data": {
+            "priority": 3
+          },
+          "event": "priority.set",
+          "ts": "2026-08-03T13:05:26Z"
+        },
+        {
+          "data": {
+            "from": "idea",
+            "to": "triage"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-03T14:17:44Z"
+        },
+        {
+          "data": {
+            "tier": "bug"
+          },
+          "event": "tier.set",
+          "ts": "2026-08-15T18:09:16Z"
+        },
+        {
+          "data": {
+            "from": "triage",
+            "to": "spec"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-15T18:09:46Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "proxy",
+            "source": "factory-dispatch",
+            "stage": "triage"
+          },
+          "event": "spend",
+          "ts": "2026-08-15T18:10:30Z"
+        },
+        {
+          "data": {
+            "journeys": "J-002"
+          },
+          "event": "journeys.set",
+          "ts": "2026-08-15T18:14:55Z"
+        },
+        {
+          "data": {
+            "from": "spec",
+            "to": "plan"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-15T18:15:05Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "proxy",
+            "source": "factory-dispatch",
+            "stage": "spec"
+          },
+          "event": "spend",
+          "ts": "2026-08-15T18:15:34Z"
+        },
+        {
+          "data": {
+            "from": "plan",
+            "to": "implement"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-15T18:21:26Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "proxy",
+            "source": "factory-dispatch",
+            "stage": "plan"
+          },
+          "event": "spend",
+          "ts": "2026-08-15T18:21:45Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "proxy",
+            "source": "factory-implement",
+            "stage": "implement"
+          },
+          "event": "spend",
+          "ts": "2026-08-15T18:26:58Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "proxy",
+            "source": "factory-implement",
+            "stage": "implement"
+          },
+          "event": "spend",
+          "ts": "2026-08-15T18:29:28Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "proxy",
+            "source": "factory-implement",
+            "stage": "implement"
+          },
+          "event": "spend",
+          "ts": "2026-08-15T18:31:55Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "proxy",
+            "source": "factory-implement",
+            "stage": "implement"
+          },
+          "event": "spend",
+          "ts": "2026-08-15T18:34:21Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "proxy",
+            "source": "factory-implement",
+            "stage": "implement"
+          },
+          "event": "spend",
+          "ts": "2026-08-15T18:37:31Z"
+        },
+        {
+          "data": {
+            "tasks": 1,
+            "tests": "focused 5/5; packet/html/cli 143/143; full 945 passed, 7 skipped; factory validate passed"
+          },
+          "event": "implement.completed",
+          "ts": "2026-08-15T18:38:04Z"
+        },
+        {
+          "data": {
+            "from": "implement",
+            "to": "review"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-15T18:38:04Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "proxy",
+            "source": "factory-dispatch",
+            "stage": "implement"
+          },
+          "event": "spend",
+          "ts": "2026-08-15T18:38:18Z"
+        },
+        {
+          "data": {
+            "dispatches": 3,
+            "provenance": "proxy",
+            "source": "factory-review",
+            "stage": "review"
+          },
+          "event": "spend",
+          "ts": "2026-08-15T18:50:58Z"
+        },
+        {
+          "event": "review.approved",
+          "ts": "2026-08-15T18:52:40Z"
+        },
+        {
+          "data": {
+            "from": "review",
+            "to": "verify"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-15T18:52:40Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "proxy",
+            "source": "factory-dispatch",
+            "stage": "review"
+          },
+          "event": "spend",
+          "ts": "2026-08-15T18:53:31Z"
+        },
+        {
+          "data": {
+            "criteria": "10/10",
+            "tests": "945 passed, 7 skipped, 0 failed, 0 errors"
+          },
+          "event": "verify.green",
+          "ts": "2026-08-15T18:59:28Z"
+        },
+        {
+          "data": {
+            "from": "verify",
+            "to": "assure"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-15T18:59:37Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "proxy",
+            "source": "factory-dispatch",
+            "stage": "verify"
+          },
+          "event": "spend",
+          "ts": "2026-08-15T19:00:02Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "proxy",
+            "source": "factory-assure",
+            "stage": "assure"
+          },
+          "event": "spend",
+          "ts": "2026-08-15T19:20:09Z"
+        },
+        {
+          "data": {
+            "non_blocking_fails": 0
+          },
+          "event": "assure.passed",
+          "ts": "2026-08-15T19:21:39Z"
+        },
+        {
+          "data": {
+            "from": "assure",
+            "to": "ship"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-15T19:21:53Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "proxy",
+            "source": "factory-dispatch",
+            "stage": "assure"
+          },
+          "event": "spend",
+          "ts": "2026-08-15T19:22:48Z"
+        },
+        {
+          "data": {
+            "mode": "auto",
+            "ref": "36ea7fea87fcd1b23f51431368c2ed561c32afa9"
+          },
+          "event": "ship.merged",
+          "ts": "2026-08-15T19:27:19Z"
+        },
+        {
+          "data": {
+            "from": "ship",
+            "to": "done"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-15T19:27:19Z"
+        },
+        {
+          "data": {
+            "dispatches": 1,
+            "provenance": "proxy",
+            "source": "factory-dispatch",
+            "stage": "ship"
+          },
+          "event": "spend",
+          "ts": "2026-08-15T19:28:38Z"
+        }
+      ],
+      "record_count": 34,
+      "records_sha256": "6ef62c34e03e87aa4ab9e28c2d87f426f005b241faed90d250bbf0a1f6562613",
+      "source_log_sha256": "b6e19782c28cc013c6b5307b41a46d1e8e1a0370039d1a4c5d519f8773b8991f",
+      "disclosure": {
+        "present": true,
+        "parseable_timestamped_records": 34,
+        "blank_lines": 0,
+        "corrupt_json_lines": 0,
+        "missing_timestamps": 0,
+        "unparseable_timestamps": 0
+      }
+    },
+    "0033-bugs-run-less-pipeline-make-stage-member": {
+      "records": [
+        {
+          "event": "item.created",
+          "ts": "2026-08-04T07:02:14Z"
+        },
+        {
+          "data": {
+            "from": "idea",
+            "to": "triage"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-04T07:31:51Z"
+        },
+        {
+          "data": {
+            "tier": "feature"
+          },
+          "event": "tier.set",
+          "ts": "2026-08-04T07:54:32Z"
+        },
+        {
+          "data": {
+            "from": "triage",
+            "to": "spec"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-04T07:59:44Z"
+        },
+        {
+          "data": {
+            "journeys": "J-001,J-004"
+          },
+          "event": "journeys.set",
+          "ts": "2026-08-04T13:01:58Z"
+        },
+        {
+          "data": {
+            "from": "spec",
+            "to": "plan"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-04T13:01:58Z"
+        },
+        {
+          "data": {
+            "from": "plan",
+            "to": "implement"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-04T13:01:58Z"
+        },
+        {
+          "data": {
+            "tasks": 8,
+            "tests": "936 tests OK"
+          },
+          "event": "implement.completed",
+          "ts": "2026-08-04T13:11:31Z"
+        },
+        {
+          "data": {
+            "from": "implement",
+            "to": "review"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-04T13:11:56Z"
+        },
+        {
+          "data": {
+            "blocking": 0,
+            "finding": "mutable frontmatter replaced by door-keyed event"
+          },
+          "event": "review.approved",
+          "ts": "2026-08-04T13:19:09Z"
+        },
+        {
+          "data": {
+            "from": "review",
+            "to": "verify"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-04T13:19:09Z"
+        },
+        {
+          "data": {
+            "criteria": "12/12",
+            "focused": "21 OK",
+            "tests": "940 OK"
+          },
+          "event": "verify.green",
+          "ts": "2026-08-04T13:20:26Z"
+        },
+        {
+          "data": {
+            "from": "verify",
+            "to": "assure"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-04T13:20:26Z"
+        },
+        {
+          "data": {
+            "dispatches": 2,
+            "provenance": "proxy",
+            "source": "factory-assure",
+            "stage": "assure"
+          },
+          "event": "spend",
+          "ts": "2026-08-04T16:07:36Z"
+        },
+        {
+          "data": {
+            "non_blocking_fails": 0,
+            "round": 1
+          },
+          "event": "assure.passed",
+          "ts": "2026-08-04T16:07:36Z"
+        },
+        {
+          "data": {
+            "from": "assure",
+            "reason": "fresh-context assurance passed: 9/9 declared scenarios",
+            "to": "ship"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-04T16:07:43Z"
+        },
+        {
+          "data": {
+            "mode": "auto",
+            "ref": "c673fd5c0732b0c294c7e01416f7169cde14cf4a"
+          },
+          "event": "ship.merged",
+          "ts": "2026-08-04T16:09:18Z"
+        },
+        {
+          "data": {
+            "from": "ship",
+            "reason": "auto merge green: 940 tests",
+            "to": "done"
+          },
+          "event": "stage.advance",
+          "ts": "2026-08-04T16:09:18Z"
+        }
+      ],
+      "record_count": 18,
+      "records_sha256": "22718f9656b2d8d3dcfc3a8cadabb954510b059c0bcb6439145165d703409bed",
+      "source_log_sha256": "6cf5fbe3ca8a1f356d58a9260441787453b24e3b8afd2af2144a226a2fb05065",
+      "disclosure": {
+        "present": true,
+        "parseable_timestamped_records": 18,
+        "blank_lines": 0,
+        "corrupt_json_lines": 0,
+        "missing_timestamps": 0,
+        "unparseable_timestamps": 0
+      }
+    }
+  }
+}
