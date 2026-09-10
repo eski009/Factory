@@ -336,6 +336,13 @@ class TestPluginCoherence(unittest.TestCase):
         self.assertNotIn("six-seat", block.lower())
         self.assertNotIn("council-review", block)
 
+    def test_add_routes_defects_to_confirmed_bug_intake(self):
+        command = read(ROOT / "commands/add.md")
+        self.assertIn("`factory-bug`", command)
+        self.assertIn("do **not** run", command)
+        self.assertIn("reproduces the defect", command)
+        self.assertIn("FACTORY_PLUGIN_ROOT", command)
+
     def test_engine_comments_cite_symbols_not_source_lines(self):
         citations = []
         source_line = re.compile(r"[A-Za-z0-9_./-]+\.(?:py|md):\d+")

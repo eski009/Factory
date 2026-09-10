@@ -410,6 +410,10 @@ class PerStageAttributionTest(CostTestCase):
         summary = self.seed()
         self.assertEqual(summary["stages"]["review"]["proxy_events"], 1)
         self.assertIsNone(summary["stages"]["review"]["measured"])
+        text = cost.render_text(summary)
+        self.assertIn("proxy spend events 1", text)
+        self.assertNotIn("no spend events logged", text)
+        self.assertNotIn("proxy spend events 0", text)
 
     def test_stage_less_spend_never_distributed_across_stages(self):
         self.log_at("2026-07-03T10:00:00Z", "spend",

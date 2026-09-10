@@ -323,6 +323,8 @@ def render_text(summary):
                 f"entries {bucket['entries']}")
         if bucket["dispatches"]:
             line += f", dispatches {bucket['dispatches']}"
+        if bucket["proxy_events"]:
+            line += f", proxy spend events {bucket['proxy_events']}"
         lines.append(line)
         segments = _token_segments(bucket["measured"])
         if segments:
